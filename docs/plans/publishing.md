@@ -182,7 +182,8 @@ Secrets and session URIs must not appear in errors, including `*url.Error` text.
 5. `destinations`: driver name (never the logical destination name), URL, and `PublicLinks` from the connector when it offers them.
 6. Embeddings: stored vectors through `repo.EmbeddingLister` when the store has it; otherwise embedded now from the released text through `connector.Embedder`; otherwise none, with `embedding_model` empty, so the site reports lexical mode.
 7. `search_fts`: title, description, chapters, released transcript.
-8. Writes `<data-dir>/tenants/<tenant>/public.db.tmp-*` from `schemas.PublicDBSchema()`, checkpoints, switches to `journal_mode=DELETE`, runs `integrity_check`, closes, scans the raw bytes for exported assets' ULIDs, friendly IDs and storage keys, `fsync`s, hashes, renames and `fsync`s the directory.
+8. A guard checks each video's released values for its ULID, its stored files' keys, `storage://` and ULID-shaped words, and drops that video on a hit, so one bad title cannot block a withdrawal (I233). A test scans the raw file too.
+9. Writes `<data-dir>/tenants/<tenant>/public.db.tmp-*` from `schemas.PublicDBSchema()`, checkpoints, switches to `journal_mode=DELETE`, runs `integrity_check`, closes, `fsync`s, hashes, renames and `fsync`s the directory.
 
 `public_id`: HMAC-SHA256 over the asset ULID, lowercase base32, 24 characters, so it can never look like a ULID (I233). `source_group`: HMAC with a separate label over the root asset. Same tenant key, so IDs are stable across rebuilds and unlinkable between tenants.
 
@@ -217,7 +218,7 @@ pubs := publishingnodes.NewService(publishingnodes.ServiceDeps{...})
 
 - **Connectors:** `mock` persistence across instances, every injection, resume, reconcile. `youtube` against an `httptest` server: chunking, `5xx` and connection loss mid-upload, lost final response, session expiry, restart with persisted session, reconcile by session and by tag, token refresh, quota, status mapping, read-modify-write, caption update, no secret or session URI in errors, HTTP refused for non-loopback.
 - **Nodes:** full lifecycle on `mock` with the fake store. Descriptors against the catalog, outputs against the catalog's schemas. R43 with a processing delay. R4 with identical and different published files. D37 in both modes, including upload refusing a bypass. D35 immutable after publication only. D52 rejection distinct from failure. D11 reconcile with found, not found and unknown. Idempotent repeats of every node with no duplicate event. Withdrawal twice, including a failure at one destination. Sensitive text absent from captions at the destination. `mediacms.register` with a failing connector.
-- **Export:** schema applied, opaque IDs, atomic replace with a failed build leaving the old file, single file with no side files, opens read-only and `immutable=1`. Raw-byte scan for ULIDs, friendly IDs, storage keys, buckets, private original data, sensitive text, unapproved and withdrawn records. Tenant isolation of IDs. Scan guard refuses a poisoned title. Lexical-only and embedder paths.
+- **Export:** schema applied, opaque IDs, atomic replace with a failed build leaving the old file, single file with no side files, opens read-only and `immutable=1`. Raw-byte scan for ULIDs, friendly IDs, storage keys, buckets, private original data, sensitive text, unapproved and withdrawn records. Tenant isolation of IDs. The guard drops only a poisoned video. Lexical-only and embedder paths.
 - **Local file:** ship, replace, clear twice, checksum mismatch leaves the old file.
 - **Skeletons:** `Available: false`, reason stated, every method returns `not_implemented`.
 
