@@ -2,7 +2,9 @@
 
 The maintainer delegated all open decisions for the first executable version. This log records them as `I1, I2, ...`. They are **implementation decisions**, distinct from the maintainer's `D1–D59` in spec §21, which they never change or relabel. Each one states the choice, the reason and what would make us revisit it.
 
-**Validate** marks a working default that rests on a §17.2 validation still unproven. It works in this version's tests; it has not been proven on real targets.
+This log was written before the components exist, so what it says a version does is a **target** until the owning component commits it. Only I1, the contract packages and `scripts/` exist so far.
+
+**Validate** marks a working default that rests on a §17.2 validation still unproven. Tests in this version exercise it against local fakes; it has not been proven on real targets.
 
 Components record their own decisions in `docs/decisions/<component>.md`, using the number ranges in section 8 of the [master plan](plans/00-master-plan.md).
 
@@ -185,14 +187,14 @@ Components record their own decisions in `docs/decisions/<component>.md`, using 
 
 - **Choice.** `daemon.json` must name a provider in `vault.unseal.provider`. **There is no default.** Absent, unknown, or failing means the daemon exits non-zero with no listener (D13). No key is ever created at startup; generating one is an explicit `vidyomd init --generate-master-key <path>`.
 
-  | Provider | Where | Sealing level | State in this version |
+  | Provider | Where | Sealing level | Target in this version |
   |---|---|---|---|
-  | `systemd-creds` | Linux native; reads `$CREDENTIALS_DIRECTORY/vidyom-master-key` | hardware when sealed with TPM | Implemented, **Validate** on target hosts |
-  | `macos-keychain` | macOS native | OS | Implemented, **Validate** |
-  | `dpapi` | Windows native | OS | Implemented and compile-checked only, **Validate** |
-  | `gcp-kms` | any | KMS | Interface present, returns `not_implemented`, **Validate** |
-  | `file` | Docker: `/run/secrets/vidyom_master_key` via a Compose secret; needs `acknowledgeFileSealed: true`; file must be mode 0400 or 0440 | **file** (plaintext on the host) | Implemented; the working default for Compose |
-  | `env` | Dev only: `VIDYOM_MASTER_KEY_B64`; needs also `VIDYOM_INSECURE_DEV_UNSEAL=1` | **dev** | Implemented; never in Compose |
+  | `systemd-creds` | Linux native; reads `$CREDENTIALS_DIRECTORY/vidyom-master-key` | hardware when sealed with TPM | Implement, **Validate** on target hosts |
+  | `macos-keychain` | macOS native | OS | Implement, **Validate** |
+  | `dpapi` | Windows native | OS | Implement, compile-check only, **Validate** |
+  | `gcp-kms` | any | KMS | Interface only, returns `not_implemented`, **Validate** |
+  | `file` | Docker: `/run/secrets/vidyom_master_key` via a Compose secret; needs `acknowledgeFileSealed: true`; file must be mode 0400 or 0440 | **file** (plaintext on the host) | Implement; the working default for Compose |
+  | `env` | Dev only: `VIDYOM_MASTER_KEY_B64`; needs also `VIDYOM_INSECURE_DEV_UNSEAL=1` | **dev** | Implement; never in Compose |
 
 - **Why.** D13 requires TPM, systemd-creds or KMS and no manual passphrase, and D41 adds per-platform options. Containers on Docker Desktop have no TPM or Keychain, and KMS needs an account, so Compose needs something that works on one host. `file` is explicit, acknowledged in configuration, reported by `vidyom doctor --security` and `/health` as `sealing: file`, and recorded in the audit on each boot. It is below D13's target, and the docs must say so. It is never a silent fallback: no provider ever falls through to another.
 - **Revisit if.** KMS or TPM is validated on the target hosts: Compose docs then recommend it.
