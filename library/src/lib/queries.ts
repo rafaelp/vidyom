@@ -34,7 +34,8 @@ interface VideoRow {
   source_group: string;
 }
 
-function parseTags(value: string): string[] {
+/** The `tags` column is JSON. A malformed value means no tags, not a failed page. */
+export function parseTags(value: string): string[] {
   try {
     const parsed: unknown = JSON.parse(value);
     if (!Array.isArray(parsed)) return [];

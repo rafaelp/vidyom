@@ -43,7 +43,10 @@ function Result({ result }: { result: SearchResult }) {
   return (
     <li>
       <article className="result">
-        <Thumbnail url={result.thumbnail_url} kind={result.kind} durationSeconds={result.duration_seconds} />
+        {/* The title below is the same link, so this one is for pointers only. */}
+        <Link href={result.url} tabIndex={-1} aria-hidden="true">
+          <Thumbnail url={result.thumbnail_url} kind={result.kind} durationSeconds={result.duration_seconds} />
+        </Link>
         <div className="result__body">
           <h2 className="result__title" lang={lang}>
             <Link href={result.url}>{result.title}</Link>

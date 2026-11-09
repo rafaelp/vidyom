@@ -37,9 +37,8 @@ describe('the site never contacts the daemon (D34, R44)', () => {
     const fetches = SOURCES.flatMap(({ file, text }) =>
       [...withoutComments(text).matchAll(/\bfetch\(([^,)]*)/g)].map((match) => ({ file, target: match[1] })),
     );
-    expect(fetches).toEqual([
-      { file: 'src/components/SearchExperience.tsx', target: '`/api/search?${paramsFor(trimmed' },
-    ]);
+    expect(fetches.map(({ file }) => file)).toEqual(['src/components/SearchExperience.tsx']);
+    expect(fetches[0]?.target).toMatch(/^`\/api\/search\?/);
   });
 
   it('reaches no third-party host from code', () => {

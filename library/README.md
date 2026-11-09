@@ -90,7 +90,7 @@ All values are read at request time, so one build can serve any tenant. See `.en
 }
 ```
 
-`mode` is `lexical` or `hybrid`. When it is `lexical`, `semantic.reason` says why: `disabled`, `not_requested`, `no_vectors`, `no_embedder`, `dimension_mismatch`, `too_many_vectors`, `invalid_vectors` or `embedder_error`. The search page states the same thing.
+The sample leaves out each result's plain fields, such as `kind`, `speaker` and `published_at`. `src/lib/search/types.ts` is the full contract. `score` orders one response only. `mode` is `lexical` or `hybrid`. When it is `lexical`, `semantic.reason` says why: `disabled`, `not_requested`, `no_vectors`, `no_embedder`, `dimension_mismatch`, `too_many_vectors`, `invalid_vectors` or `embedder_error`. The search page states the same thing.
 
 Errors are `{ "error": { "code", "message" } }`: `400` for `query_required`, `query_too_long` or `invalid_parameter`, and `503` for `dataset_unavailable`.
 

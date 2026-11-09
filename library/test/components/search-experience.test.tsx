@@ -68,6 +68,13 @@ function response(overrides: Partial<SearchResponse> = {}): SearchResponse {
 }
 
 function renderSearch(props: Partial<Parameters<typeof SearchExperience>[0]> = {}) {
+  // The server renders from the URL, so the page always starts with the two in step.
+  const params = new URLSearchParams();
+  if (props.initialQuery) params.set('q', props.initialQuery);
+  for (const [key, value] of Object.entries(props.filters ?? {})) params.set(key, value as string);
+  const page = props.initialResponse?.page ?? 1;
+  if (page > 1) params.set('page', String(page));
+  window.history.replaceState(null, '', `/search?${params}`);
   return render(
     <SearchExperience
       initialQuery=""
@@ -90,7 +97,6 @@ describe('SearchExperience', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     fetchMock.mockReset();
-    window.history.replaceState(null, '', '/search');
   });
 
   afterEach(() => {
@@ -275,6 +281,46 @@ describe('SearchExperience', () => {
   it('shows the server’s validation message', () => {
     renderSearch({ initialQuery: 'x'.repeat(300), initialError: 'The q parameter is limited to 256 characters.' });
     expect(screen.getByText('The q parameter is limited to 256 characters.')).toBeTruthy();
+  });
+
+  describe('coming Back to a search typed after the page loaded', () => {
+    // The router restores the page's first render, so the props say "no query".
+    const renderFromRouterCache = (search: string) => {
+      window.history.replaceState(null, '', `/search${search}`);
+      return render(
+        <SearchExperience initialQuery="" initialResponse={null} initialError={null} filters={{}} facets={facets} />,
+      );
+    };
+
+    it('runs the search in the URL rather than showing an empty page', async () => {
+      fetchMock.mockResolvedValue(json(response({ query: 'savasana' })));
+      renderFromRouterCache('?q=savasana');
+      expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe('savasana');
+      expect(screen.queryByRole('heading', { name: 'What are you looking for?' })).toBeNull();
+      await waitFor(() => expect(screen.getByRole('link', { name: 'Conscious breathing' })).toBeTruthy());
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/search?q=savasana');
+      expect(window.location.search).toBe('?q=savasana');
+    });
+
+    it('keeps its filters and page', async () => {
+      fetchMock.mockResolvedValue(json(response({ query: 'savasana', page: 2, total: 45 })));
+      renderFromRouterCache('?q=savasana&speaker=Ana+Exemplo&page=2');
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+      expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/search?q=savasana&speaker=Ana+Exemplo&page=2');
+      expect((screen.getByLabelText('Speaker') as HTMLSelectElement).value).toBe('Ana Exemplo');
+      await waitFor(() => expect(window.location.search).toBe('?q=savasana&speaker=Ana+Exemplo&page=2'));
+    });
+
+    it('does not fetch when the props already match the URL', () => {
+      renderSearch({ initialQuery: 'breathing', initialResponse: response(), filters: { kind: 'clip' } });
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('does not fetch for a URL with no query', () => {
+      renderFromRouterCache('');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(screen.getByRole('heading', { name: 'What are you looking for?' })).toBeTruthy();
+    });
   });
 
   it('pages through the server, keeping the query and filters', () => {

@@ -69,6 +69,7 @@ Decisions of the public library component, numbered `I240`–`I259` per section 
 
 - **Choice.** On the first semantic query of a generation, all vectors load into one `Float32Array`, L2-normalized, with their text left in the database. Cosine is then a dot product over that array, on the request's thread, keeping the top 200. Above `VIDYOM_LIBRARY_MAX_VECTORS` (default 50 000, I43's cap, about 200 MB) or with a wrong-sized BLOB, semantic turns off with a reported reason.
 - **Why.** I29 stores plain BLOBs so the site can brute-force. Reading 50 000 BLOBs per query would dominate the latency, and the file cannot change within a generation, so one load is safe. The stored vectors are normalized here rather than trusted to be.
+- **Measured here, one laptop only.** At the cap, on an Apple Silicon Mac with the fake embedder: first query 366 ms including the load, then about 85 to 100 ms per query, and about 250 MB more resident memory. The scan blocks the event loop for that time.
 - **Validate (D58).** Memory and event-loop blocking at the cap on the real host. `VIDYOM_LIBRARY_SEMANTIC=off` is the escape.
 - **Revisit if.** Load tests set another cap, or a worker thread is needed.
 
@@ -111,7 +112,7 @@ Decisions of the public library component, numbered `I240`–`I259` per section 
 
 ### I252. Player facade
 
-- **Choice.** A page shows the thumbnail and a play control, linking to the destination. The iframe loads only on request, with `sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"`, `referrerPolicy="strict-origin-when-cross-origin"`, and no rewriting of the URL. Only `https:` embeds. Thumbnails are plain `<img>` with `referrerPolicy="no-referrer"`, falling back to a generated tile. `next/image` is not used.
+- **Choice.** A page shows the thumbnail and a play control, linking to the destination. The iframe loads only on request, with `sandbox="allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"`, `referrerPolicy="strict-origin-when-cross-origin"`, and no rewriting of the URL. Only `https:` embeds. Thumbnails are plain `<img>` with `referrerPolicy="no-referrer"`, falling back to a generated tile. `next/image` is not used.
 - **Why.** Destination players are third-party scripts, and the project allows none on a page view. Loading one must be the visitor's act. `next/image` would need an allow-list of destination hosts and would make the site fetch them. The visitor still fetches thumbnails from the destination, which is what `thumbnail_url` is for: the schema says it comes from the destination, never a bucket.
 - **Revisit if.** Thumbnails should be proxied so a page view contacts no destination at all.
 
@@ -151,7 +152,8 @@ Decisions of the public library component, numbered `I240`–`I259` per section 
 ### I258. Versions and build
 
 - **Choice.** Exact pins: Next.js 16.4.5, React 19.3.1, TypeScript 6.0.3, Vitest 5.1.0. `engines.node >= 22.13`. Turbopack, the default. `VIDYOM_LIBRARY_STANDALONE=1` at build time produces `output: "standalone"` for the image; otherwise `next start` runs normally, since it refuses standalone builds.
-- **Why.** TypeScript 7.0.2 builds and typechecks, but `typescript-eslint` refuses it (`does not support TS 7.0`, supported range below 6.1), so 6.0.3 keeps lint working.
+- **Why.** TypeScript 7.0.2 builds and typechecks, but `typescript-eslint` refuses it (`does not support TS 7.0`, supported range below 6.1), so 6.0.3 keeps lint working. jsdom stays at 26.1.0 because 31 needs Node 22.22, above this project's floor.
+- **Run on.** Node 22.16, 24.21 and 25.8: unit tests, build and the HTTP suite.
 - **Revisit if.** `typescript-eslint` supports 7.
 
 ---

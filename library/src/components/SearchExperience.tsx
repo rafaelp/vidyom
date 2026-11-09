@@ -3,6 +3,7 @@
 import { SiteLink as Link } from '@/components/SiteLink';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { pluralize } from '@/lib/format';
+import { filtersFromParams, pageFromParam } from '@/lib/search/params';
 import { MAX_QUERY_LENGTH, type SearchErrorBody, type SearchResponse } from '@/lib/search/types';
 import type { Facets, VideoFilters } from '@/lib/types';
 import { EmptyState } from './EmptyState';
@@ -31,6 +32,34 @@ function paramsFor(query: string, filters: VideoFilters, page = 1): URLSearchPar
   return params;
 }
 
+interface UrlSearch {
+  query: string;
+  filters: VideoFilters;
+  page: number;
+}
+
+/**
+ * The search in the address bar, when it is not the one these props describe. Typing
+ * updates the URL without the server, so Back returns here with the props of the page's
+ * first render and the URL of the last search. Never true while hydrating: the server
+ * rendered from this same URL.
+ */
+function searchInUrlIfDifferent(
+  query: string,
+  filters: VideoFilters,
+  response: SearchResponse | null,
+): UrlSearch | null {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  const inUrl: UrlSearch = {
+    query: (params.get('q') ?? '').trim(),
+    filters: filtersFromParams(params),
+    page: pageFromParam(params.get('page')),
+  };
+  const fromProps = paramsFor(query.trim(), filters, response?.page ?? 1).toString();
+  return paramsFor(inUrl.query, inUrl.filters, inUrl.page).toString() === fromProps ? null : inUrl;
+}
+
 /**
  * The search page. The server renders the first result, and the form is a plain GET,
  * so all of it works with no JavaScript. With JavaScript, typing updates the results
@@ -43,11 +72,14 @@ export function SearchExperience({
   filters: initialFilters,
   facets,
 }: SearchExperienceProps) {
-  const [query, setQuery] = useState(initialQuery);
-  const [filters, setFilters] = useState(initialFilters);
-  const [response, setResponse] = useState(initialResponse);
-  const [error, setError] = useState(initialError);
-  const [loading, setLoading] = useState(false);
+  const [restored] = useState(() =>
+    searchInUrlIfDifferent(initialQuery, initialFilters, initialResponse),
+  );
+  const [query, setQuery] = useState(restored?.query ?? initialQuery);
+  const [filters, setFilters] = useState(restored?.filters ?? initialFilters);
+  const [response, setResponse] = useState(restored ? null : initialResponse);
+  const [error, setError] = useState(restored ? null : initialError);
+  const [loading, setLoading] = useState(Boolean(restored?.query));
   const controller = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -58,8 +90,40 @@ export function SearchExperience({
 
   useEffect(() => stop, [stop]);
 
+  const load = useCallback(async (text: string, nextFilters: VideoFilters, page: number) => {
+    controller.current?.abort();
+    const abort = new AbortController();
+    controller.current = abort;
+    try {
+      const answer = await fetch(`/api/search?${paramsFor(text, nextFilters, page)}`, {
+        signal: abort.signal,
+      });
+      if (!answer.ok) {
+        const body = (await answer.json().catch(() => null)) as SearchErrorBody | null;
+        throw new Error(
+          answer.status === 503
+            ? 'The catalog is not available right now. Please try again in a minute.'
+            : (body?.error.message ?? 'Search failed.'),
+        );
+      }
+      const results = (await answer.json()) as SearchResponse;
+      if (abort.signal.aborted) return;
+      setResponse(results);
+      setError(null);
+      setLoading(false);
+    } catch (cause) {
+      if (abort.signal.aborted) return;
+      setError(
+        cause instanceof Error && cause.name !== 'TypeError'
+          ? cause.message
+          : 'Search failed. Check your connection and try again.',
+      );
+      setLoading(false);
+    }
+  }, []);
+
   const run = useCallback(
-    async (text: string, nextFilters: VideoFilters) => {
+    (text: string, nextFilters: VideoFilters) => {
       stop();
       const trimmed = text.trim();
       const url = trimmed === '' ? '/search' : `/search?${paramsFor(trimmed, nextFilters)}`;
@@ -70,48 +134,33 @@ export function SearchExperience({
         setLoading(false);
         return;
       }
-      const abort = new AbortController();
-      controller.current = abort;
       setLoading(true);
-      try {
-        const answer = await fetch(`/api/search?${paramsFor(trimmed, nextFilters)}`, {
-          signal: abort.signal,
-        });
-        if (!answer.ok) {
-          const body = (await answer.json().catch(() => null)) as SearchErrorBody | null;
-          throw new Error(
-            answer.status === 503
-              ? 'The catalog is not available right now. Please try again in a minute.'
-              : (body?.error.message ?? 'Search failed.'),
-          );
-        }
-        setResponse((await answer.json()) as SearchResponse);
-        setError(null);
-        setLoading(false);
-      } catch (cause) {
-        if (abort.signal.aborted) return;
-        setError(cause instanceof Error && cause.name !== 'TypeError' ? cause.message : 'Search failed. Check your connection and try again.');
-        setLoading(false);
-      }
+      void load(trimmed, nextFilters, 1);
     },
-    [stop],
+    [load, stop],
   );
+
+  useEffect(() => {
+    // State changes only after the fetch resolves, which is what an effect is for.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (restored?.query) void load(restored.query, restored.filters, restored.page);
+  }, [restored, load]);
 
   const onInput = (value: string) => {
     setQuery(value);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => void run(value, filters), DEBOUNCE_MS);
+    timer.current = setTimeout(() => run(value, filters), DEBOUNCE_MS);
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void run(query, filters);
+    run(query, filters);
   };
 
   const onFilter = (name: string, value: string) => {
     const next = { ...filters, [name]: value || undefined } as VideoFilters;
     setFilters(next);
-    void run(query, next);
+    run(query, next);
   };
 
   const hasQuery = query.trim() !== '' || response !== null;

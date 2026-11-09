@@ -1,4 +1,5 @@
 import type { Generation } from '../dataset';
+import { parseTags } from '../queries';
 import { fold, type ParsedQuery, type QueryTerm } from './fts-query';
 import type { MatchedIn } from './types';
 
@@ -25,17 +26,6 @@ export type MetadataMatches = Map<string, MetadataField[]>;
 function indexText(value: string): string {
   const words = fold(value).match(/[\p{L}\p{N}]+/gu) ?? [];
   return words.length > 0 ? ` ${words.join(' ')} ` : '';
-}
-
-function parseTags(value: string): string[] {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return Array.isArray(parsed)
-      ? parsed.filter((tag): tag is string => typeof tag === 'string')
-      : [];
-  } catch {
-    return [];
-  }
 }
 
 function entries(generation: Generation): MetadataEntry[] {

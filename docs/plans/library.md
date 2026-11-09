@@ -89,9 +89,11 @@ Response shape, `snake_case` per I15:
           "end_seconds": 20,
           "snippet": [{ "text": "...", "match": false }, { "text": "breathing", "match": true }],
           "url": "/videos/...?t=12",
-          "destination_url": "https://media.example.internal/watch/...?t=12"
+          "destination_url": "https://media.example.internal/watch/...?t=12",
+          "matched_by": ["lexical"]
         }
-      ]
+      ],
+      "moment_count": 1
     }
   ],
   "dataset": { "generated_at": "2026-11-09T00:00:00Z" }
