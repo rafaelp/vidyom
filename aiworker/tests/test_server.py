@@ -195,6 +195,30 @@ class TranscribeTest(ConnectionTestCase):
         self.assertEqual(self.worker._in_flight, 0)
 
 
+class UnencodableResultTest(ConnectionTestCase):
+    """A client must always get an answer: it would otherwise wait forever."""
+
+    def test_nan_in_a_result_answers_with_an_error(self):
+        self.client.initialize()
+        with mock.patch.object(self.worker.engine, "embed", return_value={"vectors": [[float("nan")]]}):
+            response = self.client.call("embed", {"texts": ["x"], "kind": "query"})
+        self.assertEqual(response["error"]["code"], protocol.CODE_INTERNAL_ERROR)
+
+    def test_oversized_result_answers_with_an_error(self):
+        self.client.initialize()
+        with mock.patch("vidyom.server.MAX_MESSAGE_BYTES", 64):
+            response = self.client.call("embed", {"texts": ["x"], "kind": "query"})
+        self.assertEqual(response["error"]["code"], protocol.CODE_INTERNAL_ERROR)
+
+    def test_an_engine_crash_answers_without_internals(self):
+        self.client.initialize()
+        with self.assertLogs("vidyom.aiworker", level="ERROR"):
+            with mock.patch.object(self.worker.engine, "embed", side_effect=RuntimeError("secret detail")):
+                response = self.client.call("embed", {"texts": ["x"], "kind": "query"})
+        self.assertEqual(response["error"]["code"], protocol.CODE_INTERNAL_ERROR)
+        self.assertNotIn("secret detail", response["error"]["message"])
+
+
 class EmbedTest(ConnectionTestCase):
     def test_embed(self):
         self.client.initialize()
@@ -356,6 +380,14 @@ class ProcessTest(unittest.TestCase):
         self.assertEqual(client.wait(running)["result"]["engine"], "fake/canned@1")
         self.assertEqual(client.wait(stopping)["result"], {})
         self.assertEqual(process.wait(timeout=10), 0)
+
+    def test_a_taken_socket_path_fails_with_a_message(self):
+        path = self.dir / "ai.sock"
+        path.write_text("not a socket")
+        done = self.run_cli("--engine", "fake", "--socket", str(path))
+        self.assertEqual(done.returncode, 1)
+        self.assertIn(b"is not a socket", done.stderr)
+        self.assertNotIn(b"Traceback", done.stderr)
 
     def test_unix_socket_end_to_end_and_sigterm(self):
         path = str(self.dir / "ai.sock")

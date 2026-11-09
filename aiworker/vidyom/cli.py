@@ -109,17 +109,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.stdio:
         serve_stdio(engine, sys.stdin.buffer, sys.stdout.buffer)
         _exit_process(0)
-    if args.socket:
-        serve_unix(engine, args.socket, on_listening=_stop_on_signals)
-        _exit_process(0)
-    host, port = _parse_tcp(args.tcp)
-    token = _read_token(args.token_file)
+    try:
+        if args.socket:
+            serve_unix(engine, args.socket, on_listening=_stop_on_signals)
+        else:
+            host, port = _parse_tcp(args.tcp)
+            token = _read_token(args.token_file)
 
-    def listening(worker: Worker, bound_port: int) -> None:
-        _stop_on_signals(worker)
-        print(f"vidyom-ai-worker: listening on {host}:{bound_port}", file=sys.stderr, flush=True)
+            def listening(worker: Worker, bound_port: int) -> None:
+                _stop_on_signals(worker)
+                print(f"vidyom-ai-worker: listening on {host}:{bound_port}", file=sys.stderr, flush=True)
 
-    serve_tcp(engine, host, port, token, on_listening=listening)
+            serve_tcp(engine, host, port, token, on_listening=listening)
+    except (OSError, ValueError) as err:
+        print(f"vidyom-ai-worker: {err}", file=sys.stderr, flush=True)
+        _exit_process(1)
     _exit_process(0)
     return 0
 

@@ -21,6 +21,7 @@ from typing import Any, BinaryIO
 
 from vidyom.engines.base import Engine, RequestContext
 from vidyom.protocol import (
+    MAX_MESSAGE_BYTES,
     CODE_INTERNAL_ERROR,
     CODE_INVALID_PARAMS,
     CODE_INVALID_REQUEST,
@@ -121,7 +122,9 @@ class Connection:
                     event.set()
 
     def _write(self, message: dict[str, Any]) -> None:
-        data = encode(message)
+        self._write_encoded(encode(message))
+
+    def _write_encoded(self, data: bytes) -> None:
         with self._write_lock:
             if self._closed.is_set():
                 return
@@ -251,10 +254,22 @@ class Connection:
         except Exception as err:  # never leak internals to a client, keep them in the log
             log.exception("%s failed", method)
             reply = error_message(request_id, CODE_INTERNAL_ERROR, f"internal error: {type(err).__name__}")
+        data = self._encode_reply(request_id, reply)
         # Deregister before answering, so a client that reacts to the reply and asks
         # the worker to shut down never finds this request still counted in flight.
         self._finish(request_id)
-        self._write(reply)
+        self._write_encoded(data)
+
+    def _encode_reply(self, request_id: Any, reply: dict[str, Any]) -> bytes:
+        """A reply that cannot go on the wire must still answer, or the client waits forever."""
+        try:
+            data = encode(reply)
+        except ValueError:
+            log.error("a result could not be encoded")
+            return encode(error_message(request_id, CODE_INTERNAL_ERROR, "the result could not be encoded"))
+        if len(data) > MAX_MESSAGE_BYTES:
+            return encode(error_message(request_id, CODE_INTERNAL_ERROR, "the result exceeds the message size limit"))
+        return data
 
     def _progress_sender(self, token: str):
         def send(percent: float, message: str) -> None:
