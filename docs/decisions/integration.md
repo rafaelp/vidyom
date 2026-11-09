@@ -113,6 +113,7 @@ Checked `docs/plans/integration.md` against master plan sections 1.1 and 10 and 
 - **Choice.** Root causes fixed rather than retried:
   - `internal/plugins`' "the plugin did not answer in time": the hook's timeout covered starting the process, and the first exec of a freshly copied binary can take seconds on a loaded macOS host (the kernel and `syspolicyd` check a new binary). Starting now has its own budget (`InitTimeout`), in production as well as in tests, while a dispatcher's deadline still bounds the whole call.
   - `connectors/storage/local`'s conformance test failed under `-count=3` as "tenant globex sees acme's object". The driver was right: the test cached a removed root by name, so the third run saw the second run's files.
+  - `internal/observability`'s `TestDeadLokiBlocksNothing` read the logs before the file sink's pump had opened it, which answers from the in-memory ring by design. It now waits for all 500 records, and still requires all of them.
   - `internal/workers`' earlier failures could not be reproduced: 8 parallel processes, 12 runs each under load, and repeated full `-count=3` runs. `docs/status.md` records the runs. They are not claimed fixed.
 - **Why.** A suite that fails under load teaches people to ignore it.
 - **Revisit if.** They recur, with the output kept this time.
@@ -122,3 +123,18 @@ Checked `docs/plans/integration.md` against master plan sections 1.1 and 10 and 
 - **Choice.** `VIDYOM_JOBS_REAL_STORE=1 go test ./internal/jobs` runs the engine's whole suite on `core`'s SQLite store rather than its in-memory fake, and CI does that too. One smoke runs on the real store in every plain `go test`. The engine's uncommitted smoke tests for media and publishing are not recreated, because `tests/e2e` covers them with real processes.
 - **Why.** `engine`'s plan named this as what proves the fake's fidelity. It passed unchanged.
 - **Revisit if.** It gets slow.
+
+## Observability, continued
+
+### I294. Metrics and spans wired here, and what stays out
+
+- **Choice.** `vidyom_connector_duration_seconds` and `_failures_total` come from thin wrappers: storage and AI connectors in the worker, the LLM in the engine's environment, publishing in its resolver. The worker has its own manager with the daemon's metric and trace exporters and no log sinks, plus `--metrics-addr` for a Prometheus scraper, because `GET /metrics` on the daemon can only show the daemon's process. A span per node execution, in daemon and worker, uses the job's trace ID as a remote parent, so a trace runs from the API request through the workers though the job outlives the request. `SIGHUP` also reloads observability, or a tenant's new sink never took effect. `vidyom_usage_quantity_total` and `vidyom_ai_cost_estimate_minor_total` come from where usage is recorded.
+- **Left out, listed in `docs/status.md`.** Gauges needing a periodic sweep over each tenant (`vidyom_assets_without_verified_backup`, `vidyom_clips_in_editorial_review`, `vidyom_storage_stored_bytes`), `vidyom_ai_time_estimate_seconds_total`, spans for inline engine nodes, storage calls made by the daemon itself.
+- **Why.** The brief said to wire what is cheap and list the rest. Wrappers keep every connector unaware of metrics.
+- **Revisit if.** Operators need those gauges: `tenants.Maintenance` is the natural place.
+
+### I295. What the real models changed
+
+- **Choice.** Two fixes came from the first real run, and neither could have come from the fake engine. `asr` pins `av<16`, because `faster-whisper` 1.2 passes an argument that PyAV 16 and later refuse. `storyProposals` stops merging touching hits unless both lists found them: on a paraphrase, fused scores differ only by rank, so `clusterScoreShare` never separated anything, and windows chained into one proposal of 137 s for a 33 s story. The real engine now logs a failure's cause, which the client never sees.
+- **Why.** The fake engine shares words with every query, so hits were always corroborated, and it never touches PyAV.
+- **Revisit if.** Editors prefer a longer proposal over several short ones when no LLM is configured.
