@@ -2,7 +2,7 @@
 
 The honest state of this tree, for comparing with the website and the README, which another session is writing as product copy. Where they differ, this file describes what the code does today. Nothing has been pushed, tagged or released. Results below are from one Mac Studio (macOS arm64, Docker Desktop with Linux arm64 containers); no Windows host and no x86-64 host has run any of this.
 
-The short version: **the whole lifecycle works end to end, on one host, natively and under Docker Compose, with a fake AI engine, a mock LLM, a mock destination and local storage.** Real AI models ran once, by hand, on three short spoken stories (section 6). Nothing has talked to real YouTube, real GCS or a real LLM vendor.
+The short version: **the whole lifecycle works end to end, on one host, natively and under Docker Compose, with a fake AI engine, a mock LLM, a mock destination and local storage.** Real AI models ran only by hand, on six short spoken stories (section 6). Nothing has talked to real YouTube, real GCS or a real LLM vendor.
 
 ## 1. Quick start
 
@@ -158,7 +158,7 @@ The engine's suite also runs on the real SQLite store (`VIDYOM_JOBS_REAL_STORE=1
 
 ## 6. The real-model proof
 
-Everything above uses the fake engine. Once, by hand, the real models ran, with `make real-model-proof` (`tests/e2e/realmodels_test.go`, not in CI): faster-whisper large-v3 (int8) and BGE-M3 on CPU, in the AI worker image under Docker Desktop on this Mac Studio. The speech is macOS `say`, six short stories (214.6 s) with no LLM configured. Each story has a paraphrase query sharing **no word** with anything said, including the small ones; the test refuses to start otherwise.
+Everything above uses the fake engine. By hand, never in CI, the real models ran with `make real-model-proof` (`tests/e2e/realmodels_test.go`, not in CI): faster-whisper large-v3 (int8) and BGE-M3 on CPU, in the AI worker image under Docker Desktop on this Mac Studio. The speech is macOS `say`, six short stories (214.6 s) with no LLM configured. Each story has a paraphrase query sharing **no word** with anything said, including the small ones; the test refuses to start otherwise.
 
 Numbers from the last run, 2026-11-09, on an otherwise quiet machine:
 
@@ -168,7 +168,7 @@ Numbers from the last run, 2026-11-09, on an otherwise quiet machine:
 | Transcription | 177 s for 214.6 s of audio, about 0.83x real time, on the 24 vCPUs Docker Desktop has here |
 | Embedding | 7.3 s for 5 windows, including loading the model |
 | Whole ingest | 211 s |
-| Word error rate against the script | 4.4% (51 segments). An earlier run of the same audio gave 6.9%, so runs differ. Numbers spoken as digits count as errors |
+| Word error rate against the script | 4.4% (51 segments). Two other runs of the same audio gave 6.2% and 6.9%, so runs differ. Numbers spoken as digits count as errors |
 | Query latency, end to end through the CLI | 45 to 192 ms |
 
 The transcript is close and not perfect. Its visible errors: "go out to **see** hungry" for sea, "her **rote** partner" for rope, "barely any" with "enough flour" lost, and the last two sentences repeated. In an earlier, shorter fixture it also invented "My grandfather kept a brook in his house."
@@ -197,7 +197,7 @@ What this does and does not show:
 - The first real inference found real bugs (I295): an unpinned PyAV broke `faster-whisper`, and the clip proposal without an LLM was 137 s for a 33 s story. Both are fixed. With an LLM, the prompts are still untested against a real model.
 - The public library has not served real vectors: its AI worker client remains mock-tested (D58).
 
-To run it again: `make real-model-proof`. It writes `real-model-report.json` (ignored by Git). Models are cached in the Docker volume `vidyom-dev-integration-models`, 7.7 GB; remove it with `docker volume rm` when done. A run also needs macOS for `say`.
+To run it again: `make real-model-proof`. It writes `real-model-report.json` (ignored by Git). Models are cached in the Docker volume `vidyom-dev-integration-models`, 7.7 GB; remove it with `docker volume rm` when done. This proof and `make e2e-compose` also leave the `vidyom/*` images, about 3.8 GB, which `docker image rm` removes. A run also needs macOS for `say`.
 
 ## 7. Validate: §17.2
 

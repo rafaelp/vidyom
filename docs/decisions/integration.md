@@ -1,6 +1,6 @@
 # Implementation decisions: `integration`
 
-Decisions of the `integration` stage, numbered from its range `I280–I299` (master plan, section 8). Same format as [`docs/decisions.md`](../decisions.md): the choice, the reason and what would make us revisit it. None of them changes a maintainer decision `Dn`. The maintainer delegated these; he is not available during this run.
+Decisions of the `integration` stage, numbered from its range `I280–I299` (master plan, section 8). Same format as [`docs/decisions.md`](../decisions.md): the choice, the reason and what would make us revisit it. None of them changes a maintainer decision `Dn`. The maintainer delegated these and is not available during this run.
 
 ## Review of the plan
 
@@ -102,7 +102,7 @@ Checked `docs/plans/integration.md` against master plan sections 1.1 and 10 and 
 
 ### I291. Real models run once, by hand, and report instead of assert
 
-- **Choice.** `make real-model-proof` (`tests/e2e/realmodels_test.go`, tags `e2e realmodels`, not in CI) speaks three short stories with macOS `say`, ingests them through the real AI worker image, searches each with a paraphrase that shares no word with the script (the test refuses to start otherwise), and writes a JSON report: transcript, word error rate against the script, per-node timings, each query's rank, and the clip proposal with no LLM. It asserts only that real models ran. Quality is what the report states. Models live in the Docker volume `vidyom-dev-integration-models`, which survives the run.
+- **Choice.** `make real-model-proof` (`tests/e2e/realmodels_test.go`, tags `e2e realmodels`, not in CI) speaks six short stories with macOS `say`, ingests them through the real AI worker image, searches each with a paraphrase that shares no word with the script (the test refuses to start otherwise), and writes a JSON report: transcript, word error rate against the script, per-node timings, each query's rank, and the clip proposal with no LLM. It asserts only that real models ran. Quality is what the report states. Models live in the Docker volume `vidyom-dev-integration-models`, which survives the run.
 - **Why.** §15.2's "no literal match" is the claim the fake engine cannot test. A pass or fail threshold invented here would dress up one sample as a validation; §17.2 keeps accuracy open.
 - **Revisit if.** A labeled evaluation set exists: then thresholds mean something.
 
