@@ -53,7 +53,8 @@ type Story struct {
 }
 
 // Analysis is the LLM output stored for an asset version. Available is false
-// when no endpoint was allowed for the asset (D8, I28).
+// when no endpoint was allowed for the asset (D8, I28) or none could answer
+// (I206); UnavailableReason then says which.
 type Analysis struct {
 	AssetID   id.Friendly `json:"asset_id,omitempty"`
 	Version   string      `json:"version,omitempty"`
@@ -64,6 +65,8 @@ type Analysis struct {
 	Stories   []Story     `json:"stories,omitempty"`
 	Model     string      `json:"model,omitempty"`
 	Endpoint  string      `json:"endpoint_class,omitempty"` // "local" or "external"
+	// UnavailableReason is "no_endpoint_allowed", "endpoint_failed" or "no_speech".
+	UnavailableReason string `json:"unavailable_reason,omitempty"`
 }
 
 // SensitiveSegment marks an interval excluded from public.db, public captions
@@ -110,8 +113,10 @@ type SearchHit struct {
 	StartSeconds float64     `json:"start_seconds"`
 	EndSeconds   float64     `json:"end_seconds"`
 	Text         string      `json:"text"`
-	Score        float64     `json:"score"`
-	Source       string      `json:"source"` // "lexical", "vector" or "hybrid"
+	// Score orders hits, higher is better. Vector hits carry cosine similarity
+	// (I212), lexical hits a BM25-derived value, fused hits the fused score (I43).
+	Score  float64 `json:"score"`
+	Source string  `json:"source"` // "lexical", "vector" or "hybrid"
 }
 
 // CandidateSegment is a proposed clip with its review evidence (D51).

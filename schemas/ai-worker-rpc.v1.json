@@ -323,7 +323,7 @@
     },
     "fakeHashEmbed": {
       "title": "fake-hash-embed@1 (I27)",
-      "description": "The fake engine's embedding, implemented identically in Python (aiworker/), TypeScript (library/) and Go (aiworker.FakeHashEmbed). Steps: (1) lowercase the text; (2) tokens are maximal runs of Unicode letters and numbers; (3) for each token, h = 32-bit FNV-1a over its UTF-8 bytes (offset basis 2166136261, prime 16777619); bucket = h mod 1024; sign = -1 when bit 31 of h is set, else +1; add sign to the bucket; (4) L2 normalize; an all-zero vector stays zero. It only finds shared words. It proves the search path, never semantic quality.",
+      "description": "The fake engine's embedding, implemented identically in Python (aiworker/), TypeScript (library/) and Go (aiworker.FakeHashEmbed). Steps: (1) lowercase the text one code point at a time, keeping the first character of a multi-character result, as Go's strings.ToLower does (I203); (2) tokens are maximal runs of Unicode letters and numbers; (3) for each token, h = 32-bit FNV-1a over its UTF-8 bytes (offset basis 2166136261, prime 16777619); bucket = h mod 1024; sign = -1 when bit 31 of h is set, else +1; add sign to the bucket; (4) L2 normalize; an all-zero vector stays zero. It only finds shared words. It proves the search path, never semantic quality.",
       "dimensions": 1024,
       "testVectors": [
         {
@@ -339,6 +339,22 @@
             "49": 0.8164966,
             "712": 0.4082483,
             "800": -0.4082483
+          }
+        },
+        {
+          "text": "İstanbul ΣΑΣ",
+          "nonZeroBuckets": {
+            "16": -0.7071068,
+            "327": 0.7071068
+          }
+        },
+        {
+          "text": "½ ٣ 呼吸 Ⅷ",
+          "nonZeroBuckets": {
+            "53": 0.5,
+            "277": -0.5,
+            "576": 0.5,
+            "936": -0.5
           }
         }
       ]

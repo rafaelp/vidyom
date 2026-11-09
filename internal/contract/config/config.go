@@ -120,9 +120,12 @@ type Unseal struct {
 
 // AIWorker is how clients reach the Python AI worker (I6): unix:///path or
 // tcp://127.0.0.1:port. TokenFile holds the initialize token for the tcp form.
+// Engine is the engine clients accept, "real" when empty or "fake"; a worker
+// reporting any other engine is refused (I201), so neither fallback can happen.
 type AIWorker struct {
 	Endpoint  string `json:"endpoint"`
 	TokenFile string `json:"tokenFile,omitempty"`
+	Engine    string `json:"engine,omitempty"`
 }
 
 // Retention holds periods of §10.4, D16 and D40. Zero means the default.
