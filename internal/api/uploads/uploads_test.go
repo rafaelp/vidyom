@@ -483,6 +483,41 @@ func TestExpiry(t *testing.T) {
 	wantCode(t, err, errs.CodeNotFound)
 }
 
+func TestSweepCatchesCompleteUploadsNobodyUsed(t *testing.T) {
+	f := newFixture(t)
+	// The spool walk compares the ULID's real time with the clock, so use real time.
+	f.mu.Lock()
+	f.clock = time.Now()
+	f.mu.Unlock()
+	data := []byte("0123456789")
+	u := f.create(t, data)
+	if _, err := f.chunk(u, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Complete(context.Background(), f.scope, id.Ref(u.ID)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Inside the TTL it stays: a job may be about to read it.
+	if err := f.svc.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	path := uploads.Path(f.spool, tenantA, u.ULID)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal("a recent complete upload was removed")
+	}
+
+	f.advance(uploads.DefaultTTL + time.Hour)
+	if err := f.svc.Sweep(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("an expired complete upload was kept")
+	}
+	_, err := f.svc.Get(context.Background(), f.scope, id.Ref(u.ID))
+	wantCode(t, err, errs.CodeNotFound)
+}
+
 func TestActivityExtendsExpiry(t *testing.T) {
 	f := newFixture(t)
 	data := []byte("0123456789")
@@ -506,6 +541,9 @@ func TestActivityExtendsExpiry(t *testing.T) {
 
 func TestSweepRemovesOldOrphansOnly(t *testing.T) {
 	f := newFixture(t)
+	f.mu.Lock()
+	f.clock = time.Now()
+	f.mu.Unlock()
 	u := f.create(t, []byte("0123456789"))
 	dir := filepath.Dir(uploads.Path(f.spool, tenantA, u.ULID))
 
@@ -526,10 +564,7 @@ func TestSweepRemovesOldOrphansOnly(t *testing.T) {
 		t.Fatal("a file that is not an upload was removed")
 	}
 
-	// Real time is used by id.New, so move the clock past the TTL of that ULID.
-	f.mu.Lock()
-	f.clock = time.Now().Add(uploads.DefaultTTL + time.Hour)
-	f.mu.Unlock()
+	f.advance(uploads.DefaultTTL + time.Hour)
 	if err := f.svc.Sweep(context.Background()); err != nil {
 		t.Fatal(err)
 	}

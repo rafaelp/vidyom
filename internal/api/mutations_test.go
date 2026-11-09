@@ -62,6 +62,13 @@ func TestKeyExceptions(t *testing.T) {
 	wantStatus(t, do(h, request{method: "POST", path: "/api/v1/worker/heartbeat", token: tokenWorker, body: `{"worker_id":"w","running":0}`}), http.StatusOK)
 }
 
+func TestKeyIsIgnoredWhereNotUsed(t *testing.T) {
+	// A value that would be refused where keys matter is simply ignored here.
+	w := newWorld(t)
+	rec := do(w.serve(), request{method: "POST", path: "/api/v1/tenants", token: tokenSystem, key: "has space", body: `{"id":"initech"}`})
+	wantStatus(t, rec, http.StatusCreated)
+}
+
 func TestInvalidKeys(t *testing.T) {
 	w := newWorld(t)
 	h := w.serve()

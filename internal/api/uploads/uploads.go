@@ -431,9 +431,10 @@ func (s *Service) remove(ctx context.Context, store repo.TenantStore, u domain.U
 	return store.Uploads().Delete(ctx, id.Ref(u.ULID))
 }
 
-// Sweep removes expired uploads of every tenant, and spool files whose record
-// never landed. Failures are logged and retried by the next sweep; the first one
-// is returned so the caller can see them.
+// Sweep removes expired uploads of every tenant, and spool files whose record never
+// landed. ListExpired names pending uploads only, so the spool walk also catches a
+// complete upload no job ever consumed. Failures are logged and retried by the next
+// sweep; the first one is returned so the caller can see them.
 func (s *Service) Sweep(ctx context.Context) error {
 	tenants, err := s.stores.Tenants(ctx)
 	if err != nil {
@@ -452,7 +453,7 @@ func (s *Service) Sweep(ctx context.Context) error {
 			continue
 		}
 		keep(s.sweepExpired(ctx, store))
-		keep(s.sweepOrphans(ctx, store))
+		keep(s.sweepSpool(ctx, store))
 	}
 	return first
 }
@@ -464,13 +465,7 @@ func (s *Service) sweepExpired(ctx context.Context, store repo.TenantStore) erro
 	}
 	var first error
 	for _, u := range expired {
-		unlock, err := s.locks.Lock(ctx, string(store.Tenant())+"/"+string(u.ULID))
-		if err != nil {
-			return err
-		}
-		err = s.remove(ctx, store, u)
-		unlock()
-		if err != nil {
+		if err := s.sweepOne(ctx, store, u); err != nil {
 			s.log.Warn("uploads.sweep_failed", "tenant_id", store.Tenant(), "upload", u.ID, "error", err)
 			if first == nil {
 				first = err
@@ -480,10 +475,11 @@ func (s *Service) sweepExpired(ctx context.Context, store repo.TenantStore) erro
 	return first
 }
 
-// sweepOrphans removes files left by a crash between creating the file and writing
-// the record. Only names that are ULIDs older than the TTL are considered, so a
-// create in progress is safe.
-func (s *Service) sweepOrphans(ctx context.Context, store repo.TenantStore) error {
+// sweepSpool walks the tenant's spool. Only names that are ULIDs older than the TTL
+// are considered, so a create in progress is safe. A file with no record was left by
+// a crash between creating it and writing the record. A file whose record is past
+// its expiry was never consumed.
+func (s *Service) sweepSpool(ctx context.Context, store repo.TenantStore) error {
 	dir := filepath.Join(s.spool, string(store.Tenant()))
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -492,17 +488,35 @@ func (s *Service) sweepOrphans(ctx context.Context, store repo.TenantStore) erro
 	if err != nil {
 		return err
 	}
-	cutoff := s.now().Add(-s.ttl)
+	now := s.now()
+	cutoff := now.Add(-s.ttl)
 	for _, entry := range entries {
 		ulid, err := id.ParseULID(entry.Name())
 		if err != nil || !entry.Type().IsRegular() || ulid.Time().After(cutoff) {
 			continue
 		}
-		if _, err := store.Uploads().Get(ctx, id.Ref(ulid)); errs.IsCode(err, errs.CodeNotFound) {
+		u, err := store.Uploads().Get(ctx, id.Ref(ulid))
+		switch {
+		case errs.IsCode(err, errs.CodeNotFound):
 			if err := os.Remove(filepath.Join(dir, entry.Name())); err != nil && !errors.Is(err, fs.ErrNotExist) {
 				s.log.Warn("uploads.orphan_remove_failed", "tenant_id", store.Tenant(), "error", err)
+			}
+		case err != nil:
+			return err
+		case !u.ExpiresAt.IsZero() && now.After(u.ExpiresAt):
+			if err := s.sweepOne(ctx, store, u); err != nil {
+				s.log.Warn("uploads.sweep_failed", "tenant_id", store.Tenant(), "upload", u.ID, "error", err)
 			}
 		}
 	}
 	return nil
+}
+
+func (s *Service) sweepOne(ctx context.Context, store repo.TenantStore, u domain.Upload) error {
+	unlock, err := s.locks.Lock(ctx, string(store.Tenant())+"/"+string(u.ULID))
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return s.remove(ctx, store, u)
 }

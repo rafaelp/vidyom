@@ -81,15 +81,15 @@ func (s *server) execute(c *call, h handlerFunc) error {
 	if err := c.readBody(); err != nil {
 		return err
 	}
+	// Everywhere else the header is ignored, as I122 states.
+	if !usesIdempotency(c.route) {
+		return s.runAudited(c, h)
+	}
 	key, err := c.idempotencyKey()
 	if err != nil {
 		return err
 	}
 	c.scope.IdempotencyKey = key
-
-	if !usesIdempotency(c.route) {
-		return s.runAudited(c, h)
-	}
 	if key == "" {
 		return errs.Newf(errs.CodeInvalidArgument, "the %s header is required on this route", api.HeaderIdempotencyKey)
 	}

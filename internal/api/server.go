@@ -95,7 +95,7 @@ func NewHandler(d Deps) http.Handler {
 		}
 		s.mux.Handle(rt.Pattern(), s.wrap(rt, h))
 	}
-	s.mux.Handle("/", s.wrap(api.Route{Name: "unmatched", Auth: api.AuthNone, Tenant: api.TenantNone}, s.unmatched))
+	s.mux.Handle("/", s.wrap(api.Route{Name: "unmatched", Method: http.MethodGet, Auth: api.AuthNone, Tenant: api.TenantNone}, s.unmatched))
 	return s.mux
 }
 
@@ -137,6 +137,8 @@ type call struct {
 	worker    string
 	conn      ConnInfo
 	body      []byte
+	// attempted is a well-formed Vidyom-Tenant header, logged even when refused (D32).
+	attempted domain.TenantID
 
 	// statusOverride replaces the code's status, for 405.
 	statusOverride int
@@ -240,8 +242,8 @@ func (s *server) finish(c *call, span trace.Span, start time.Time) {
 		"duration_ms", s.now().Sub(start).Milliseconds(),
 		"transport", c.conn.Transport,
 	}
-	if c.scope.Tenant != "" {
-		attrs = append(attrs, "tenant_id", string(c.scope.Tenant))
+	if c.attempted != "" {
+		attrs = append(attrs, "tenant_id", string(c.attempted))
 	}
 	if actor := c.actor(); actor != "" {
 		attrs = append(attrs, "actor", actor)
@@ -353,7 +355,7 @@ func (s *server) authenticate(c *call) error {
 
 	if c.route.Auth == api.AuthWorker {
 		if creds.BearerToken == "" {
-			s.countAuthFailure("missing_credential")
+			s.countAuthFailure("no_credentials")
 			return errs.New(errs.CodeUnauthenticated, "a worker token is required")
 		}
 		name, err := s.d.Authenticator.AuthenticateWorker(c.ctx, creds)
@@ -366,7 +368,7 @@ func (s *server) authenticate(c *call) error {
 	}
 
 	if creds.BearerToken == "" && creds.PeerUID == nil {
-		s.countAuthFailure("missing_credential")
+		s.countAuthFailure("no_credentials")
 		return errs.New(errs.CodeUnauthenticated, "a device credential is required")
 	}
 	p, err := s.d.Authenticator.Authenticate(c.ctx, creds)
@@ -394,6 +396,7 @@ func (s *server) resolveTenant(c *call) error {
 	if len(values) > 1 || tenant.Validate() != nil {
 		return errs.Newf(errs.CodeInvalidArgument, "the %s header must hold one tenant slug", api.HeaderTenant)
 	}
+	c.attempted = tenant
 	if s.d.Authorizer == nil {
 		return errs.New(errs.CodeUnavailable, "authorization is not wired in this daemon")
 	}

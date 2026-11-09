@@ -310,17 +310,18 @@ func newHTTPServer(handler http.Handler, b boundListener, log *slog.Logger) *htt
 	}
 }
 
+// sweepLoop also sweeps at start, so a daemon restarted often still cleans up.
 func sweepLoop(ctx context.Context, sweeper *uploads.Service, log *slog.Logger) error {
 	ticker := time.NewTicker(uploadSweep)
 	defer ticker.Stop()
 	for {
+		if err := sweeper.Sweep(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("uploads.sweep_incomplete", "error", err)
+		}
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if err := sweeper.Sweep(ctx); err != nil {
-				log.Warn("uploads.sweep_incomplete", "error", err)
-			}
 		}
 	}
 }

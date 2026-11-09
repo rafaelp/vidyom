@@ -166,8 +166,9 @@ func (r uploadRepo) ListExpired(_ context.Context, t time.Time) ([]domain.Upload
 	r.s.mu.Lock()
 	defer r.s.mu.Unlock()
 	var out []domain.Upload
+	// Pending only, as core's repository answers.
 	for _, u := range r.s.uploads {
-		if !u.ExpiresAt.IsZero() && u.ExpiresAt.Before(t) {
+		if u.Status == domain.UploadPending && !u.ExpiresAt.IsZero() && u.ExpiresAt.Before(t) {
 			out = append(out, u)
 		}
 	}

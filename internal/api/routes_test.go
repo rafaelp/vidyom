@@ -663,6 +663,21 @@ func TestAccessLogHasNoQueryOrCredential(t *testing.T) {
 	}
 }
 
+func TestRefusedTenantIsStillLogged(t *testing.T) {
+	// D32: the header value is recorded in logs, also when the answer is 404.
+	w := newWorld(t)
+	do(w.serve(), request{method: "GET", path: "/api/v1/assets", token: tokenAdmin, tenant: tenantB})
+	if logs := w.logText(); !strings.Contains(logs, `"tenant_id":"globex"`) {
+		t.Fatalf("the attempted tenant is not in the log: %s", logs)
+	}
+}
+
+func TestUnmatchedDoesNotReadBodies(t *testing.T) {
+	w := newWorld(t)
+	rec := do(w.serve(), request{method: "POST", path: "/api/v1/nope", body: strings.Repeat("x", defaultBodyLimit+1)})
+	wantError(t, rec, http.StatusNotFound, errs.CodeNotFound)
+}
+
 func TestQueriesReachTheServices(t *testing.T) {
 	w := newWorld(t)
 	h := w.serve()
