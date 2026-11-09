@@ -129,6 +129,7 @@ const (
 	RouteAssetsConsent      = "assets.consent"
 	RouteAssetsTranscript   = "assets.transcript"
 	RouteAssetsProxyLink    = "assets.proxy_link"
+	RouteAssetsProxyContent = "assets.proxy_content"
 	RouteAssetsExport       = "assets.export"
 	RouteSensitiveList      = "assets.sensitive.list"
 	RouteSensitiveAdd       = "assets.sensitive.add"
@@ -142,6 +143,7 @@ const (
 
 	RouteApprovalsList    = "approvals.list"
 	RouteApprovalsGet     = "approvals.get"
+	RouteApprovalsPreview = "approvals.preview"
 	RouteApprovalsApprove = "approvals.approve"
 	RouteApprovalsReject  = "approvals.reject"
 
@@ -274,6 +276,7 @@ var Routes = []Route{
 	route(RouteAssetsConsent, mGet, "/assets/{id}/consent", TenantRequired, domain.PermAssetRead),
 	route(RouteAssetsTranscript, mGet, "/assets/{id}/transcript", TenantRequired, domain.PermAssetRead),
 	route(RouteAssetsProxyLink, mGet, "/assets/{id}/proxy-link", TenantRequired, domain.PermAssetRead),
+	route(RouteAssetsProxyContent, mGet, "/assets/{id}/proxy/content", TenantRequired, domain.PermAssetRead),
 	route(RouteAssetsExport, mPost, "/assets/{id}/export", TenantRequired, domain.PermAssetRead),
 	route(RouteSensitiveList, mGet, "/assets/{id}/sensitive-segments", TenantRequired, domain.PermAssetRead),
 	route(RouteSensitiveAdd, mPost, "/assets/{id}/sensitive-segments", TenantRequired, domain.PermAssetSensitive),
@@ -287,6 +290,7 @@ var Routes = []Route{
 
 	route(RouteApprovalsList, mGet, "/approvals", TenantRequired, domain.PermApprovalRead),
 	route(RouteApprovalsGet, mGet, "/approvals/{id}", TenantRequired, domain.PermApprovalRead),
+	route(RouteApprovalsPreview, mGet, "/approvals/{id}/preview/content", TenantRequired, domain.PermApprovalRead),
 	dynamic(route(RouteApprovalsApprove, mPost, "/approvals/{id}/approve", TenantRequired, "")),
 	dynamic(route(RouteApprovalsReject, mPost, "/approvals/{id}/reject", TenantRequired, "")),
 

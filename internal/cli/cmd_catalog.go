@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -456,6 +458,58 @@ func parseAIPolicy(value string) (domain.AIProcessing, error) {
 	}
 }
 
+// clipPreview gets a reviewer something playable (§3.2 step 6, I285).
+func (a *app) clipPreview(cmd *cobra.Command, ref, output string) error {
+	if strings.HasPrefix(ref, "APR-") {
+		if err := validateRef("approval", ref); err != nil {
+			return err
+		}
+		if output == "" {
+			output = ref + "-preview.mp4"
+		}
+		return a.downloadMedia(cmd, apiclient.Call{Route: api.RouteApprovalsPreview, Path: apiclient.PathParam("id", ref)}, output)
+	}
+	if output == "" {
+		return a.proxyLink(cmd, ref)
+	}
+	if err := validateRef("asset", ref); err != nil {
+		return err
+	}
+	return a.downloadMedia(cmd, apiclient.Call{Route: api.RouteAssetsProxyContent, Path: apiclient.PathParam("id", ref)}, output)
+}
+
+// downloadMedia saves an API answer that is a file, through a temporary name, so a
+// failed transfer never leaves something that looks complete.
+func (a *app) downloadMedia(cmd *cobra.Command, call apiclient.Call, output string) error {
+	client, err := a.api()
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(output), "."+filepath.Base(output)+".part-*")
+	if err != nil {
+		return errs.Wrap(errs.CodeInvalidArgument, err, "cannot write "+output)
+	}
+	defer os.Remove(tmp.Name())
+	defer tmp.Close()
+	size, err := client.Download(cmd.Context(), call, tmp)
+	if err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return errs.Wrap(errs.CodeInternal, err, "cannot write "+output)
+	}
+	if err := os.Rename(tmp.Name(), output); err != nil {
+		return errs.Wrap(errs.CodeInternal, err, "cannot write "+output)
+	}
+	result := struct {
+		Path      string `json:"path"`
+		SizeBytes int64  `json:"size_bytes"`
+	}{output, size}
+	return a.emit(result, func(w io.Writer) {
+		fields(w, kv("file", output), kv("size", formatBytes(size)))
+	})
+}
+
 func (a *app) proxyLink(cmd *cobra.Command, ref string) error {
 	if err := validateRef("asset", ref); err != nil {
 		return err
@@ -466,6 +520,9 @@ func (a *app) proxyLink(cmd *cobra.Command, ref string) error {
 	}
 	return a.emit(resp, func(w io.Writer) {
 		fields(w, kv("url", resp.URL), kv("expires", formatTime(resp.ExpiresAt)))
+		if strings.HasPrefix(resp.URL, "file://") {
+			fmt.Fprintln(w, "This link names a path on the daemon's host. From anywhere else, or under Compose, use --output FILE.")
+		}
 	})
 }
 
@@ -659,12 +716,19 @@ func (a *app) clipCommand() *cobra.Command {
 	create.Flags().Float64Var(&req.TargetDurationSeconds, "target-duration", 0, "target duration in seconds, for short")
 	create.Flags().StringSliceVar(&destinations, "destination", nil, "publishing destinations, comma separated")
 
+	var previewOutput string
 	preview := &cobra.Command{
-		Use:   "preview CLIP-nnn",
-		Short: "Print a temporary link to the clip's proxy, for review",
-		Args:  exactArgs(1),
-		RunE:  func(cmd *cobra.Command, args []string) error { return a.proxyLink(cmd, args[0]) },
+		Use:   "preview (CLIP-nnn | APR-nnn) [--output FILE]",
+		Short: "Get something to watch: a clip's proxy, or the candidate an approval is waiting on",
+		Long: "With a clip or any asset, prints a temporary link to its proxy, or with --output downloads it through the API.\n" +
+			"With an approval (APR-nnn), downloads the candidate the reviewer decides on, to --output or APR-nnn-preview.mp4.\n" +
+			"A file:// link names a path on the daemon's host: from anywhere else, or under Compose, use --output.",
+		Args: exactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.clipPreview(cmd, args[0], previewOutput)
+		},
 	}
+	preview.Flags().StringVar(&previewOutput, "output", "", "save the media to this file")
 	approve := &cobra.Command{
 		Use:   "approve CLIP-nnn",
 		Short: "Shortcut: approve the clip's single pending publication approval",

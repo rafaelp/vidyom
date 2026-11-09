@@ -7,6 +7,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http"
 
 	"github.com/rafaelp/vidyom/internal/contract/api"
@@ -136,6 +137,17 @@ type Storages interface {
 	Test(ctx context.Context, s Scope, role domain.StorageRole) (api.StorageTestResponse, error)
 	Verify(ctx context.Context, s Scope, role domain.StorageRole, req api.StorageVerifyRequest) (api.StorageVerifyResponse, error)
 	ProxyLink(ctx context.Context, s Scope, ref id.Ref) (api.ProxyLinkResponse, error)
+}
+
+// ProxyReader is an optional capability of Storages, discovered by type assertion. It
+// opens a file of the proxy role so a reviewer can get something playable from the
+// API, whatever the driver (§3.2 step 6, I285). It reads role proxy only.
+type ProxyReader interface {
+	// OpenAssetProxy opens the proxy of an asset's current version.
+	OpenAssetProxy(ctx context.Context, s Scope, ref id.Ref) (io.ReadCloser, connector.ObjectInfo, error)
+	// OpenProxyURI opens a storage://proxy/... reference, such as an approval's
+	// preview. Any other role is refused.
+	OpenProxyURI(ctx context.Context, s Scope, uri string) (io.ReadCloser, connector.ObjectInfo, error)
 }
 
 // Secrets is implemented by component core. Metadata only: no value ever leaves.

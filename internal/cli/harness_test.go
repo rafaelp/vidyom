@@ -334,6 +334,8 @@ func sampleAnswers() map[string]any {
 		api.RouteAssetsTranscript:   domain.Transcript{AssetID: "ORI-001", Segments: []domain.TranscriptSegment{{Start: 1, End: 2, Text: "breathing"}}},
 		api.RouteAssetsProxyLink:    api.ProxyLinkResponse{URL: "https://media.example.internal/proxy/1", ExpiresAt: sampleTime},
 		api.RouteAssetsExport:       sampleRun(),
+		api.RouteAssetsProxyContent: struct{}{},
+		api.RouteApprovalsPreview:   struct{}{},
 		api.RouteSensitiveList:      api.List[domain.SensitiveSegment]{Items: []domain.SensitiveSegment{{AssetID: "ORI-001", Version: "v1", StartSeconds: 10, EndSeconds: 20}}},
 		api.RouteSensitiveAdd:       struct{}{},
 		api.RouteSensitiveRemove:    struct{}{},

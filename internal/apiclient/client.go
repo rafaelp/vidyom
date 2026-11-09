@@ -281,6 +281,31 @@ func (c *Client) Do(ctx context.Context, call Call, out any) error {
 	return nil
 }
 
+// Download runs a call whose answer is a file and copies it to w. It has no per-call
+// timeout, because a large file takes as long as it takes; the context ends it. A body
+// shorter than the declared Content-Length is an error (the server cannot say so once
+// it has started).
+func (c *Client) Download(ctx context.Context, call Call, w io.Writer) (int64, error) {
+	req, _, err := c.request(ctx, call, nil, "")
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "*/*")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, c.transportError(ctx, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return 0, decodeError(resp)
+	}
+	n, err := io.Copy(w, resp.Body)
+	if err != nil {
+		return n, c.transportError(ctx, err)
+	}
+	return n, nil
+}
+
 // Invoke runs a call and returns its decoded answer.
 func Invoke[T any](ctx context.Context, c *Client, call Call) (T, error) {
 	var out T

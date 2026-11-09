@@ -271,6 +271,42 @@ func (r *Resolver) Verify(ctx context.Context, s service.Scope, role domain.Stor
 	return out, nil
 }
 
+// OpenAssetProxy implements service.ProxyReader: the proxy of an asset's current version.
+func (r *Resolver) OpenAssetProxy(ctx context.Context, s service.Scope, ref id.Ref) (io.ReadCloser, connector.ObjectInfo, error) {
+	if r.opts.Assets == nil {
+		return nil, connector.ObjectInfo{}, errs.New(errs.CodeFailedPrecondition, "proxy content has no catalog")
+	}
+	asset, err := r.opts.Assets.Get(ctx, s, ref)
+	if err != nil {
+		return nil, connector.ObjectInfo{}, err
+	}
+	if asset.Proxy == nil || asset.Proxy.Key == "" {
+		return nil, connector.ObjectInfo{}, errs.NotFound("proxy")
+	}
+	return r.openProxyKey(ctx, s, asset.Proxy.Key)
+}
+
+// OpenProxyURI implements service.ProxyReader. It reads role proxy and nothing else: an
+// approval's stored reference must not be a way into master or archive.
+func (r *Resolver) OpenProxyURI(ctx context.Context, s service.Scope, uri string) (io.ReadCloser, connector.ObjectInfo, error) {
+	parsed, err := domain.ParseInputURI(uri)
+	if err != nil {
+		return nil, connector.ObjectInfo{}, errs.Wrap(errs.CodeInvalidArgument, err, "the preview reference is not valid")
+	}
+	if parsed.Kind != domain.URIStorage || parsed.Role != domain.RoleProxy {
+		return nil, connector.ObjectInfo{}, errs.New(errs.CodeNotFound, "no preview is available in the proxy role")
+	}
+	return r.openProxyKey(ctx, s, parsed.Key)
+}
+
+func (r *Resolver) openProxyKey(ctx context.Context, s service.Scope, key string) (io.ReadCloser, connector.ObjectInfo, error) {
+	storage, err := r.Storage(ctx, s.Tenant, domain.RoleProxy)
+	if err != nil {
+		return nil, connector.ObjectInfo{}, err
+	}
+	return storage.Get(ctx, key)
+}
+
 // ProxyLink returns a time-limited link to an asset's proxy for CLI review (D24).
 // The link is never logged.
 func (r *Resolver) ProxyLink(ctx context.Context, s service.Scope, ref id.Ref) (api.ProxyLinkResponse, error) {

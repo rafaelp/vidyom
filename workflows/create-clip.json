@@ -67,6 +67,17 @@
       }
     },
     {
+      "id": "store_preview",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "proxy",
+        "source": "${nodes.preview.output.file}",
+        "key": "previews/${job.ulid}/preview.mp4",
+        "verifyChecksum": true
+      }
+    },
+    {
       "id": "approve_selection",
       "type": "approval.request",
       "typeVersion": 1,
@@ -85,9 +96,18 @@
           "excerpt": "${nodes.find_story.output.excerpt}",
           "overlap": "${nodes.overlap.output}"
         },
-        "preview": "${nodes.preview.output.file}",
+        "preview": "${nodes.store_preview.output.uri}",
         "allowAdjust": true,
         "summary": "${inputs.prompt}"
+      }
+    },
+    {
+      "id": "drop_preview",
+      "type": "storage.delete",
+      "typeVersion": 1,
+      "continueOnFailure": true,
+      "parameters": {
+        "source": "${nodes.store_preview.output.uri}"
       }
     },
     {
@@ -168,10 +188,14 @@
       "approve_selection"
     ],
     "preview": [
+      "store_preview"
+    ],
+    "store_preview": [
       "approve_selection"
     ],
     "approve_selection": [
-      "if_approved"
+      "if_approved",
+      "drop_preview"
     ],
     "if_approved": [
       "render_source"

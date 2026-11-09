@@ -58,6 +58,7 @@ var routeCases = map[string]routeCase{
 	api.RouteAssetsConsent:      {id: "ORI-001", call: "assets.Consent", status: 200},
 	api.RouteAssetsTranscript:   {id: "ORI-001", call: "assets.Transcript", status: 200},
 	api.RouteAssetsProxyLink:    {id: "ORI-001", call: "storages.ProxyLink", status: 200},
+	api.RouteAssetsProxyContent: {id: "CLIP-001", call: "storages.OpenAssetProxy", status: 200},
 	api.RouteAssetsExport:       {id: "ORI-001", body: `{}`, call: "workflows.RunNode:catalog.export_package", status: 202},
 	api.RouteSensitiveList:      {id: "ORI-001", call: "assets.ListSensitive", status: 200},
 	api.RouteSensitiveAdd:       {id: "ORI-001", body: `{"start_seconds":1,"end_seconds":2}`, call: "assets.AddSensitive", status: 201},
@@ -71,6 +72,7 @@ var routeCases = map[string]routeCase{
 
 	api.RouteApprovalsList:    {call: "approvals.List", status: 200},
 	api.RouteApprovalsGet:     {id: "APR-001", call: "approvals.Get", status: 200},
+	api.RouteApprovalsPreview: {id: "APR-001", call: "approvals.Get", status: 404},
 	api.RouteApprovalsApprove: {id: "APR-001", body: `{"note":"ok"}`, call: "approvals.Approve", status: 200},
 	api.RouteApprovalsReject:  {id: "APR-001", body: `{"reason":"no"}`, call: "approvals.Reject", status: 200},
 

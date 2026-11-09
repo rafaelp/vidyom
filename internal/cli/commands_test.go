@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bufio"
 	"encoding/json"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
@@ -79,6 +80,8 @@ func commandCases(t *testing.T) []commandCase {
 		{args: []string{"clip", "create", "--source", "ORI-001", "--prompt", "The story of the 90-year-old woman", "--workflow", "create-clip"}, route: api.RouteClipsCreate,
 			body: map[string]any{"source_id": "ORI-001", "prompt": "The story of the 90-year-old woman"}},
 		{args: args("clip preview CLIP-001"), route: api.RouteAssetsProxyLink},
+		{args: []string{"clip", "preview", "CLIP-001", "--output", filepath.Join(t.TempDir(), "clip.mp4")}, route: api.RouteAssetsProxyContent},
+		{args: []string{"clip", "preview", "APR-001", "--output", filepath.Join(t.TempDir(), "candidate.mp4")}, route: api.RouteApprovalsPreview},
 		{args: args("clip list --source ORI-001"), route: api.RouteAssetsList, query: map[string]string{"kind": "clip", "source_id": "ORI-001"}},
 
 		{args: args("approval list --status pending --kind publication --asset CLIP-001"), route: api.RouteApprovalsList,

@@ -391,7 +391,8 @@ func (s *server) assetHandlers() map[string]handlerFunc {
 			out, err := s.d.Storages.ProxyLink(c.ctx, c.scope, c.ref())
 			return reply(c, http.StatusOK, out, err)
 		},
-		api.RouteAssetsExport: s.handleAssetExport,
+		api.RouteAssetsProxyContent: s.handleProxyContent,
+		api.RouteAssetsExport:       s.handleAssetExport,
 		api.RouteSensitiveList: func(c *call) error {
 			items, err := s.d.Assets.ListSensitive(c.ctx, c.scope, c.ref(), c.query("version"))
 			list, err := listOf(items, err)
@@ -683,6 +684,7 @@ func (s *server) approvalHandlers() map[string]handlerFunc {
 			out, err := s.d.Approvals.Get(c.ctx, c.scope, c.ref())
 			return reply(c, http.StatusOK, out, err)
 		},
+		api.RouteApprovalsPreview: s.handleApprovalPreview,
 		api.RouteApprovalsApprove: func(c *call) error {
 			var req api.ApproveRequest
 			if err := c.decodeOptional(&req); err != nil {

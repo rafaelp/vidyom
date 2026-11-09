@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -598,6 +599,14 @@ func (f fakeStorages) Test(_ context.Context, s service.Scope, role domain.Stora
 
 func (f fakeStorages) Verify(_ context.Context, s service.Scope, role domain.StorageRole, r api.StorageVerifyRequest) (api.StorageVerifyResponse, error) {
 	return api.StorageVerifyResponse{OK: true}, f.w.called("storages.Verify", s, r)
+}
+
+func (f fakeStorages) OpenAssetProxy(_ context.Context, s service.Scope, ref id.Ref) (io.ReadCloser, connector.ObjectInfo, error) {
+	return io.NopCloser(strings.NewReader("media")), connector.ObjectInfo{SizeBytes: 5, SHA256: "abc"}, f.w.called("storages.OpenAssetProxy", s, ref)
+}
+
+func (f fakeStorages) OpenProxyURI(_ context.Context, s service.Scope, uri string) (io.ReadCloser, connector.ObjectInfo, error) {
+	return io.NopCloser(strings.NewReader("media")), connector.ObjectInfo{SizeBytes: 5}, f.w.called("storages.OpenProxyURI", s, uri)
 }
 
 func (f fakeStorages) ProxyLink(_ context.Context, s service.Scope, ref id.Ref) (api.ProxyLinkResponse, error) {
