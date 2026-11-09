@@ -9,6 +9,8 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/config"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/repo"
+	"github.com/rafaelp/vidyom/internal/contract/security"
+	"github.com/rafaelp/vidyom/internal/security/audit"
 )
 
 // IdempotencyRetention is how long the API remembers a mutation (I118).
@@ -21,8 +23,8 @@ type AuditMaintainer interface {
 }
 
 // Maintenance runs the daily sweeps (I45, I118): job records past retention with their
-// nodes and events, dispatched outbox events, API idempotency records, the daily audit
-// export (D23) and the audit prune. Logs live in the file sink's JSONL, whose rotation
+// nodes and events, dispatched outbox events, API idempotency records, expired delegated
+// secrets (§9.1), the daily audit export (D23) and the audit prune. Logs live in the file sink's JSONL, whose rotation
 // belongs to extensibility; expired uploads belong to api, which owns the spool.
 type Maintenance struct {
 	stores    repo.TenantStores
@@ -112,6 +114,9 @@ func (m *Maintenance) sweepTenant(ctx context.Context, tenant domain.TenantID) e
 	if _, err := store.Idempotency().DeleteBefore(ctx, now.Add(-IdempotencyRetention)); err != nil {
 		failures = append(failures, fmt.Errorf("idempotency retention: %w", err))
 	}
+	if err := m.dropExpiredDelegated(ctx, store, tenant, now); err != nil {
+		failures = append(failures, fmt.Errorf("delegated secrets: %w", err))
+	}
 	if m.audit != nil {
 		if _, err := m.audit.Export(ctx, tenant); err != nil {
 			failures = append(failures, fmt.Errorf("audit export: %w", err))
@@ -120,4 +125,34 @@ func (m *Maintenance) sweepTenant(ctx context.Context, tenant domain.TenantID) e
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// dropExpiredDelegated removes delegated secrets past their expiry: they have limited
+// duration and storage (§9.1). A server secret with an expiry stays, for an operator to
+// rotate: it no longer opens, and removing it would lose its metadata.
+func (m *Maintenance) dropExpiredDelegated(ctx context.Context, store repo.TenantStore, tenant domain.TenantID, now time.Time) error {
+	metas, err := store.Secrets().List(ctx)
+	if err != nil {
+		return err
+	}
+	for _, meta := range metas {
+		if meta.Location != domain.SecretDelegated || meta.ExpiresAt == nil || now.Before(*meta.ExpiresAt) {
+			continue
+		}
+		err := store.InTx(ctx, func(tx repo.TenantRepos) error {
+			if err := tx.Secrets().Delete(ctx, meta.Name); err != nil {
+				return err
+			}
+			return audit.AppendTx(ctx, tx.Audit(), security.AuditEntry{
+				TenantID:  tenant,
+				Principal: domain.Principal{Method: domain.AuthSystem},
+				Action:    "secret.expired",
+				Resource:  "secret:" + meta.Name,
+			}, now)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

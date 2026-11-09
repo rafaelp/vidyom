@@ -815,6 +815,19 @@ func TestMaintenance(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	past, future := now.Add(-time.Hour), now.Add(time.Hour)
+	for name, meta := range map[string]domain.SecretMeta{
+		"delegated-old":  {Location: domain.SecretDelegated, ExpiresAt: &past},
+		"delegated-live": {Location: domain.SecretDelegated, ExpiresAt: &future},
+		"server-old":     {Location: domain.SecretServer, ExpiresAt: &past},
+		"server-forever": {Location: domain.SecretServer},
+	} {
+		meta.Name = name
+		if err := store.Secrets().Put(ctx, repo.SecretRecord{Meta: meta, Ciphertext: []byte{1}, KeyVersion: 1}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	fa := &fakeAudit{}
 	m := NewMaintenance(f.stores.Tenants, MaintenanceOptions{Audit: fa, Retention: config.Retention{AuditDays: 500}, Clock: func() time.Time { return now }})
 	if err := m.RunOnce(ctx); err != nil {
@@ -835,6 +848,19 @@ func TestMaintenance(t *testing.T) {
 	entries, _ := store.Outbox().Stream(ctx, 0, 10)
 	if len(entries) != 1 {
 		t.Fatalf("an undispatched event must survive: %+v", entries)
+	}
+	metas, err := store.Secrets().List(ctx)
+	if err != nil || len(metas) != 3 {
+		t.Fatalf("secrets = %+v, %v", metas, err)
+	}
+	for _, meta := range metas {
+		if meta.Name == "delegated-old" {
+			t.Fatal("an expired delegated secret must go")
+		}
+	}
+	expired, _, err := store.Audit().List(ctx, repo.AuditFilter{Action: "secret.expired"}, repo.Page{})
+	if err != nil || len(expired) != 1 || expired[0].Resource != "secret:delegated-old" {
+		t.Fatalf("records = %+v, %v", expired, err)
 	}
 	if len(fa.exports) != 2 || fa.pruned["acme"] != 500 {
 		t.Fatalf("audit = %+v", fa)
