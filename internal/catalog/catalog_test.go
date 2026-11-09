@@ -569,6 +569,159 @@ func TestSensitiveMarkOnPublicVideoRefreshesTheLibrary(t *testing.T) {
 	}
 }
 
+// clipOf makes a derivative of a source, cut from the given interval.
+func (f *fixture) clipOf(t *testing.T, source domain.Asset, start, end float64) domain.Asset {
+	t.Helper()
+	friendly, err := f.store.IDs().Next(ctx, id.PrefixClip)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := domain.Asset{ID: friendly, ULID: id.New(), Kind: domain.KindClip, Title: "c", Lineage: &domain.Lineage{
+		Method: domain.LineageComputed, SourceAssetID: source.ID, RootAssetID: source.ID,
+		Segments: []domain.Segment{{SourceAssetID: source.ID, SourceVersion: "v1", StartSeconds: start, EndSeconds: end}},
+	}}
+	if err := f.store.Assets().Create(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Versions().Create(ctx, domain.AssetVersion{AssetID: friendly, Version: "v1"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.store.Assets().Get(ctx, id.Ref(friendly))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// D30: a mark on a source reaches the public clips cut from it, however deep, in the same
+// transaction as the mark.
+func TestSourceMarkRefreshesPublicDerivatives(t *testing.T) {
+	f := setup(t)
+	ori := f.asset(t, domain.KindOriginal)
+	saveTranscript(t, f, ori, "v1")
+	clip := f.clipOf(t, ori, 0, 30)
+	grandchild := f.clipOf(t, clip, 0, 10)
+	f.clipOf(t, ori, 30, 60) // derived too, but with nothing public to refresh
+	f.publish(t, clip)
+	f.publish(t, grandchild)
+	req := api.SensitiveSegmentRequest{StartSeconds: 12, EndSeconds: 15}
+	if err := f.svc.AddSensitive(ctx, scope(domain.RoleEditor), id.Ref(ori.ID), req); err != nil {
+		t.Fatal(err)
+	}
+	events, err := f.store.Outbox().Stream(ctx, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, e := range events {
+		if e.Event.Type != event.PublicationUpdated {
+			t.Fatalf("event = %+v", e.Event)
+		}
+		got[e.Event.AssetID] = true
+	}
+	if len(events) != 2 || !got[string(clip.ID)] || !got[string(grandchild.ID)] {
+		t.Fatalf("events = %+v", events)
+	}
+	if err := f.svc.RemoveSensitive(ctx, scope(domain.RoleEditor), id.Ref(ori.ID), req); err != nil {
+		t.Fatal(err)
+	}
+	if events, _ = f.store.Outbox().Stream(ctx, 0, 10); len(events) != 4 {
+		t.Fatalf("unmarking must refresh too: %+v", events)
+	}
+}
+
+// I118: a viewer of a clip does not read what its source marks, even when marked later.
+func TestTranscriptRedactsInheritedMarks(t *testing.T) {
+	f := setup(t)
+	ori := f.asset(t, domain.KindOriginal)
+	clip := f.clipOf(t, ori, 100, 120) // the clip's second 5 is the source's second 105
+	grandchild := f.clipOf(t, clip, 0, 20)
+	transcript := func(a domain.Asset) {
+		err := f.store.Transcripts().Save(ctx, domain.Transcript{AssetID: a.ID, Version: "v1", Engine: "fake", Segments: []domain.TranscriptSegment{
+			{Start: 0, End: 4, Text: "fine"}, {Start: 4, End: 8, Text: "the name of a minor"}, {Start: 8, End: 20, Text: "fine again"},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	transcript(clip)
+	transcript(grandchild)
+	if err := f.svc.AddSensitive(ctx, scope(domain.RoleEditor), id.Ref(ori.ID), api.SensitiveSegmentRequest{StartSeconds: 105, EndSeconds: 106}); err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range []domain.Asset{clip, grandchild} {
+		got, err := f.svc.Transcript(ctx, scope(domain.RoleViewer), id.Ref(a.ID), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Segments[1].Text != domain.RedactedText || got.Segments[0].Text != "fine" || got.Segments[2].Text != "fine again" {
+			t.Fatalf("%s = %+v", a.ID, got.Segments)
+		}
+		whole, err := f.svc.Transcript(ctx, scope(domain.RoleEditor), id.Ref(a.ID), "")
+		if err != nil || whole.Segments[1].Text != "the name of a minor" {
+			t.Fatalf("%s for an editor = %+v, %v", a.ID, whole.Segments, err)
+		}
+	}
+	// A mark outside the cut changes nothing.
+	far := f.clipOf(t, ori, 0, 20)
+	transcript(far)
+	got, err := f.svc.Transcript(ctx, scope(domain.RoleViewer), id.Ref(far.ID), "")
+	if err != nil || got.Segments[1].Text != "the name of a minor" {
+		t.Fatalf("far = %+v, %v", got.Segments, err)
+	}
+	// An older version cannot place a source's mark, so a viewer gets nothing.
+	if err := f.store.Transcripts().Save(ctx, domain.Transcript{AssetID: clip.ID, Version: "v0", Engine: "fake", Segments: []domain.TranscriptSegment{{Start: 0, End: 1, Text: "old"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Transcript(ctx, scope(domain.RoleViewer), id.Ref(clip.ID), "v0"); !errs.IsCode(err, errs.CodeFailedPrecondition) {
+		t.Fatalf("older version: %v", err)
+	}
+	if old, err := f.svc.Transcript(ctx, scope(domain.RoleEditor), id.Ref(clip.ID), "v0"); err != nil || old.Segments[0].Text != "old" {
+		t.Fatalf("older version for an editor = %+v, %v", old, err)
+	}
+}
+
+type fixedSearch struct{ hits []domain.SearchHit }
+
+func (s fixedSearch) Search(context.Context, service.Scope, api.SearchQuery) (api.SearchResponse, error) {
+	return api.SearchResponse{Items: s.hits, Mode: "hybrid", EmbeddingModel: "m@1"}, nil
+}
+
+// I118: viewers cannot read through search what a transcript read redacts.
+func TestSearchGuard(t *testing.T) {
+	f := setup(t)
+	ori := f.asset(t, domain.KindOriginal)
+	clip := f.clipOf(t, ori, 100, 120)
+	if err := f.store.Transcripts().MarkSensitive(ctx, domain.SensitiveSegment{AssetID: ori.ID, Version: "v1", StartSeconds: 10, EndSeconds: 20}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.store.Transcripts().MarkSensitive(ctx, domain.SensitiveSegment{AssetID: ori.ID, Version: "v1", StartSeconds: 105, EndSeconds: 106}); err != nil {
+		t.Fatal(err)
+	}
+	hits := []domain.SearchHit{
+		{AssetID: ori.ID, Version: "v1", StartSeconds: 0, EndSeconds: 5, Text: "fine"},
+		{AssetID: ori.ID, Version: "v1", StartSeconds: 15, EndSeconds: 30, Text: "marked"},
+		{AssetID: clip.ID, Version: "v1", StartSeconds: 0, EndSeconds: 3, Text: "fine in the clip"},
+		{AssetID: clip.ID, Version: "v1", StartSeconds: 4, EndSeconds: 8, Text: "inherited mark"},
+	}
+	guard := NewSearchGuard(fixedSearch{hits}, f.stores.Tenants)
+
+	viewer, err := guard.Search(ctx, scope(domain.RoleViewer), api.SearchQuery{Q: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(viewer.Items) != 2 || viewer.Items[0].Text != "fine" || viewer.Items[1].Text != "fine in the clip" || viewer.Mode != "hybrid" {
+		t.Fatalf("viewer = %+v", viewer)
+	}
+	editor, err := guard.Search(ctx, scope(domain.RoleEditor), api.SearchQuery{Q: "x"})
+	if err != nil || len(editor.Items) != 4 {
+		t.Fatalf("editor = %+v, %v", editor, err)
+	}
+	if _, err := guard.Search(ctx, service.Scope{Tenant: "unknown"}, api.SearchQuery{Q: "x"}); !errs.IsCode(err, errs.CodeNotFound) {
+		t.Fatalf("unknown tenant: %v", err)
+	}
+}
+
 // Every mutation here is audited, and the chain verifies afterwards (§12.1, D23).
 func TestEveryMutationIsAudited(t *testing.T) {
 	f := setup(t)

@@ -355,7 +355,8 @@ func versionOf(a domain.Asset, version string) string {
 }
 
 // Transcript returns the whole text to callers holding asset.sensitive, and to everyone
-// else a copy with sensitive segments redacted (D30, I118).
+// else a copy with sensitive segments redacted, including what its sources mark (D30,
+// I118).
 func (s *Service) Transcript(ctx context.Context, scope service.Scope, ref id.Ref, version string) (domain.Transcript, error) {
 	store, err := s.store(ctx, scope)
 	if err != nil {
@@ -373,8 +374,9 @@ func (s *Service) Transcript(ctx context.Context, scope service.Scope, ref id.Re
 	if scope.Principal.Can(domain.PermAssetSensitive) {
 		return t, nil
 	}
-	sensitive, err := store.Transcripts().Sensitive(ctx, ref, version)
+	sensitive, err := effectiveMarks(ctx, store, a, version, 0)
 	if err != nil {
+		// What is hidden is unknown, so nothing is released to this reader.
 		return domain.Transcript{}, err
 	}
 	return t.Redacted(sensitive), nil
@@ -404,8 +406,8 @@ func segmentDetails(version string, start, end float64) map[string]any {
 	return map[string]any{"version": version, "start_seconds": start, "end_seconds": end}
 }
 
-// AddSensitive marks an interval. A public asset's export must drop it, so the mark also
-// asks for a public library refresh (D30).
+// AddSensitive marks an interval. The export of a public asset, or of a public clip cut
+// from this one, must drop it, so the mark also asks for a public library refresh (D30).
 func (s *Service) AddSensitive(ctx context.Context, scope service.Scope, ref id.Ref, req api.SensitiveSegmentRequest) error {
 	store, err := s.store(ctx, scope)
 	if err != nil {
@@ -434,7 +436,7 @@ func (s *Service) AddSensitive(ctx context.Context, scope service.Scope, ref id.
 		if err := s.mutation(ctx, tx, scope, a.ID, "sensitive.mark", domain.PermAssetSensitive, details, details, now); err != nil {
 			return err
 		}
-		return emitPublicUpdates(ctx, tx, scope, a, "sensitive_segments_changed", now)
+		return refreshPublicExports(ctx, tx, scope, a, "sensitive_segments_changed", now)
 	})
 }
 
@@ -458,7 +460,7 @@ func (s *Service) RemoveSensitive(ctx context.Context, scope service.Scope, ref 
 		if err := s.mutation(ctx, tx, scope, a.ID, "sensitive.unmark", domain.PermAssetSensitive, details, details, now); err != nil {
 			return err
 		}
-		return emitPublicUpdates(ctx, tx, scope, a, "sensitive_segments_changed", now)
+		return refreshPublicExports(ctx, tx, scope, a, "sensitive_segments_changed", now)
 	})
 }
 
