@@ -383,13 +383,15 @@ func TestDeadLokiBlocksNothing(t *testing.T) {
 		}
 		return failure
 	})
-	page, err := m.Logs(context.Background(), scope("acme"), api.LogQuery{PageQuery: api.PageQuery{Limit: 1000}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(page.Items) != 500 {
-		t.Errorf("local logs are the point of §10.1, got %d", len(page.Items))
-	}
+	// Until the file sink's pump has opened it, Logs answers from the ring by design, so
+	// the file gets a moment on a loaded host. All 500 must be there in the end.
+	eventually(t, "the local logs, the point of §10.1", func() bool {
+		page, err := m.Logs(context.Background(), scope("acme"), api.LogQuery{PageQuery: api.PageQuery{Limit: 1000}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(page.Items) == 500
+	})
 }
 
 func TestHungSinkDoesNotDelayOthersOrShutdown(t *testing.T) {
