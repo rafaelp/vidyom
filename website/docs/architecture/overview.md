@@ -10,7 +10,7 @@ Vidyom follows a **thin client / persistent daemon / worker** design. The archit
 ```mermaid
 flowchart TB
   CLI[vidyom CLI] -->|Unix socket / loopback or remote HTTPS with pairing| API[vidyomd API]
-  Agent[Other clients / agents / MCP] -->|Authenticated HTTPS API| API
+  Agent[Other clients / agents] -->|Authenticated HTTPS API| API
   API --> Engine[Workflow engine + scheduler]
   Engine --> DB[(SQLite per tenant + system.db)]
   Engine --> Queue[Redis dispatch queue]

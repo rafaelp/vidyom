@@ -1,6 +1,6 @@
 # Contributing to Vidyom
 
-Thank you for your interest in Vidyom! Most contributions today improve the documentation in [`website/`](website/) and the product specification in [`spec/`](spec/).
+Thank you for your interest in Vidyom! You can contribute to the code, the documentation in [`website/`](website/) and the product specification in [`spec/`](spec/). [`docs/status.md`](docs/status.md) lists what works today, along with the skeletons and gaps that still need work.
 
 By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -14,11 +14,34 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Ways to contribute
 
+- **Report a bug** by opening a blank issue, with the commit and the steps to reproduce it.
 - **Report a documentation problem** (an error, a gap or an unclear explanation) with the *Documentation issue* template.
 - **Propose a design change** with the *Design proposal* template. Changes to a **Decided** requirement need maintainer approval in an issue before a pull request is opened.
-- **Improve the documentation** directly through a pull request.
+- **Improve the code or the documentation** directly through a pull request.
 
 ## Development setup
+
+### Code
+
+Requirements: Go 1.27, Python 3.12 or newer, Node.js 22.13 or newer, FFmpeg 5.1 or newer, `sqlite3` and Redis.
+
+```bash
+make build        # vidyom, vidyomd and vidyom-worker into bin/
+scripts/demo.sh   # the whole lifecycle for a person to watch, then removes what it made
+```
+
+Before opening a pull request, run what covers your change:
+
+```bash
+make check        # formatting, vet, static checks and Go tests
+make test-python  # the AI worker
+make e2e          # the acceptance scenario on the real binaries
+
+cd library
+npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e
+```
+
+### Website
 
 Requirements: Node.js 20 or newer (Node 22 LTS recommended) and npm.
 

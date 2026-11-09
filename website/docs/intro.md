@@ -12,7 +12,7 @@ Vidyom is an open-source, vendor-independent video editing studio built for AI a
 
 ## How an agent runs the studio
 
-Agents connect through the [`vidyom` CLI](./reference/cli.md), the authenticated [HTTPS API](./reference/api.md) or MCP. Every action is a command or an API call with structured output, so an agent can search the library, start a job and check back later:
+Agents connect through the [`vidyom` CLI](./reference/cli.md) or the authenticated [HTTPS API](./reference/api.md). Every action is a command or an API call with structured output, so an agent can search the library, start a job and check back later:
 
 ```bash
 vidyom original search "Ujjayi breathing" --json
@@ -20,10 +20,17 @@ vidyom clip create --source ORI-001 --prompt "Explain Ujjayi breathing" --json
 vidyom job status JOB-002 --json
 ```
 
-The job then stops at `waiting_approval`, with no client needing to stay connected, until an editor reviews the proposed clip:
+The job then stops at `waiting_approval`, with no client needing to stay connected, until an editor reviews the proposed selection:
 
 ```bash
-vidyom clip preview CLIP-001
+vidyom clip preview APR-001
+vidyom approval approve APR-001
+```
+
+Publication has its own gate, which a publisher decides once the clip is rendered:
+
+```bash
+vidyom publish CLIP-001 --to youtube-main
 vidyom clip approve CLIP-001
 ```
 

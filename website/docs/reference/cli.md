@@ -27,12 +27,17 @@ vidyom original list
 vidyom original show ORI-001
 vidyom original search "breathing techniques"
 vidyom clip create --source ORI-001 --prompt "Explain Ujjayi breathing"
+vidyom approval list
+vidyom clip preview APR-001
+vidyom approval approve APR-001 --start 00:12:04 --end 00:15:32
 vidyom clip list --source ORI-001
 vidyom clip preview CLIP-001
 vidyom clip approve CLIP-001
 vidyom asset lineage CLIP-001
-vidyom asset verify CLIP-001
+vidyom storage verify master --asset CLIP-001
 ```
+
+The selection gate comes before the clip exists, so it is decided by approval ID, and `--start` and `--end` adjust the interval. `vidyom clip approve` is a shortcut for the clip's pending publication approval.
 
 ## Workflow and job control
 
@@ -41,7 +46,6 @@ vidyom workflow list
 vidyom workflow validate ./workflows/create-clip.json
 vidyom workflow run ./workflows/create-clip.json --input source_id=ORI-001
 vidyom workflow run ingest-original --dry-run
-vidyom workflow resume JOB-001
 vidyom node list
 vidyom node describe video.cut
 vidyom node run ai.transcribe --asset ORI-001
@@ -49,6 +53,7 @@ vidyom job list --status running
 vidyom job status JOB-001
 vidyom job attach JOB-001
 vidyom job logs JOB-001 --follow
+vidyom job resume JOB-001
 vidyom job retry JOB-001
 vidyom job cancel JOB-001
 ```
@@ -59,20 +64,21 @@ A job in the `needs_attention` state stopped before an unsafe node and is never 
 
 ```bash
 vidyom job list --status needs_attention
-vidyom job resolve JOB-001 --action retry
-vidyom job resolve JOB-001 --action skip
+vidyom job resolve JOB-001 --retry-node <node>
+vidyom job resolve JOB-001 --skip-node <node>
+vidyom job resolve JOB-001 --fail
 ```
 
 ## Device pairing, tenants and budgets
 
 ```bash
-vidyom device pair-code                       # admin: generate a one-time code
-vidyom device pair --server production --code <one-time-code>
+vidyom device pairing-code create             # admin: generate a one-time code
+vidyom server pair production --code <one-time-code>
 vidyom device list
 vidyom device revoke laptop-01
 vidyom tenant list
 vidyom tenant use example-org
-vidyom budget status
+vidyom budget show
 vidyom budget set --monthly 500 --currency USD
 ```
 

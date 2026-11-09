@@ -39,7 +39,7 @@ Vimeo, PeerTube and Instagram Reels (vertical clips reframed from the 4K master)
 
 ## Phase 4 — Extensibility and production operations
 
-Plugin runtime, global/workflow/node hooks, observability fan-out and retries, distributed workers, more connectors, advanced CLI/MCP access and operational dashboards.
+Plugin runtime, global/workflow/node hooks, observability fan-out and retries, distributed workers, more connectors, advanced CLI access and operational dashboards. MCP access is not supported yet.
 
 **Delivers:** a new workflow is composed from JSON; a new provider is installed without changing core workflows; a plugin reacts safely to lifecycle hooks.
 

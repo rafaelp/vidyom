@@ -4,7 +4,7 @@ Security, auditing and structured logs are core requirements of Vidyom, not add-
 
 ## Supported versions
 
-Vidyom has not published a release yet. The repository currently contains the documentation website and the design specification. Until the first release, only the latest commit on `main` receives fixes.
+Vidyom has not published a release yet. The first executable version is on `main`. Until the first release, only the latest commit on `main` receives fixes.
 
 | Version | Supported |
 | --- | --- |
@@ -23,7 +23,7 @@ Report them privately through GitHub's [private vulnerability reporting](https:/
 
 Please include as much of the following as you can:
 
-- The affected component (documentation website, specification, example workflows or configuration, or runtime code once it exists) and the commit or version.
+- The affected component (CLI, daemon, workers, AI worker, public library, connectors, plugins, Docker Compose deployment, documentation website, specification, or example workflows and configuration) and the commit or version.
 - A description of the issue and its potential impact.
 - Steps to reproduce, or a proof of concept.
 - Any mitigation or fix you suggest.
@@ -34,9 +34,13 @@ Please include as much of the following as you can:
 - Once a fix is available, the advisory is published with credit to you, unless you prefer to remain anonymous.
 - Please give us reasonable time to release a fix before disclosing the issue publicly.
 
+## Known limits
+
+[`docs/status.md`](docs/status.md) records what the code does today, what has only run against mocks and every known limit, such as the plaintext master key file under Docker Compose. The website describes the complete product, as if every roadmap phase were implemented, so check `docs/status.md` before relying on a security feature the website describes.
+
 ## Design-level security feedback
 
-Vidyom is at the specification stage. Weaknesses in the *proposed* design that do not affect any running code, such as credential handling, private networking or plugin isolation, can be discussed in a public issue using the **Design proposal** template. If you are unsure whether something is sensitive, report it privately.
+Weaknesses in a part of the design that no code implements yet can be discussed in a public issue using the **Design proposal** template. Credential handling, private networking and plugin isolation are running code, so report weaknesses in them privately. If you are unsure whether something is sensitive, report it privately.
 
 ## Credentials
 
