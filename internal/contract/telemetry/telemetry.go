@@ -92,7 +92,7 @@ var DurationBuckets = []float64{0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60, 300, 600
 var Catalog = []MetricSpec{
 	{Name: JobsByState, Kind: KindGauge, Help: "Jobs by state.", Labels: []string{"state", LabelTenant}},
 	{Name: NodeDuration, Kind: KindHistogram, Help: "Node execution time.", Labels: []string{"node_type", LabelTenant}},
-	{Name: WorkflowDuration, Kind: KindHistogram, Help: "Workflow execution time.", Labels: []string{"workflow_id", LabelTenant}},
+	{Name: WorkflowDuration, Kind: KindHistogram, Help: "Workflow execution time.", Labels: []string{"workflow", LabelTenant}},
 	{Name: PluginDuration, Kind: KindHistogram, Help: "Plugin call time.", Labels: []string{"plugin", "method", LabelTenant}},
 	{Name: ConnectorDuration, Kind: KindHistogram, Help: "Connector call time.", Labels: []string{"family", "driver", LabelTenant}},
 	{Name: ConnectorFailures, Kind: KindCounter, Help: "Connector call failures.", Labels: []string{"family", "driver", LabelTenant}},
