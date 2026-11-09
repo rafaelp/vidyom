@@ -451,8 +451,8 @@ func (r *Runtime) liveProcesses() int {
 func (r *Runtime) resolvePlugin(ctx context.Context, tenant domain.TenantID, pluginID string) (domain.PluginRecord, plugin.Manifest, plugin.Permissions, error) {
 	var perms plugin.Permissions
 	var m plugin.Manifest
-	if tenant == "" {
-		return domain.PluginRecord{}, m, perms, errs.New(errs.CodeInvalidArgument, "a plugin call needs a tenant")
+	if !tenantSlug.MatchString(string(tenant)) {
+		return domain.PluginRecord{}, m, perms, errs.New(errs.CodeInvalidArgument, "a plugin call needs a valid tenant")
 	}
 	if pluginID == "" {
 		return domain.PluginRecord{}, m, perms, errs.New(errs.CodeInvalidArgument, "a plugin call needs a plugin")

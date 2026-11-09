@@ -213,6 +213,7 @@ func TestRunHookActionRefusals(t *testing.T) {
 		code errs.Code
 	}{
 		{"no tenant", invocation("", "p", "whoami", nil), errs.CodeInvalidArgument},
+		{"a tenant that is a path", invocation("../../etc", "p", "whoami", nil), errs.CodeInvalidArgument},
 		{"no plugin", invocation("acme", "", "whoami", nil), errs.CodeInvalidArgument},
 		{"unknown plugin", invocation("acme", "ghost", "whoami", nil), errs.CodeNotFound},
 		{"unknown action", invocation("acme", "p", "nope", nil), errs.CodeFailedPrecondition},
@@ -732,6 +733,7 @@ func TestASecretThatCannotBeAuditedIsNotHandedOut(t *testing.T) {
 	f := newFixture(t, unsandboxed)
 	f.secrets["s"] = "value-of-the-secret"
 	f.installProbe("p", plugin.Permissions{Secrets: []string{"s"}})
+	f.mustCall("p", "whoami", nil) // running before the audit goes down
 	f.audit.mu.Lock()
 	f.audit.err = errors.New("audit is down")
 	f.audit.mu.Unlock()
@@ -921,6 +923,9 @@ func TestNoSandboxRefusesUnlessAccepted(t *testing.T) {
 	if !strings.Contains(accept.logs.String(), "plugin.unsandboxed") {
 		t.Error("running unsandboxed must be logged")
 	}
+	if entries := accept.audit.find("plugin.started_unsandboxed"); len(entries) != 1 {
+		t.Errorf("running unsandboxed must be audited at each start (I260): %+v", entries)
+	}
 	anomaly := false
 	for _, labels := range accept.metrics.get(telemetry.SecurityAnomalies) {
 		anomaly = anomaly || labels["kind"] == "plugin_unsandboxed"
@@ -1108,6 +1113,20 @@ func TestPluginInPython(t *testing.T) {
 	result = f.mustCall("py-validator", "check", map[string]string{"title": ""})
 	if result.Allow || result.Reason != "python says no title" {
 		t.Errorf("result: %+v", result)
+	}
+}
+
+func TestAnUnauditableUnsandboxedStartIsRefused(t *testing.T) {
+	f := newFixture(t, unsandboxed)
+	f.installProbe("p", plugin.Permissions{})
+	f.audit.mu.Lock()
+	f.audit.err = errors.New("audit is down")
+	f.audit.mu.Unlock()
+	if _, err := f.call("p", "whoami", nil); !errs.IsCode(err, errs.CodeUnavailable) {
+		t.Errorf("no audit, no unsandboxed start: %v", err)
+	}
+	if f.r.liveProcesses() != 0 {
+		t.Error("nothing should be running")
 	}
 }
 

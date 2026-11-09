@@ -155,6 +155,16 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 	if iso.name() == IsolationNone {
 		p.log.Warn("plugin runs with no OS sandbox", "event", "plugin.unsandboxed")
 		r.metrics.Add(telemetry.SecurityAnomalies, 1, telemetry.Labels{"kind": "plugin_unsandboxed", telemetry.LabelTenant: string(tenant)})
+		if err := r.opts.Auditor.Record(ctx, security.AuditEntry{
+			TenantID:  tenant,
+			Principal: domain.Principal{Email: "plugin:" + rec.ID, Method: domain.AuthSystem},
+			Action:    "plugin.started_unsandboxed",
+			Resource:  "plugin:" + rec.ID,
+			Result:    "allowed",
+			Details:   map[string]any{"version": rec.Version},
+		}); err != nil {
+			return nil, errs.Wrap(errs.CodeUnavailable, err, "plugin "+rec.ID+" runs with no sandbox, which cannot be audited right now")
+		}
 	}
 
 	stdinR, stdinW, err := os.Pipe()

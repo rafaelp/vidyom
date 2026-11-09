@@ -611,17 +611,27 @@ func TestBogusTenantValuesGetNoPipeline(t *testing.T) {
 	}
 }
 
+// lateTenants finds a tenant's configuration only after it is told to.
+type lateTenants struct {
+	ready atomic.Bool
+}
+
+func (l *lateTenants) TenantConfig(ctx context.Context, tenant domain.TenantID) (config.Tenant, error) {
+	if !l.ready.Load() {
+		return config.Tenant{}, errs.NotFound("tenant")
+	}
+	return tenantConfigs{"late": {Logs: config.LogConfig{Sinks: []config.Sink{sink("late-logs", "fake")}}}}.TenantConfig(ctx, tenant)
+}
+
 func TestTenantConfigFailureIsReportedAndRetried(t *testing.T) {
 	f := newFixture()
-	tenants := tenantConfigs{}
+	tenants := &lateTenants{}
 	m := newManager(t, config.Observability{Metrics: noMetrics()}, Options{Registry: f.reg, Tenants: tenants})
 	if _, err := m.Sinks(context.Background(), scope("late")); !errs.IsCode(err, errs.CodeUnavailable) {
 		t.Fatalf("expected unavailable, got %v", err)
 	}
-	// Reads are unaffected, and a retry after the file appears works. The map is read
-	// from the loader goroutine, so replace it before the next attempt starts.
-	time.Sleep(10 * time.Millisecond)
-	m.opts.Tenants = tenantConfigs{"late": {Logs: config.LogConfig{Sinks: []config.Sink{sink("late-logs", "fake")}}}}
+	// Reads are unaffected, and a retry after the file appears works.
+	tenants.ready.Store(true)
 	eventually(t, "the retry", func() bool {
 		sinks, err := m.Sinks(context.Background(), scope("late"))
 		return err == nil && len(sinks) == 1
