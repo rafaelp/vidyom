@@ -1,10 +1,13 @@
 package domain
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/errs"
 	"github.com/rafaelp/vidyom/internal/contract/id"
@@ -362,5 +365,81 @@ func TestResolveServerPath(t *testing.T) {
 	var coded *errs.Error
 	if _, err := ResolveServerPath(nil, good); !errors.As(err, &coded) {
 		t.Errorf("no roots means nothing is allowed, got %v", err)
+	}
+}
+
+func TestAuditHashCoversEveryField(t *testing.T) {
+	at := time.Date(2026, 11, 9, 12, 0, 0, 123456789, time.UTC)
+	base := AuditRecord{
+		Seq: 1, ULID: "01JABCDEFGHJKMNPQRSTVWXYZ0", TenantID: "acme", At: at, Actor: "a@example.com",
+		Method: AuthDevice, Action: "asset.update", Permission: PermAssetWrite, Resource: "ORI-001",
+		Result: "allowed", RequestID: "r1", Details: []byte(`{"k":"v"}`), PrevHash: AuditGenesisHash,
+	}
+	want, err := base.ComputeHash()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := base.ComputeHash(); again != want {
+		t.Fatal("the hash must be deterministic")
+	}
+	changes := map[string]func(*AuditRecord){
+		"seq":        func(r *AuditRecord) { r.Seq = 2 },
+		"ulid":       func(r *AuditRecord) { r.ULID = "01JABCDEFGHJKMNPQRSTVWXYZ1" },
+		"tenant":     func(r *AuditRecord) { r.TenantID = "other" },
+		"at":         func(r *AuditRecord) { r.At = at.Add(time.Nanosecond) },
+		"actor":      func(r *AuditRecord) { r.Actor = "b@example.com" },
+		"method":     func(r *AuditRecord) { r.Method = AuthPeer },
+		"action":     func(r *AuditRecord) { r.Action = "asset.delete" },
+		"permission": func(r *AuditRecord) { r.Permission = PermAssetDelete },
+		"resource":   func(r *AuditRecord) { r.Resource = "ORI-002" },
+		"result":     func(r *AuditRecord) { r.Result = "denied" },
+		"request":    func(r *AuditRecord) { r.RequestID = "r2" },
+		"details":    func(r *AuditRecord) { r.Details = []byte(`{"k":"w"}`) },
+		"prev":       func(r *AuditRecord) { r.PrevHash = strings.Repeat("1", 64) },
+	}
+	for name, change := range changes {
+		r := base
+		change(&r)
+		got, err := r.ComputeHash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == want {
+			t.Errorf("changing %s did not change the hash", name)
+		}
+	}
+	// A hash that went through JSON still verifies: an offline check of an export.
+	base.Hash = want
+	data, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back AuditRecord
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := back.ComputeHash(); got != want {
+		t.Fatal("an exported record must verify offline")
+	}
+}
+
+func TestTranscriptRedactedKeepsTimeline(t *testing.T) {
+	tr := Transcript{Segments: []TranscriptSegment{
+		{Start: 0, End: 10, Text: "public", Words: []Word{{Start: 0, End: 1, Text: "public"}}},
+		{Start: 10, End: 20, Text: "name of a minor", Words: []Word{{Start: 10, End: 11, Text: "name"}}},
+		{Start: 20, End: 30, Text: "public again"},
+	}}
+	got := tr.Redacted([]SensitiveSegment{{StartSeconds: 12, EndSeconds: 15}})
+	if got.Segments[1].Text != RedactedText || got.Segments[1].Words != nil {
+		t.Fatalf("segment not redacted: %+v", got.Segments[1])
+	}
+	if got.Segments[0].Text != "public" || got.Segments[2].Text != "public again" {
+		t.Fatalf("neighbors must stay: %+v", got.Segments)
+	}
+	if got.Segments[1].Start != 10 || got.Segments[1].End != 20 {
+		t.Fatal("the timeline must stay intact")
+	}
+	if tr.Segments[1].Text != "name of a minor" {
+		t.Fatal("the input must not change")
 	}
 }

@@ -81,6 +81,28 @@ type SensitiveSegment struct {
 	MarkedAt     time.Time   `json:"marked_at,omitzero"`
 }
 
+// RedactedText replaces the text of a redacted transcript segment (D30).
+const RedactedText = "[redacted]"
+
+// Redacted returns a copy of the transcript with every segment that overlaps a
+// sensitive interval replaced by RedactedText and its words removed. The
+// timeline stays intact (D21, D30).
+func (t Transcript) Redacted(sensitive []SensitiveSegment) Transcript {
+	out := t
+	out.Segments = make([]TranscriptSegment, len(t.Segments))
+	for i, seg := range t.Segments {
+		for _, s := range sensitive {
+			if seg.Start < s.EndSeconds && s.StartSeconds < seg.End {
+				seg.Text = RedactedText
+				seg.Words = nil
+				break
+			}
+		}
+		out.Segments[i] = seg
+	}
+	return out
+}
+
 // ChunkLevel distinguishes speech windows from chapter summaries (D15).
 type ChunkLevel string
 

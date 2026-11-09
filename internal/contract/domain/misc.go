@@ -1,7 +1,11 @@
 package domain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/id"
@@ -104,6 +108,57 @@ type AuditRecord struct {
 	Details    json.RawMessage `json:"details,omitempty"`
 	PrevHash   string          `json:"prev_hash"`
 	Hash       string          `json:"hash"`
+}
+
+// AuditGenesisHash is the PrevHash of a chain's first record.
+var AuditGenesisHash = strings.Repeat("0", 64)
+
+// ComputeHash returns the hash of the record's canonical form: every field except
+// Hash, including PrevHash and TenantID, so a record moved between tenants or
+// chains no longer verifies. The form is fixed-order JSON with times in UTC at
+// nanosecond precision and Details normalized by encoding/json, so a record that
+// went through an export still verifies offline (D23, I107).
+func (r AuditRecord) ComputeHash() (string, error) {
+	details := r.Details
+	if len(details) == 0 {
+		details = json.RawMessage("null")
+	}
+	data, err := json.Marshal(struct {
+		Form       string          `json:"form"`
+		Seq        int64           `json:"seq"`
+		ULID       id.ULID         `json:"ulid"`
+		TenantID   TenantID        `json:"tenant_id"`
+		At         string          `json:"at"`
+		Actor      string          `json:"actor"`
+		Method     AuthMethod      `json:"method"`
+		Action     string          `json:"action"`
+		Permission Permission      `json:"permission"`
+		Resource   string          `json:"resource"`
+		Result     string          `json:"result"`
+		RequestID  string          `json:"request_id"`
+		Details    json.RawMessage `json:"details"`
+		PrevHash   string          `json:"prev_hash"`
+	}{
+		Form:       "vidyom-audit-v1",
+		Seq:        r.Seq,
+		ULID:       r.ULID,
+		TenantID:   r.TenantID,
+		At:         r.At.UTC().Format(time.RFC3339Nano),
+		Actor:      r.Actor,
+		Method:     r.Method,
+		Action:     r.Action,
+		Permission: r.Permission,
+		Resource:   r.Resource,
+		Result:     r.Result,
+		RequestID:  r.RequestID,
+		Details:    details,
+		PrevHash:   r.PrevHash,
+	})
+	if err != nil {
+		return "", fmt.Errorf("canonical audit record: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // AuditVerification is the result of checking the chain (§11.5).

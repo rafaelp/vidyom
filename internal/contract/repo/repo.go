@@ -457,3 +457,76 @@ type IdempotencyRepo interface {
 	Put(ctx context.Context, r IdempotentResponse) error
 	DeleteBefore(ctx context.Context, t time.Time) (int64, error)
 }
+
+// ---- Optional capabilities ----
+//
+// Implementations may offer these beside the main interfaces. Callers discover
+// them by type assertion (docs/decisions/core.md, I101).
+
+// SystemAuditProvider is implemented by a SystemRepos that keeps a hash-chained
+// audit for actions with no tenant: pairing, device changes, tenant creation, the
+// boot record (I108).
+type SystemAuditProvider interface {
+	SystemAudit() AuditRepo
+}
+
+// WorkerTokenLookup is implemented by a WorkerRepo that can name a token's owner.
+type WorkerTokenLookup interface {
+	TokenName(ctx context.Context, hash string) (name string, ok bool, err error)
+}
+
+// AuditExport is one completed export of a chain segment (D23).
+type AuditExport struct {
+	FromSeq  int64
+	ToSeq    int64
+	HeadHash string // Hash of the record at ToSeq
+	Key      string // role-relative key in archive
+	SHA256   string // of the exported file
+	At       time.Time
+}
+
+// AuditAnchor is where the verifiable chain starts after a prune: the last pruned
+// record's sequence and hash. A zero value means nothing has been pruned.
+type AuditAnchor struct {
+	Seq  int64
+	Hash string
+}
+
+// AuditMaintainer is implemented by an AuditRepo that supports the export
+// watermark and the retention prune of whole, exported chain prefixes (D23).
+type AuditMaintainer interface {
+	LastExport(ctx context.Context) (AuditExport, bool, error)
+	RecordExport(ctx context.Context, e AuditExport) error
+	ListExports(ctx context.Context) ([]AuditExport, error)
+	Anchor(ctx context.Context) (AuditAnchor, error)
+	// PruneExportedBefore removes records older than t that are at or below the
+	// last export, keeping an anchor. It returns how many it removed.
+	PruneExportedBefore(ctx context.Context, t time.Time) (int64, error)
+}
+
+// AIPolicySource says who decided an asset's effective ai_processing (I104).
+type AIPolicySource string
+
+const (
+	AIPolicyDefault    AIPolicySource = "default"
+	AIPolicyAsset      AIPolicySource = "asset"
+	AIPolicyCollection AIPolicySource = "collection"
+)
+
+// AssetAIPolicyWriter is implemented by an AssetRepo. AssetRepo.Update never
+// writes ai_processing or ai_consent, so only these methods change the policy
+// (D8, I104). external_allowed requires a consent record.
+type AssetAIPolicyWriter interface {
+	SetAIPolicy(ctx context.Context, ref id.Ref, processing domain.AIProcessing, consent *domain.AIConsent, source AIPolicySource) error
+	// AIPolicySource reports who decided an asset's policy.
+	AIPolicySource(ctx context.Context, ref id.Ref) (AIPolicySource, error)
+	// ApplyCollectionPolicy rewrites every member of a collection not sourced from
+	// an asset-level decision, returning how many changed.
+	ApplyCollectionPolicy(ctx context.Context, collection string, processing domain.AIProcessing, consent *domain.AIConsent) (int64, error)
+}
+
+// OutboxMaintainer is implemented by an OutboxRepo that can drop dispatched events
+// past retention, with their delivery records (I118).
+type OutboxMaintainer interface {
+	DeleteDispatchedBefore(ctx context.Context, t time.Time) (int64, error)
+}
