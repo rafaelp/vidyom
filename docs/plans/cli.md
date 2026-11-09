@@ -67,7 +67,9 @@ Every request is built from the shared route table:
 - `--json` on every command. Exactly one JSON document on stdout, or NDJSON for streams. Errors go to stderr as `errs.Body`.
 - Human output: tables through `tabwriter`, key-value blocks for details, progress on stderr.
 - Exit codes: `0` success, `1` failed, `2` usage, `130` interrupted.
-- Output never holds raw credentials. Signed proxy links and transcript text appear only in the commands whose purpose is to show them.
+- Output never holds raw credentials. Signed proxy links and transcript text appear only in the commands whose purpose is to show them (`clip preview`, `asset proxy-link`, `approval show`, `asset transcript`, `original search`).
+- Human output strips control characters from server-provided text, so a title or a log line cannot drive the terminal. `--json` leaves encoding to JSON.
+- Destructive or costly commands ask first: `asset delete` and `storage restore` need a confirmation, or `--yes`; without a terminal and without `--yes` they refuse. `unpublish` is immediate by D17 and does not ask.
 
 ## 6. Commands and routes
 
@@ -115,7 +117,7 @@ Client flow, for `asset upload` and `original import`:
 3. Hash the file, or reuse the checkpoint's hash.
 4. Write the checkpoint with a fresh idempotency key **before** `POST /assets/uploads`, so a kill between the two cannot create a second upload.
 5. Save the `UPL-nnn`. `GET /uploads/{id}` gives the offset to resume from. An expired, failed or mismatched upload starts over once.
-6. Send chunks with `PATCH`, `Upload-Offset` and `Upload-Checksum: sha256 <b64>`. The chunk size comes from the server's record, capped to bound memory.
+6. Send chunks with `PATCH`, `Upload-Offset` and `Upload-Checksum: sha256 <b64>`. The chunk size comes from the server's record, capped to bound memory. Field names follow the contract (`size_bytes`, not the `size` in I20's prose).
 7. On a network error, `429` or `5xx`: backoff with jitter, respect `Retry-After`, ask the server for the offset, continue. On `409`: ask for the offset, continue. Any progress resets the retry budget. Other `4xx`: fail.
 8. `POST /uploads/{id}/complete`. A checksum rejection deletes the checkpoint and fails clearly.
 9. Start the workflow with `file=upload:UPL-nnn` and an idempotency key derived from the upload, so a kill between `complete` and the run cannot start two jobs. The checkpoint is deleted only after the run was accepted.
@@ -127,8 +129,10 @@ SSE per I3. `job attach` and `job logs --follow` read `GET /jobs/{id}/events`; `
 ## 9. Secrets and credentials
 
 - `secret add` and `secret rotate` have no value flag and refuse extra arguments. A terminal gets a no-echo prompt; anything else is read from stdin. Flag parsing errors on those commands never echo what was typed.
-- `--location client` stores the value in the OS keyring and never calls the API (R37 applies; the contract says client secrets never reach the route).
-- `server pair`: probe the keyring **before** exchanging the code, so a client without a keyring does not burn the one-time code. The token is never printed, logged or written to the config.
+- `--location client` stores the value in the OS keyring and never calls the API, as the contract's `PutSecretRequest` requires. Only the secret's name goes in the client configuration, so `secret list` can show it.
+- `server pair`: probe the keyring with a write **before** exchanging the code, so a client without a keyring does not burn the one-time code. The token is never printed, logged or written to the config.
+- `device rotate` of this client's own device stores the new credential in the keyring. Rotating another device discards the returned credential unless `--reveal` asks for it (I167).
+- On a Unix socket a missing keyring is not an error, because the peer identity authenticates the call (I161). On `https` and `ssh` it fails with `security.ErrKeyringUnavailable`.
 - No credential is ever read from an environment variable or a file in a normal build. A separate build tag provides a file keyring for E2E, so tests never touch a real OS keyring.
 
 ## 10. Tests
