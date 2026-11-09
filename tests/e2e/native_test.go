@@ -25,7 +25,7 @@ type nativeStack struct {
 	bins  string
 	redis string
 
-	redisPort, httpsPort, mockPort, libraryPort int
+	redisPort, httpsPort, mockPort, libraryPort, workerMetricsPort int
 
 	procs map[string]*proc
 }
@@ -50,15 +50,16 @@ func newNative(t *testing.T) *nativeStack {
 		t.Fatal(err)
 	}
 	return &nativeStack{
-		repo:        repoRoot(t),
-		root:        root,
-		bins:        filepath.Join(root, "bin"),
-		redis:       os.Getenv("VIDYOM_E2E_REDIS_SERVER"),
-		redisPort:   freePort(t),
-		httpsPort:   freePort(t),
-		mockPort:    freePort(t),
-		libraryPort: freePort(t),
-		procs:       map[string]*proc{},
+		repo:              repoRoot(t),
+		root:              root,
+		bins:              filepath.Join(root, "bin"),
+		redis:             os.Getenv("VIDYOM_E2E_REDIS_SERVER"),
+		redisPort:         freePort(t),
+		httpsPort:         freePort(t),
+		mockPort:          freePort(t),
+		libraryPort:       freePort(t),
+		workerMetricsPort: freePort(t),
+		procs:             map[string]*proc{},
 	}
 }
 
@@ -91,6 +92,10 @@ func (s *nativeStack) Up(t *testing.T) {
 	build([]string{"CGO_ENABLED=0"}, "vidyom-mock-llm", "./connectors/ai/openai/mockllm/cmd/vidyom-mock-llm")
 
 	s.render(t, filepath.Join(s.repo, "config", "local"), s.path("config"))
+	// The peer identity of this user, for the Unix socket (I17).
+	s.patchDaemonConfig(t, func(cfg map[string]any) {
+		cfg["localUsers"] = []map[string]any{{"uid": os.Getuid(), "email": "admin@example.com"}}
+	})
 	// A variant with no provider and one whose key does not exist, for step 1.
 	s.renderVariant(t, "no-provider", func(cfg map[string]any) { delete(cfg, "vault") })
 	s.renderVariant(t, "missing-key", func(cfg map[string]any) {
@@ -139,6 +144,27 @@ func (s *nativeStack) render(t *testing.T, from, to string) {
 		return os.WriteFile(target, []byte(replace.Replace(string(data))), 0o600)
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (s *nativeStack) patchDaemonConfig(t *testing.T, change func(map[string]any)) {
+	t.Helper()
+	path := s.path("config", "daemon.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := map[string]any{}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatal(err)
+	}
+	change(cfg)
+	out, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, out, 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -255,7 +281,7 @@ func (s *nativeStack) StartWorkers(t *testing.T) {
 		}, extra...)
 		s.procs[name] = start(t, s.path("logs"), name, s.env(), s.root, args...)
 	}
-	worker("worker-media", "media")
+	worker("worker-media", "media", "--metrics-addr", fmt.Sprintf("127.0.0.1:%d", s.workerMetricsPort))
 	worker("worker-ai", "ai")
 }
 
@@ -414,6 +440,12 @@ func copyTree(t *testing.T, from, to string) {
 		t.Fatal(err)
 	}
 }
+
+func (s *nativeStack) WorkerMetricsURL() string {
+	return fmt.Sprintf("http://127.0.0.1:%d/metrics", s.workerMetricsPort)
+}
+
+func (s *nativeStack) UnixSocket() string { return s.path("run", "vidyomd.sock") }
 
 func (s *nativeStack) Dump(t *testing.T) {
 	t.Helper()

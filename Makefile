@@ -18,7 +18,7 @@ FORBIDDEN_DEPS := rqlite|sqlite-vec|internal/persistence
 
 CROSS_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: help all build vidyom vidyomd vidyom-worker sample-plugin test test-race test-python vet fmt-check check-static cross check clean library e2e e2e-compose demo
+.PHONY: help all build vidyom vidyomd vidyom-worker sample-plugin test test-race test-python vet fmt-check check-static cross check clean library e2e e2e-compose real-model-proof demo
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
@@ -57,6 +57,9 @@ e2e: library ## Run the §1.1 scenario with the real binaries, Redis, FFmpeg, Py
 
 e2e-compose: ## Run the same scenario against Docker Compose on this host
 	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' VIDYOM_E2E_TARGET=compose $(GO) test -tags e2e -count=1 -timeout 60m -v ./tests/e2e
+
+real-model-proof: ## Once, not in CI: ingest and search with the real models under Docker on CPU (downloads gigabytes, macOS only)
+	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' VIDYOM_REAL_REPORT=$(or $(VIDYOM_REAL_REPORT),$(CURDIR)/real-model-report.json) $(GO) test -tags 'e2e realmodels' -run TestRealModels -count=1 -timeout 4h -v ./tests/e2e
 
 demo: ## Run the lifecycle visibly on this machine, and clean up
 	./scripts/demo.sh

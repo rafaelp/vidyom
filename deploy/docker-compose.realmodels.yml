@@ -1,0 +1,6 @@
+# Overlay for the real-model proof (make real-model-proof, I291): keeps the downloaded
+# models in a volume outside this project's lifetime, so a teardown does not lose them.
+volumes:
+  models:
+    external: true
+    name: ${VIDYOM_MODELS_VOLUME:?set the Docker volume that caches the models}

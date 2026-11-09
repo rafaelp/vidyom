@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,7 +28,14 @@ type composeStack struct {
 	config string
 	key    string
 
-	httpsPort, libraryPort int
+	httpsPort, libraryPort, lokiPort, tempoPort, grafanaPort int
+
+	// project is the Compose project name. The real-model proof uses another one, and
+	// these, so it can run beside the scenario.
+	project        string
+	extraEnv       []string
+	composeFiles   []string
+	configOverride func(*testing.T)
 }
 
 func newCompose(t *testing.T) stack {
@@ -46,23 +54,35 @@ func newCompose(t *testing.T) stack {
 		key:         filepath.Join(tmp, "master.key"),
 		httpsPort:   freePort(t),
 		libraryPort: freePort(t),
+		lokiPort:    freePort(t),
+		tempoPort:   freePort(t),
+		grafanaPort: freePort(t),
+		project:     composeProject,
 	}
 }
 
 func (s *composeStack) Name() string { return "compose" }
 
 func (s *composeStack) env() []string {
-	return append(os.Environ(),
-		"COMPOSE_PROJECT_NAME="+composeProject,
+	env := append(os.Environ(),
+		"COMPOSE_PROJECT_NAME="+s.project,
 		"VIDYOM_CONFIG_SOURCE="+s.config,
 		"VIDYOM_MASTER_KEY_FILE="+s.key,
 		fmt.Sprintf("VIDYOM_HTTPS_PORT=%d", s.httpsPort),
 		fmt.Sprintf("VIDYOM_LIBRARY_PORT=%d", s.libraryPort),
+		fmt.Sprintf("VIDYOM_LOKI_PORT=%d", s.lokiPort),
+		fmt.Sprintf("VIDYOM_TEMPO_PORT=%d", s.tempoPort),
+		fmt.Sprintf("VIDYOM_GRAFANA_PORT=%d", s.grafanaPort),
 	)
+	return append(env, s.extraEnv...)
 }
 
 func (s *composeStack) argv(args ...string) []string {
-	return append([]string{"docker", "compose", "-f", filepath.Join(s.repo, "deploy", "docker-compose.yml"), "--profile", "demo"}, args...)
+	argv := []string{"docker", "compose", "-f", filepath.Join(s.repo, "deploy", "docker-compose.yml")}
+	for _, file := range s.composeFiles {
+		argv = append(argv, "-f", file)
+	}
+	return append(append(argv, "--profile", "demo", "--profile", "observability"), args...)
 }
 
 func (s *composeStack) compose(t *testing.T, args ...string) string {
@@ -79,6 +99,9 @@ func (s *composeStack) try(args ...string) (string, string, int, error) {
 func (s *composeStack) Up(t *testing.T) {
 	t.Helper()
 	copyTree(t, filepath.Join(s.repo, "config", "compose"), s.config)
+	if s.configOverride != nil {
+		s.configOverride(t)
+	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		t.Fatal(err)
@@ -89,7 +112,7 @@ func (s *composeStack) Up(t *testing.T) {
 	// Anything left by an earlier run under this name goes first.
 	s.compose(t, "down", "--volumes", "--remove-orphans")
 	s.compose(t, "build")
-	s.compose(t, "up", "--detach", "--wait", "redis")
+	s.compose(t, "up", "--detach", "--no-deps", "--wait", "redis")
 }
 
 func (s *composeStack) Init(t *testing.T) initResult {
@@ -115,7 +138,9 @@ func (s *composeStack) Refused(t *testing.T, variant string) (int, string) {
 
 func (s *composeStack) StartDaemon(t *testing.T) { s.compose(t, "up", "--detach", "daemon") }
 
-func (s *composeStack) KillDaemon(t *testing.T) { s.compose(t, "kill", "--signal", "SIGKILL", "daemon") }
+func (s *composeStack) KillDaemon(t *testing.T) {
+	s.compose(t, "kill", "--signal", "SIGKILL", "daemon")
+}
 
 func (s *composeStack) StartMockLLM(t *testing.T) { s.compose(t, "up", "--detach", "mock-llm") }
 
@@ -212,6 +237,23 @@ func (s *composeStack) WriteTenantConfig(t *testing.T, tenant, name, content str
 	time.Sleep(time.Second)
 }
 
+func (s *composeStack) WorkerMetricsURL() string { return "" }
+
+func (s *composeStack) UnixSocket() string { return "" }
+
+func (s *composeStack) startObservability(t *testing.T) {
+	t.Helper()
+	s.compose(t, "up", "--detach", "loki", "tempo", "grafana")
+}
+
+func (s *composeStack) lokiURL() string { return fmt.Sprintf("http://127.0.0.1:%d", s.lokiPort) }
+
+func (s *composeStack) tempoURL() string { return fmt.Sprintf("http://127.0.0.1:%d", s.tempoPort) }
+
+func (s *composeStack) grafanaURL() string { return fmt.Sprintf("http://127.0.0.1:%d", s.grafanaPort) }
+
+func urlQuery(q string) string { return url.QueryEscape(q) }
+
 func (s *composeStack) Dump(t *testing.T) {
 	t.Helper()
 	stdout, _, _, _ := s.try("ps", "--all")
@@ -223,7 +265,7 @@ func (s *composeStack) Dump(t *testing.T) {
 func (s *composeStack) Down(t *testing.T) {
 	t.Helper()
 	if os.Getenv("VIDYOM_E2E_KEEP") != "" {
-		t.Logf("kept project %s and %s", composeProject, s.tmp)
+		t.Logf("kept project %s and %s", s.project, s.tmp)
 		return
 	}
 	if _, stderr, code, err := s.try("down", "--volumes", "--remove-orphans"); err != nil || code != 0 {

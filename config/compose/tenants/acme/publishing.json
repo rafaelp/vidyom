@@ -4,12 +4,40 @@
       "mock-main": {
         "driver": "mock",
         "visibility": "public",
-        "parameters": { "stateDir": "/var/lib/vidyom/mock" }
+        "parameters": {
+          "stateDir": "/var/lib/vidyom/mock"
+        }
       },
       "mock-flaky": {
         "driver": "mock",
         "visibility": "public",
-        "parameters": { "stateDir": "/var/lib/vidyom/mock", "inject": { "outcome_unknown": 1 } }
+        "parameters": {
+          "stateDir": "/var/lib/vidyom/mock",
+          "inject": {
+            "outcome_unknown": 1
+          }
+        }
+      },
+      "mock-reject": {
+        "driver": "mock",
+        "visibility": "public",
+        "parameters": {
+          "stateDir": "/var/lib/vidyom/mock",
+          "inject": {
+            "reject": 1
+          }
+        }
+      },
+      "mock-unknown": {
+        "driver": "mock",
+        "visibility": "public",
+        "parameters": {
+          "stateDir": "/var/lib/vidyom/mock",
+          "reconcile": false,
+          "inject": {
+            "outcome_unknown": 1
+          }
+        }
       }
     },
     "defaults": {

@@ -61,6 +61,11 @@ type stack interface {
 	// WriteTenantConfig creates a file under the tenant's configuration directory and
 	// asks the daemon to reload.
 	WriteTenantConfig(t *testing.T, tenant, name, content string)
+	// WorkerMetricsURL is where a worker's Prometheus endpoint can be read from this
+	// machine, or empty when it cannot.
+	WorkerMetricsURL() string
+	// UnixSocket is the daemon's socket path on this machine, or empty.
+	UnixSocket() string
 	// Dump logs what a person needs to read after a failure.
 	Dump(t *testing.T)
 	Down(t *testing.T)

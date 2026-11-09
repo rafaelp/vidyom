@@ -53,6 +53,8 @@ type scenario struct {
 	clip      string
 	markText  string
 	keepText  string
+	// parentClip and grandchild are the clip and clip of a clip of the lineage step.
+	parentClip, grandchild string
 }
 
 func TestScenario(t *testing.T) {
@@ -101,6 +103,13 @@ func TestScenario(t *testing.T) {
 		{"x2-clip-of-a-clip-and-a-late-mark", sc.stepLineageMark},
 		{"x3-tenant-isolation", sc.stepIsolation},
 		{"x4-dead-log-sink", sc.stepDeadSink},
+		{"x5-budget-and-rejection", sc.stepBudget},
+		{"x6-failure-paths", sc.stepFailurePaths},
+		{"x7-job-control", sc.stepJobControl},
+		{"x8-other-workflows", sc.stepOtherWorkflows},
+		{"x9-metrics", sc.stepMetrics},
+		{"x10-unix-socket", sc.stepUnixSocket},
+		{"x11-observability-profile", sc.stepObservabilityProfile},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, step.run) {
@@ -129,7 +138,10 @@ func (sc *scenario) step01(t *testing.T) {
 		if _, err := pinnedClient(sc.pin).Get(sc.stack.HTTPSURL() + "/api/v1/health"); err == nil {
 			t.Fatalf("%s: something is listening although the daemon refused to start", variant)
 		}
-		t.Logf("%s: exit %d: %s", variant, code, firstLine(output))
+		if !strings.Contains(output, "master key") {
+			t.Fatalf("%s: exit %d for another reason:\n%s", variant, code, output)
+		}
+		t.Logf("%s: exit %d", variant, code)
 	}
 
 	sc.stack.StartMockLLM(t)
@@ -1404,6 +1416,7 @@ func (sc *scenario) stepLineageMark(t *testing.T) {
 	if clipOfOriginal == "" {
 		t.Fatalf("create-clip outputs: %s", done.Outputs)
 	}
+	sc.parentClip = clipOfOriginal
 
 	// Clip of that clip, published.
 	var child api.RunWorkflowResponse
@@ -1423,6 +1436,7 @@ func (sc *scenario) stepLineageMark(t *testing.T) {
 	if grandchild == "" {
 		t.Fatalf("create-clip outputs: %s", finished.Outputs)
 	}
+	sc.grandchild = grandchild
 
 	var transcript domain.Transcript
 	sc.editor.jsonOut(t, &transcript, "asset", "transcript", grandchild)

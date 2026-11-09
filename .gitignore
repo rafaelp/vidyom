@@ -37,3 +37,6 @@ __pycache__/
 
 # Next.js (library/)
 .next/
+
+# Report of make real-model-proof
+/real-model-report.json

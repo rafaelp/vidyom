@@ -4,12 +4,40 @@
       "mock-main": {
         "driver": "mock",
         "visibility": "public",
-        "parameters": { "stateDir": "@ROOT@/mock" }
+        "parameters": {
+          "stateDir": "@ROOT@/mock"
+        }
       },
       "mock-flaky": {
         "driver": "mock",
         "visibility": "public",
-        "parameters": { "stateDir": "@ROOT@/mock", "inject": { "outcome_unknown": 1 } }
+        "parameters": {
+          "stateDir": "@ROOT@/mock",
+          "inject": {
+            "outcome_unknown": 1
+          }
+        }
+      },
+      "mock-reject": {
+        "driver": "mock",
+        "visibility": "public",
+        "parameters": {
+          "stateDir": "@ROOT@/mock",
+          "inject": {
+            "reject": 1
+          }
+        }
+      },
+      "mock-unknown": {
+        "driver": "mock",
+        "visibility": "public",
+        "parameters": {
+          "stateDir": "@ROOT@/mock",
+          "reconcile": false,
+          "inject": {
+            "outcome_unknown": 1
+          }
+        }
       }
     },
     "defaults": {
