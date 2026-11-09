@@ -115,6 +115,12 @@ cleanup() {
   for pid in "${PIDS[@]:-}"; do
     [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null
   done
+  # npm leaves the Next.js server behind when it is killed.
+  if [ -n "${LIBRARY_PORT:-}" ] && command -v lsof >/dev/null 2>&1; then
+    for pid in $(lsof -ti "tcp:$LIBRARY_PORT" -sTCP:LISTEN 2>/dev/null); do
+      kill "$pid" 2>/dev/null
+    done
+  fi
   wait 2>/dev/null
   if [ "$KEEP" -eq 1 ]; then
     echo "kept $ROOT"
@@ -191,13 +197,14 @@ wait_job() { # wait_job USER JOB STATUS
 step "Build the binaries"
 cd "$REPO"
 export CGO_CFLAGS='-g -O2 -Wno-deprecated-declarations'
-go build -trimpath -o "$ROOT/bin/vidyomd" ./cmd/vidyomd 2>/dev/null
+# The linker warns about a duplicate library on macOS, harmlessly. A real failure still stops here.
+go build -trimpath -o "$ROOT/bin/vidyomd" ./cmd/vidyomd 2> >(grep -v 'duplicate libraries\|^#' >&2 || true)
 CGO_ENABLED=0 go build -trimpath -o "$ROOT/bin/vidyom-worker" ./cmd/vidyom-worker
 CGO_ENABLED=0 go build -trimpath -tags vidyom_test_keyring -o "$ROOT/bin/vidyom" ./cmd/vidyom
 CGO_ENABLED=0 go build -trimpath -o "$ROOT/bin/vidyom-mock-llm" ./connectors/ai/openai/mockllm/cmd/vidyom-mock-llm
 if [ ! -f library/.next/BUILD_ID ]; then
   note "building the public library, once"
-  (cd library && [ -d node_modules ] || (cd library && npm ci --no-audit --no-fund --silent))
+  [ -d library/node_modules ] || (cd library && npm ci --no-audit --no-fund --silent)
   (cd library && NEXT_TELEMETRY_DISABLED=1 npm run build >/dev/null)
 fi
 good "vidyomd, vidyom-worker, vidyom, a labeled mock LLM"
@@ -315,7 +322,7 @@ if as viewer approval approve APR-001 2>/dev/null; then fail "a viewer approved"
 good "viewer refused"
 say editor approval approve APR-001 --start 0 --end 110
 for _ in $(seq 1 180); do
-  status=$(as editor --json asset show CLIP-001 2>/dev/null | json 'd["proxy_available"] and d["master_available"] and d["backup_verified"]' || echo no)
+  status=$( (as editor --json asset show CLIP-001 | json 'd["proxy_available"] and d["master_available"] and d["backup_verified"]') 2>/dev/null || echo no)
   [ "$status" = "True" ] && break
   sleep 1
 done
