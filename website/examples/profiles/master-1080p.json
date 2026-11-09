@@ -1,0 +1,1 @@
+{"id":"master-1080p","video":{"codec":"libx264","preset":"slow","crf":18,"maxHeight":1080},"audio":{"codec":"aac","bitrate":"192k"},"container":"mp4"}

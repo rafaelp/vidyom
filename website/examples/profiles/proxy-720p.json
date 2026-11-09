@@ -1,0 +1,1 @@
+{"id":"proxy-720p","video":{"codec":"libx264","preset":"slow","crf":28,"maxHeight":720},"audio":{"codec":"aac","bitrate":"96k"},"container":"mp4"}

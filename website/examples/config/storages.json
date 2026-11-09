@@ -1,0 +1,7 @@
+{
+  "storages": {
+    "archive": {"driver":"gcs","bucket":"videos-archive","storageClass":"ARCHIVE","credentialsRef":"gcs-main"},
+    "master": {"driver":"gcs","bucket":"videos-standard","prefix":"masters/","storageClass":"STANDARD","credentialsRef":"gcs-main"},
+    "proxy": {"driver":"gcs","bucket":"videos-standard","prefix":"proxies/","storageClass":"STANDARD","credentialsRef":"gcs-main"}
+  }
+}

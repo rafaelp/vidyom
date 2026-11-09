@@ -1,0 +1,49 @@
+name: Design proposal
+description: Propose a new capability or a change to the architecture, workflows, connectors or interfaces.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Vidyom is at the specification stage. Changes to a **Decided** requirement need maintainer approval in this issue before a pull request is opened.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Architecture
+        - Workflows
+        - Connectors and plugins
+        - Security
+        - Operations
+        - CLI or API reference
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: decided
+    attributes:
+      label: Does this change a Decided requirement?
+      options:
+        - No, it adds or refines a Proposed design
+        - Yes, it changes a Decided requirement
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Problem or motivation
+      description: What use case or limitation does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

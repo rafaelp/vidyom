@@ -1,0 +1,9 @@
+{
+  "publishing": {
+    "destinations": {
+      "youtube-main": {"driver":"youtube","credentialsRef":"youtube-oauth","visibility":"private"},
+      "vimeo-main": {"driver":"vimeo","credentialsRef":"vimeo-oauth","visibility":"private"}
+    },
+    "defaults": {"requireApproval":true,"uploadResumable":true,"savePublicationRecord":true}
+  }
+}

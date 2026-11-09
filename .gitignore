@@ -1,0 +1,16 @@
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Node.js / Docusaurus (website/)
+node_modules/
+.docusaurus/
+build/
+.cache/

@@ -1,0 +1,22 @@
+name: Documentation issue
+description: Report an error, a gap or an unclear explanation in the documentation.
+labels: [documentation]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page
+      description: URL or file path of the affected page.
+      placeholder: website/docs/workflows/create-clip.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested change

@@ -1,0 +1,73 @@
+{
+  "id": "create-clip",
+  "name": "Create Semantic Clip",
+  "version": "1.0.0",
+  "description": "Find a complete story in an indexed original and create a new standalone asset.",
+  "inputs": {
+    "source_id": { "type": "string", "required": true },
+    "prompt": { "type": "string", "required": true }
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "catalog.get",
+      "typeVersion": 1,
+      "parameters": {
+        "id": "${inputs.source_id}",
+        "requiredStatus": "ready_for_clipping"
+      }
+    },
+    {
+      "id": "findStory",
+      "type": "ai.find_segment",
+      "typeVersion": 1,
+      "parameters": {
+        "asset": "${nodes.source.output}",
+        "query": "${inputs.prompt}",
+        "mode": "complete_story"
+      }
+    },
+    {
+      "id": "render",
+      "type": "video.cut",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.source.output.master_uri}",
+        "segments": "${nodes.findStory.output.segments}",
+        "forbidStorageRoles": ["archive"]
+      }
+    },
+    {
+      "id": "ingestClip",
+      "type": "workflow.execute",
+      "typeVersion": 1,
+      "parameters": {
+        "workflow": "ingest-derived",
+        "file": "${nodes.render.output.file}",
+        "parentId": "${inputs.source_id}",
+        "sourceSegments": "${nodes.findStory.output.segments}"
+      }
+    },
+    {
+      "id": "publish",
+      "type": "workflow.execute",
+      "typeVersion": 1,
+      "parameters": {
+        "workflow": "publish-video",
+        "assetId": "${nodes.ingestClip.output.asset_id}",
+        "requireApproval": true
+      }
+    }
+  ],
+  "connections": {
+    "source": ["findStory"],
+    "findStory": ["render"],
+    "render": ["ingestClip"],
+    "ingestClip": ["publish"]
+  },
+  "settings": {
+    "retry": 3,
+    "resumeOnFailure": true,
+    "saveExecutionProgress": true
+  }
+}

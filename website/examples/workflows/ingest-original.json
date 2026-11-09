@@ -1,0 +1,44 @@
+{
+  "id": "ingest-original",
+  "name": "Ingest Original",
+  "version": "1.0.0",
+  "inputs": {
+    "file": {"type":"file","required":true},
+    "title": {"type":"string","required":true},
+    "category": {"type":"string","default":"other"}
+  },
+  "nodes": [
+    {"id":"register","type":"catalog.register","typeVersion":1,
+      "parameters":{"kind":"original","title":"${inputs.title}","category":"${inputs.category}"}},
+    {"id":"backup","type":"storage.put","typeVersion":1,
+      "parameters":{"storage":"archive","source":"${inputs.file}","verifyChecksum":true}},
+    {"id":"master","type":"video.transcode","typeVersion":1,
+      "parameters":{"source":"${inputs.file}","profile":"master-1080p"}},
+    {"id":"saveMaster","type":"storage.put","typeVersion":1,
+      "parameters":{"storage":"master","source":"${nodes.master.output.file}","verifyChecksum":true}},
+    {"id":"proxy","type":"video.transcode","typeVersion":1,
+      "parameters":{"source":"${inputs.file}","profile":"proxy-720p"}},
+    {"id":"saveProxy","type":"storage.put","typeVersion":1,
+      "parameters":{"storage":"proxy","source":"${nodes.proxy.output.file}"}},
+    {"id":"audio","type":"audio.extract","typeVersion":1,
+      "parameters":{"source":"${inputs.file}","profile":"speech-opus"}},
+    {"id":"transcript","type":"ai.transcribe","typeVersion":1,
+      "parameters":{"source":"${nodes.audio.output.file}"}},
+    {"id":"index","type":"ai.index","typeVersion":1,
+      "parameters":{"assetId":"${nodes.register.output.id}","transcript":"${nodes.transcript.output}"}},
+    {"id":"ready","type":"catalog.mark_ready","typeVersion":1,
+      "parameters":{"assetId":"${nodes.register.output.id}","requires":["archive","master","proxy","transcript","index"]}}
+  ],
+  "connections": {
+    "register":["backup","master","proxy","audio"],
+    "master":["saveMaster"],
+    "proxy":["saveProxy"],
+    "audio":["transcript"],
+    "transcript":["index"],
+    "backup":["ready"],
+    "saveMaster":["ready"],
+    "saveProxy":["ready"],
+    "index":["ready"]
+  },
+  "settings":{"retry":3,"resumeOnFailure":true,"saveExecutionProgress":true}
+}
