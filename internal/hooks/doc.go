@@ -1,4 +1,5 @@
-// Package hooks: hook ordering, timeouts and failure policies (§8.1).
-//
-// Owner: component engine (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Package hooks applies lifecycle hooks (§8.1, I149): order across the global,
+// workflow and node levels, timeouts and failure policies. Running one action is
+// the job of hook.ActionRunner, usually a plugin process (D3). A hook is
+// synchronous; events are the asynchronous counterpart (package events).
 package hooks
