@@ -57,6 +57,7 @@ func DraftEditorial(ctx context.Context, llm connector.LLM, title, prompt string
 	out := Editorial{
 		Title:       oneLine(capRunes(answer.Title, maxTitleRunes)),
 		Description: capRunes(answer.Description, maxDescriptionRunes),
+		Tags:        []string{},
 		Generated:   true,
 		Model:       usage.Model,
 		Endpoint:    string(llm.Class()),
