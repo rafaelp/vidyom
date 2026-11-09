@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -110,6 +111,9 @@ type Call struct {
 	IdempotencyKey string
 	// NoTimeout removes the per-call timeout, for slow synchronous operations.
 	NoTimeout bool
+	// AcceptStatus lists non-2xx statuses whose body is the answer, such as the 503
+	// of an unhealthy GET /health.
+	AcceptStatus []int
 }
 
 // PathParam builds Call.Path for the common case of one parameter.
@@ -249,7 +253,7 @@ func (c *Client) Do(ctx context.Context, call Call, out any) error {
 		return c.transportError(ctx, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && !slices.Contains(call.AcceptStatus, resp.StatusCode) {
 		return decodeError(resp)
 	}
 	if out == nil || resp.StatusCode == http.StatusNoContent {
