@@ -1,6 +1,6 @@
 # Status of the first executable version
 
-The honest state of this tree, for comparing with the website and the README, which another session is writing as product copy. Where they differ, this file describes what the code does today. Nothing has been pushed, tagged or released. Results below are from one Mac Studio (macOS arm64, Docker Desktop with Linux arm64 containers); no Windows host and no x86-64 host has run any of this.
+The honest state of this tree, for comparing with the website and the README, which another session is writing as product copy. Where they differ, this file describes what the code does today. Nothing has been tagged or released. Results below are from one Mac Studio (macOS arm64, Docker Desktop with Linux arm64 containers); when they were taken, no Windows host and no x86-64 host had run any of this. [`docs/reports/2026-11-09-first-executable-version.md`](reports/2026-11-09-first-executable-version.md) records how this version was built and verified.
 
 The short version: **the whole lifecycle works end to end, on one host, natively and under Docker Compose, with a fake AI engine, a mock LLM, a mock destination and local storage.** Real AI models ran only by hand, on six short spoken stories (section 6). Nothing has talked to real YouTube, real GCS or a real LLM vendor.
 
@@ -74,7 +74,7 @@ Every result here is from the last run on this machine, at the commit that added
 | `cd library && npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e` | The public library | All pass: 199 unit, 32 over HTTP |
 | `make fmt-check check-static cross` | Formatting, the CLI and worker free of cgo and database code, cross-compilation for 6 targets | Pass |
 
-The suite natively ran on macOS arm64 only. Linux has run only as the containers of `make e2e-compose`, on arm64. **`.github/workflows/ci.yml` has never run**, because nothing has been pushed.
+The suite natively ran on macOS arm64 only. Linux has run only as the containers of `make e2e-compose`, on arm64. **Every result in this file is local.** `.github/workflows/ci.yml` first ran with the push of 2026-11-09, after they were taken; GitHub Actions has its result.
 
 **Reliability under load** (I292). The failures reported from the parallel stage were traced and fixed in `internal/plugins`, `connectors/storage/local`, `internal/observability` and `nodes/video`. `internal/workers`' earlier failures did not come back in any run here, and are not claimed fixed.
 
