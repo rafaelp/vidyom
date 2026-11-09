@@ -46,6 +46,7 @@ The library shows only fields present in the file. It computes nothing that look
 - A generation is validated on open: `meta` present, `schema_version` equal to `1`, required keys, required tables. Outcomes: `ready`, `missing`, `invalid`, `unsupported_schema`.
 - Queries run synchronously inside one `withSnapshot` call, so one page reads from one generation. A SQLite error during a snapshot drops the generation and retries once from a fresh `stat`.
 - Nothing is cached across generations. Facets, metadata index and the vector matrix hang off the generation object and die with it.
+- It fails closed: a replacement that does not validate stops the site serving rather than keeping the previous file, since the previous file may hold a withdrawn video. An `invalid` state is re-checked every 5 seconds even if the `stat` is unchanged.
 
 Pages are `force-dynamic` with no full-route or CDN cache, because withdrawal must be immediate (D17, R15).
 
@@ -78,7 +79,9 @@ Response shape, `snake_case` per I15:
       "kind": "clip",
       "url": "/videos/...",
       "matched_by": ["lexical", "semantic"],
+      "matched_in": ["title", "transcript"],
       "score": 0.0327,
+      "snippet": [{ "text": "...", "match": false }],
       "moments": [
         {
           "source": "transcript",
@@ -95,9 +98,9 @@ Response shape, `snake_case` per I15:
 }
 ```
 
-`mode` is `lexical` or `hybrid`. When it is `lexical`, `semantic.reason` says why: `no_vectors`, `no_embedder`, `dimension_mismatch`, `embedder_error`, `too_many_vectors`, `invalid_vectors`, `disabled` or `not_requested`. The UI turns these into plain sentences.
+`mode` is `lexical` or `hybrid`. When it is `lexical`, `semantic.reason` says why: `no_vectors`, `no_embedder`, `dimension_mismatch`, `embedder_error`, `too_many_vectors`, `invalid_vectors`, `disabled` or `not_requested`. The UI turns these into plain sentences. `score` only orders one response; it is not comparable between responses.
 
-Filters: `kind`, `category`, `language`, `speaker`, `tag`, on both the list page and search. Paging: `page`, `limit` (max 50).
+Request: `q` (required, at most 256 characters), `mode` (`auto` by default, or `lexical`), `kind`, `category`, `language`, `speaker`, `tag`, `page`, `limit` (default 20, max 50). Errors use `{ "error": { "code", "message" } }`: `400 query_required`, `400 query_too_long`, `400 invalid_parameter`, `503 dataset_unavailable` with `Retry-After`. Filters also apply on the list page. A query with no searchable word is a `200` with no results.
 
 ## 5. Embedders
 
@@ -135,10 +138,11 @@ Rules:
 - Everything works without JavaScript: forms are GET, chapters are links. JavaScript adds live search, the embed swap and the theme toggle.
 - The player is a facade. The destination's iframe loads only when the visitor asks, so a page view makes no request to a destination except its thumbnail, with `referrerPolicy="no-referrer"`.
 - Position links: `?t=<seconds>` on our own page seeks the embed. External links get a position only when `supports_timestamps` is set, with a per-driver URL form.
-- Destination URLs are rendered only when `http:` or `https:`.
+- Destination links are rendered only when `http:` or `https:`. Embeds and thumbnails only when `https:`, since CSP and mixed content rule out the rest.
+- A transcript renders its first 300 segments, with a link to the rest, because a three-hour recording would otherwise send over a megabyte twice.
 - Theme: a cookie written only when the visitor uses the toggle, read on the server, so no inline script and no flash. No cookie means `prefers-color-scheme`.
-- CSP with a per-request nonce from `proxy.ts`. No third-party scripts, analytics or font hosts. Fonts are self-hosted from `@fontsource-variable` packages.
-- SEO: metadata per page, canonical when the site URL is configured, Open Graph, `VideoObject` JSON-LD with `Clip` parts for chapters, sitemap from the current file.
+- CSP with a per-request nonce from `proxy.ts`. No third-party scripts, analytics or font hosts. Fonts are self-hosted from `@fontsource-variable` packages. Next.js telemetry is disabled in `next.config.ts`.
+- SEO: metadata per page, canonical when the site URL is configured, Open Graph, `VideoObject` JSON-LD with `Clip` parts for chapters, sitemap from the current file. Search and filtered list pages are `noindex`. `?t=` pages are canonical to the bare video URL.
 
 ## 7. Configuration
 
@@ -154,7 +158,7 @@ Rules:
 | `VIDYOM_LIBRARY_EMBED_TIMEOUT_MS` | `5000` | Timeout before falling back to lexical |
 | `VIDYOM_LIBRARY_MIN_SIMILARITY` | `0.3` | Floor for the AI worker embedder (**Validate**) |
 
-All are read at request time, so one build serves any tenant.
+All are read at request time, so one build serves any tenant. A relative `VIDYOM_PUBLIC_DB` resolves against the working directory; use an absolute path outside `npm start`.
 
 ## 8. Tests
 
@@ -188,5 +192,5 @@ Also: `npm run typecheck`, `npm run lint`, `npm run build`. A browser pass at ph
 ## 10. Coordination
 
 - `publishing`: the reader relies on `meta.schema_version` and required keys, on a single checkpointed file being renamed into place, and on `search_fts.start_seconds` being numeric for `chapter` and `transcript` rows. Tolerated: `NULL`, `''` or `0` for `title` and `description`.
-- `integration`: env variables above, `GET /api/health`, standalone output for the image, Node 22.13 or later.
+- `integration`: env variables above, `GET /api/health`, standalone output for the image through `VIDYOM_LIBRARY_STANDALONE=1` at build time, Node 22.13 or later. Mount the **directory** holding `public.db`, never the single file: a rename does not propagate through a single-file bind mount, so the site would keep serving a withdrawn video.
 - No schema change is planned.
