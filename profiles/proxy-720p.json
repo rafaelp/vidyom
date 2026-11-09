@@ -1,0 +1,10 @@
+{
+  "id": "proxy-720p",
+  "version": 1,
+  "description": "Lightweight proxy for player, previews and navigation (§4.1, §4.2, D40): H.264, CRF 28, preset slow, at most 720p, AAC 96 kbps.",
+  "selector": { "family": "proxy" },
+  "video": { "codec": "libx264", "profile": "high", "preset": "slow", "crf": 28, "maxHeight": 720, "pixelFormat": "yuv420p" },
+  "audio": { "codec": "aac", "bitrate": "96k" },
+  "container": "mp4",
+  "faststart": true
+}

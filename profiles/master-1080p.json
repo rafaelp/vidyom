@@ -1,0 +1,10 @@
+{
+  "id": "master-1080p",
+  "version": 1,
+  "description": "Working master for sources up to 1080p (D14, I184): H.264 High, CRF 18, preset slow, at most 1080p, AAC 192 kbps.",
+  "selector": { "family": "master", "maxSourceHeight": 1439 },
+  "video": { "codec": "libx264", "profile": "high", "preset": "slow", "crf": 18, "maxHeight": 1080, "pixelFormat": "yuv420p" },
+  "audio": { "codec": "aac", "bitrate": "192k" },
+  "container": "mp4",
+  "faststart": true
+}

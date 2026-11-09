@@ -1,0 +1,10 @@
+{
+  "id": "master-2160p-hevc",
+  "version": 1,
+  "description": "Working master for larger sources (D14, I184): HEVC, CRF 20, preset slow, at most 2160p, AAC 192 kbps. Keeps 10-bit when the source has it.",
+  "selector": { "family": "master", "minSourceHeight": 1440 },
+  "video": { "codec": "libx265", "preset": "slow", "crf": 20, "maxHeight": 2160 },
+  "audio": { "codec": "aac", "bitrate": "192k" },
+  "container": "mp4",
+  "faststart": true
+}
