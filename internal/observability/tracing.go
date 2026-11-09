@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"crypto/rand"
 	"net/http"
 	"time"
 
@@ -82,6 +83,21 @@ func (f *spanFanout) OnEnd(s sdktrace.ReadOnlySpan) {
 // StartSpan starts a span on the global provider. attrs carry tenant_id, job_id and so
 // on as string pairs; a value holding a secret is redacted before export.
 func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	return otel.Tracer(tracerName).Start(ctx, name, trace.WithAttributes(attrs...))
+}
+
+// StartJobSpan starts a span in a job's trace, on any process that holds its trace ID
+// (§10.1). A job crosses processes and lives longer than any request, so there is no
+// parent span in hand, only the ID it was given when it was submitted.
+func StartJobSpan(ctx context.Context, traceID, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
+	if id, err := trace.TraceIDFromHex(traceID); err == nil {
+		var parent trace.SpanID
+		if _, err := rand.Read(parent[:]); err == nil {
+			ctx = trace.ContextWithRemoteSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{
+				TraceID: id, SpanID: parent, TraceFlags: trace.FlagsSampled, Remote: true,
+			}))
+		}
+	}
 	return otel.Tracer(tracerName).Start(ctx, name, trace.WithAttributes(attrs...))
 }
 

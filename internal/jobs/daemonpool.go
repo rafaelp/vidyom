@@ -11,6 +11,8 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/node"
 	"github.com/rafaelp/vidyom/internal/contract/repo"
 	"github.com/rafaelp/vidyom/internal/contract/workerproto"
+	"github.com/rafaelp/vidyom/internal/observability"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // daemonPool consumes pool daemon. These nodes need the database or the vault (I7),
@@ -123,7 +125,13 @@ func (e *Engine) runDaemonTask(ctx context.Context, d jobqueue.Delivery) {
 	stopBeat := e.beat(runCtx, taskID, lease.LeaseID, desc.SupportsAbort, cancel)
 	defer stopBeat()
 
-	res, execErr := e.executeDaemon(runCtx, impl, desc, env, in)
+	spanCtx, span := observability.StartJobSpan(runCtx, job.TraceID, "node "+lease.NodeType,
+		attribute.String("tenant_id", string(lease.TenantID)),
+		attribute.String("job_id", string(job.ID)),
+		attribute.String("node_id", lease.NodeID),
+		attribute.Int("attempt", lease.Attempt))
+	res, execErr := e.executeDaemon(spanCtx, impl, desc, env, in)
+	observability.EndSpan(span, execErr)
 	switch {
 	case execErr == nil:
 		err = e.completeTask(ctx, lease.TenantID, store, lease.JobULID, lease.NodeID, taskID, lease.LeaseID, res)

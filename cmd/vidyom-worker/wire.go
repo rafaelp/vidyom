@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -14,6 +17,8 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/connector"
 	"github.com/rafaelp/vidyom/internal/contract/jobqueue"
 	"github.com/rafaelp/vidyom/internal/contract/node"
+	"github.com/rafaelp/vidyom/internal/contract/telemetry"
+	"github.com/rafaelp/vidyom/internal/observability"
 	"github.com/rafaelp/vidyom/internal/queue"
 	ainodes "github.com/rafaelp/vidyom/nodes/ai"
 	audionodes "github.com/rafaelp/vidyom/nodes/audio"
@@ -24,6 +29,48 @@ import (
 func init() {
 	wireRegistries = registerWorker
 	wireQueue = openQueue
+	wireMetrics = startMetrics
+}
+
+// metricsCloseTimeout bounds flushing exporters at shutdown.
+const metricsCloseTimeout = 10 * time.Second
+
+// startMetrics gives this worker its own exporters from the same configuration file.
+// Log sinks stay the daemon's: a worker logs to stderr, and a file sink there would mean
+// two writers. With a --metrics-addr, a Prometheus scraper reads this worker directly;
+// an OTLP exporter pushes on its own.
+func startMetrics(ctx context.Context, cfg config.Observability) (telemetry.Metrics, func(), error) {
+	registry := connector.NewRegistry()
+	observability.RegisterBuiltins(registry)
+	manager, err := observability.New(config.Observability{Metrics: cfg.Metrics, Traces: cfg.Traces}, observability.Options{
+		Service:  "vidyom-worker",
+		Registry: registry,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	manager.InstallGlobals()
+	stopSampler := observability.StartHostSampler(ctx, manager, observability.HostSamplerOptions{})
+	var server *http.Server
+	if metricsAddr != "" {
+		listener, err := net.Listen("tcp", metricsAddr)
+		if err != nil {
+			stopSampler()
+			_ = manager.Close(ctx)
+			return nil, nil, fmt.Errorf("listen for metrics: %w", err)
+		}
+		server = &http.Server{Handler: manager.MetricsHandler(), ReadHeaderTimeout: 10 * time.Second}
+		go func() { _ = server.Serve(listener) }()
+	}
+	return manager, func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), metricsCloseTimeout)
+		defer cancel()
+		if server != nil {
+			_ = server.Shutdown(closeCtx)
+		}
+		stopSampler()
+		_ = manager.Close(closeCtx)
+	}, nil
 }
 
 // registerWorker adds what this binary can run. nodes/publishing links cgo through

@@ -453,7 +453,11 @@ func (a aiEnv) Transcriber(ctx context.Context) (connector.Transcriber, error) {
 	if err != nil {
 		return nil, err
 	}
-	return factory(ctx, a.params())
+	opened, err := factory(ctx, a.params())
+	if err != nil {
+		return nil, err
+	}
+	return meteredTranscriber{opened, a.deps.Metrics, string(a.lease.TenantID)}, nil
 }
 
 // Embedder opens the configured embedding driver (I197).
@@ -462,5 +466,9 @@ func (a aiEnv) Embedder(ctx context.Context) (connector.Embedder, error) {
 	if err != nil {
 		return nil, err
 	}
-	return factory(ctx, a.params())
+	opened, err := factory(ctx, a.params())
+	if err != nil {
+		return nil, err
+	}
+	return meteredEmbedder{opened, a.deps.Metrics, string(a.lease.TenantID)}, nil
 }

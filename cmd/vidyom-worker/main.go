@@ -50,6 +50,9 @@ var wireQueue func(ctx context.Context, redis config.Redis) (jobqueue.Queue, fun
 // wire.go sets it, and the worker then records nothing.
 var wireMetrics func(ctx context.Context, observability config.Observability) (telemetry.Metrics, func(), error)
 
+// metricsAddr is --metrics-addr, read by wireMetrics.
+var metricsAddr string
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
 }
@@ -117,6 +120,7 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 	fs.DurationVar(&o.shutdownGrace, "shutdown-grace", 0, "how long running nodes may finish at shutdown; default 30s")
 	fs.DurationVar(&o.scratchMaxIdle, "scratch-max-idle", 0, "reap job scratch idle this long; default 168h")
 	fs.StringVar(&o.logLevel, "log-level", "info", "debug, info, warn or error")
+	fs.StringVar(&metricsAddr, "metrics-addr", "", "serve Prometheus metrics on this address, such as 127.0.0.1:9101; off when empty")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	if err := fs.Parse(args); err != nil {
 		return o, err

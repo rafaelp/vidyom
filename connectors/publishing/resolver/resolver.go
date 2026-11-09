@@ -14,6 +14,7 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/connector"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
+	"github.com/rafaelp/vidyom/internal/contract/telemetry"
 )
 
 // SecretsFor returns the secret resolver of one tenant.
@@ -32,11 +33,19 @@ type Resolver struct {
 	configs  config.TenantSource
 	secrets  SecretsFor
 
+	metrics  telemetry.Metrics
+
 	mu   sync.Mutex
 	open map[key]entry
 }
 
 var _ connector.PublishingResolver = (*Resolver)(nil)
+
+// WithMetrics records connector calls (§10.3). Without it nothing is recorded.
+func (r *Resolver) WithMetrics(m telemetry.Metrics) *Resolver {
+	r.metrics = m
+	return r
+}
 
 type key struct {
 	tenant      domain.TenantID
@@ -81,6 +90,9 @@ func (r *Resolver) Publishing(ctx context.Context, tenant domain.TenantID, desti
 	conn, err := factory(ctx, connector.PublishingParams{Tenant: tenant, Destination: destination, Config: dest, Secrets: secrets})
 	if err != nil {
 		return nil, err
+	}
+	if r.metrics != nil {
+		conn = meteredConnector{conn, r.metrics, string(tenant)}
 	}
 	r.open[k] = entry{fingerprint, conn}
 	return conn, nil

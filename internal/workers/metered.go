@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/connector"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
@@ -100,8 +101,14 @@ func (m *meteredStorage) count(n int) {
 	m.meter.add(opEgress, m.driver, m.Storage.Role(), int64(n))
 }
 
+func (m *meteredStorage) observe(start time.Time, err error) {
+	telemetry.ObserveConnector(m.meter.metrics, "storage", m.driver, string(m.meter.tenant), start, err)
+}
+
 func (m *meteredStorage) Get(ctx context.Context, key string) (io.ReadCloser, connector.ObjectInfo, error) {
+	start := time.Now()
 	rc, info, err := m.Storage.Get(ctx, key)
+	m.observe(start, err)
 	if err != nil {
 		return nil, info, err
 	}
@@ -109,7 +116,9 @@ func (m *meteredStorage) Get(ctx context.Context, key string) (io.ReadCloser, co
 }
 
 func (m *meteredStorage) DownloadRange(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	start := time.Now()
 	rc, err := m.Storage.DownloadRange(ctx, key, offset, length)
+	m.observe(start, err)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +128,9 @@ func (m *meteredStorage) DownloadRange(ctx context.Context, key string, offset, 
 // Put passes the source straight through, so a driver can still seek it to resume,
 // and counts the object's size once written.
 func (m *meteredStorage) Put(ctx context.Context, key string, r io.Reader, opts connector.PutOptions) (connector.ObjectInfo, error) {
+	start := time.Now()
 	info, err := m.Storage.Put(ctx, key, r, opts)
+	m.observe(start, err)
 	if err == nil {
 		m.meter.add(opIngress, m.driver, m.Storage.Role(), info.SizeBytes)
 	}
@@ -148,4 +159,31 @@ func (r countingReader) Read(p []byte) (int, error) {
 	n, err := r.ReadCloser.Read(p)
 	r.count(n)
 	return n, err
+}
+
+// meteredTranscriber and meteredEmbedder record calls to the AI connectors (§10.3).
+type meteredTranscriber struct {
+	connector.Transcriber
+	metrics telemetry.Metrics
+	tenant  string
+}
+
+func (m meteredTranscriber) Transcribe(ctx context.Context, req connector.TranscribeRequest) (domain.Transcript, error) {
+	start := time.Now()
+	out, err := m.Transcriber.Transcribe(ctx, req)
+	telemetry.ObserveConnector(m.metrics, "transcription", m.Info().Driver, m.tenant, start, err)
+	return out, err
+}
+
+type meteredEmbedder struct {
+	connector.Embedder
+	metrics telemetry.Metrics
+	tenant  string
+}
+
+func (m meteredEmbedder) Embed(ctx context.Context, req connector.EmbedRequest) (connector.EmbedResult, error) {
+	start := time.Now()
+	out, err := m.Embedder.Embed(ctx, req)
+	telemetry.ObserveConnector(m.metrics, "embedding", m.Info().Driver, m.tenant, start, err)
+	return out, err
 }

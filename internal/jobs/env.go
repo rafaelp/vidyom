@@ -20,10 +20,12 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/id"
 	"github.com/rafaelp/vidyom/internal/contract/node"
 	"github.com/rafaelp/vidyom/internal/contract/repo"
+	"github.com/rafaelp/vidyom/internal/contract/telemetry"
 	"github.com/rafaelp/vidyom/internal/contract/wfdef"
 	"github.com/rafaelp/vidyom/internal/events"
 	"github.com/rafaelp/vidyom/internal/workflow"
 	controlnodes "github.com/rafaelp/vidyom/nodes/control"
+	"time"
 )
 
 // nodeEnv implements node.DaemonEnv for pools engine and daemon, so all of it is
@@ -235,7 +237,25 @@ func (env *nodeEnv) LLM(ctx context.Context, asset domain.Asset) (connector.LLM,
 	if err != nil {
 		return nil, err
 	}
-	return factory(ctx, allowed[0], env.Secrets())
+	opened, err := factory(ctx, allowed[0], env.Secrets())
+	if err != nil {
+		return nil, err
+	}
+	return meteredLLM{opened, env.e.d.Metrics, string(env.Tenant())}, nil
+}
+
+// meteredLLM records calls to an LLM endpoint (§10.3).
+type meteredLLM struct {
+	connector.LLM
+	metrics telemetry.Metrics
+	tenant  string
+}
+
+func (m meteredLLM) Complete(ctx context.Context, req connector.ChatRequest) (connector.ChatResponse, error) {
+	start := time.Now()
+	out, err := m.LLM.Complete(ctx, req)
+	telemetry.ObserveConnector(m.metrics, "llm", m.Info().Driver, m.tenant, start, err)
+	return out, err
 }
 
 // Secrets implements node.DaemonEnv.

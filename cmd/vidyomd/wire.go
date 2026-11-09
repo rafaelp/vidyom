@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -266,7 +267,7 @@ func assemble(ctx context.Context, cfg config.Daemon) (_ daemon.Deps, cleanup fu
 		Plugins:  pluginRuntime,
 		Logger:   logger,
 	})
-	publishingResolver := pubresolver.New(connectors, tenantService, keys.Resolver)
+	publishingResolver := pubresolver.New(connectors, tenantService, keys.Resolver).WithMetrics(manager)
 	engine := jobs.New(jobs.Deps{
 		Tenants:    stores.Tenants,
 		Queue:      jobQueue,
@@ -358,7 +359,8 @@ func assemble(ctx context.Context, cfg config.Daemon) (_ daemon.Deps, cleanup fu
 		}},
 	}
 	deps.Reload = func(ctx context.Context) error {
-		return tenantService.Reload(ctx)
+		// Tenant files first: the manager reads each tenant's sinks from them again.
+		return errors.Join(tenantService.Reload(ctx), manager.Reload(ctx, cfg.Observability))
 	}
 	return deps, cleanup, nil
 }

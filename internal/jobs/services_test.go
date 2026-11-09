@@ -479,6 +479,8 @@ type fakeLLM struct {
 	endpoint config.LLMEndpoint
 }
 
+func (f fakeLLM) Name() string { return f.endpoint.Name }
+
 // TestDaemonEnv proves all of node.DaemonEnv, including config.AllowedEndpoints for
 // LLM (D8), through a node that uses it.
 func TestDaemonEnv(t *testing.T) {
@@ -528,11 +530,11 @@ func TestDaemonEnv(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if local.(fakeLLM).endpoint.Name != "lan" {
-				return errs.New(errs.CodeInternal, "local_only reached "+local.(fakeLLM).endpoint.Name)
+			if local.Name() != "lan" {
+				return errs.New(errs.CodeInternal, "local_only reached "+local.Name())
 			}
 			external, err := d.LLM(ctx, domain.Asset{ID: asset.ID, AIProcessing: domain.AIExternalAllowed})
-			if err != nil || external.(fakeLLM).endpoint.Name != "lan" {
+			if err != nil || external.Name() != "lan" {
 				return errs.New(errs.CodeInternal, "local first")
 			}
 			if err := d.Emit(ctx, nil, eventDraft()); err != nil {

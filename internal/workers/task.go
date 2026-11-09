@@ -15,6 +15,8 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/node"
 	"github.com/rafaelp/vidyom/internal/contract/telemetry"
 	"github.com/rafaelp/vidyom/internal/contract/workerproto"
+	"github.com/rafaelp/vidyom/internal/observability"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // failCodeCancelled is what a node aborted by the cancel flag reports (I194).
@@ -127,12 +129,18 @@ func (t *taskRun) execute() {
 	stopHeartbeat := t.heartbeat(ctx, cancel, desc, env)
 
 	started := w.cfg.Now()
-	result, execErr := safeExecute(ctx, t.internal, n, nodeEnv, node.Input{
+	spanCtx, span := observability.StartJobSpan(ctx, t.lease.TraceID, "node "+t.lease.NodeType,
+		attribute.String("tenant_id", string(t.lease.TenantID)),
+		attribute.String("job_id", string(t.lease.JobID)),
+		attribute.String("node_id", t.lease.NodeID),
+		attribute.Int("attempt", t.lease.Attempt))
+	result, execErr := safeExecute(spanCtx, t.internal, n, nodeEnv, node.Input{
 		Parameters:     t.lease.Parameters,
 		Attempt:        t.lease.Attempt,
 		IdempotencyKey: t.lease.IdempotencyKey,
 		LeaseID:        t.lease.LeaseID,
 	})
+	observability.EndSpan(span, execErr)
 	stopHeartbeat()
 	t.flushLogs()
 	// Plaintext inputs go now, not after re-delivery, which can last a daemon outage.

@@ -3,6 +3,8 @@
 // the OpenTelemetry API directly, and logging uses log/slog.
 package telemetry
 
+import "time"
+
 import "sort"
 
 // Labels are metric labels. tenant_id is mandatory on tenant-scoped metrics (D6).
@@ -136,3 +138,13 @@ var catalogIndex = func() []MetricSpec {
 	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })
 	return out
 }()
+
+// ObserveConnector records one connector call: its duration and, when it failed, a
+// failure (§10.3). Family is a connector family such as storage or publishing.
+func ObserveConnector(m Metrics, family, driver, tenant string, start time.Time, err error) {
+	labels := Labels{"family": family, "driver": driver, LabelTenant: tenant}
+	m.Observe(ConnectorDuration, time.Since(start).Seconds(), labels)
+	if err != nil {
+		m.Add(ConnectorFailures, 1, labels)
+	}
+}
