@@ -1995,6 +1995,7 @@
       "owner": "ai",
       "pool": "daemon",
       "sideEffect": "none",
+      "paid": true,
       "title": "Hybrid retrieval restricted to the asset, then complete-story boundaries (§3.2, §4.4). Works with no LLM, marking the result ambiguous (I28). segments is the top candidate.",
       "parameters": {
         "type": "object",
