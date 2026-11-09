@@ -499,8 +499,8 @@ type AuditMaintainer interface {
 	RecordExport(ctx context.Context, e AuditExport) error
 	ListExports(ctx context.Context) ([]AuditExport, error)
 	Anchor(ctx context.Context) (AuditAnchor, error)
-	// PruneExportedBefore removes records older than t that are at or below the
-	// last export, keeping an anchor. It returns how many it removed.
+	// PruneExportedBefore removes whole exported segments older than t, keeping an
+	// anchor at the last export boundary removed, and returns how many records went.
 	PruneExportedBefore(ctx context.Context, t time.Time) (int64, error)
 }
 
