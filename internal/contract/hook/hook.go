@@ -43,6 +43,9 @@ type Invocation struct {
 	AssetID    string          `json:"asset_id,omitempty"`
 	TraceID    string          `json:"trace_id,omitempty"`
 	Data       json.RawMessage `json:"data,omitempty"`
+	// IdempotencyKey is stable across retries of this hook at this point (§8.1). The
+	// runner fills it when empty.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 }
 
 // Result is a hook's answer. A hook that returns modified parameters goes

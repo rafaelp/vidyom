@@ -39,6 +39,23 @@ type Daemon struct {
 	Retention     Retention     `json:"retention"`
 	Observability Observability `json:"observability"`
 	Workflows     WorkflowDirs  `json:"workflows"`
+	Plugins       Plugins       `json:"plugins,omitzero"`
+}
+
+// Plugins configures the plugin runtime in daemon.json (I260, I265, I268). Tenants
+// grant permissions separately (I261).
+type Plugins struct {
+	// Dir is the installed plugin store. Empty means <dataDir>/plugins.
+	Dir string `json:"dir,omitempty"`
+	// InstallRoots are the only directories plugin install may read from. Empty
+	// means install is refused.
+	InstallRoots []string `json:"installRoots,omitempty"`
+	// RuntimePaths are extra paths a plugin may read and execute, such as a Python
+	// install a script plugin's shebang names. A host-level decision of the operator.
+	RuntimePaths []string `json:"runtimePaths,omitempty"`
+	// AllowUnsandboxed runs plugins with no OS sandbox where none is available,
+	// reported as isolation none. Without it they are refused.
+	AllowUnsandboxed bool `json:"allowUnsandboxed,omitempty"`
 }
 
 // Listeners configures how clients reach the daemon. There is no implicit

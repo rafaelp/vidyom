@@ -2,11 +2,16 @@
 // method set plugins speak over stdin/stdout (D3, I42). A plugin is a
 // distributable package that can add nodes, connectors, hooks and event
 // subscribers. schemas/plugin-manifest.v1.json validates manifests.
+//
+// In this version only hook actions and event subscriptions are activated; a
+// manifest providing nodes or connector drivers is refused at install (I269).
 package plugin
 
 import (
+	"context"
 	"encoding/json"
 
+	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/event"
 	"github.com/rafaelp/vidyom/internal/contract/hook"
 	"github.com/rafaelp/vidyom/internal/contract/node"
@@ -77,10 +82,44 @@ const (
 	MethodConnector    = "connector.invoke"
 )
 
-// InitializeParams starts a plugin session.
+// RPC methods a plugin calls on the daemon (I266). Each is checked against the
+// process's effective permissions.
+const (
+	// MethodHostSecret is a request for one granted secret. HostSecretParams to
+	// HostSecretResult. A name outside the effective list answers
+	// jsonrpc.CodeUnauthorized and is audited.
+	MethodHostSecret = "host.secret"
+	// MethodHostLog is a notification carrying one HostLogParams. It goes through
+	// redaction like any other log.
+	MethodHostLog = "host.log"
+)
+
+// HostSecretParams names the secret. Plugins never receive a secret any other way.
+type HostSecretParams struct {
+	Name string `json:"name"`
+}
+
+// HostSecretResult holds the value. It stays on the stdin pipe and in memory.
+type HostSecretResult struct {
+	Value string `json:"value"`
+}
+
+// HostLogParams is one structured log line from a plugin.
+type HostLogParams struct {
+	Level   string         `json:"level,omitempty"` // debug, info, warn, error
+	Event   string         `json:"event,omitempty"`
+	Message string         `json:"message,omitempty"`
+	Fields  map[string]any `json:"fields,omitempty"`
+}
+
+// InitializeParams starts a plugin session. A process serves one tenant (I262).
+// Permissions are the effective ones: the manifest's, narrowed by the tenant's
+// grant (I261). TempDir is empty unless job-temp was granted.
 type InitializeParams struct {
-	ProtocolVersion int         `json:"protocol_version"`
-	Permissions     Permissions `json:"permissions"`
+	ProtocolVersion int             `json:"protocol_version"`
+	Permissions     Permissions     `json:"permissions"`
+	TenantID        domain.TenantID `json:"tenant_id,omitempty"`
+	TempDir         string          `json:"temp_dir,omitempty"`
 }
 
 // InitializeResult is the plugin's answer.
@@ -126,4 +165,16 @@ type ConnectorInvokeParams struct {
 	Driver    string          `json:"driver"`
 	Operation string          `json:"operation"`
 	Params    json.RawMessage `json:"params"`
+}
+
+// EventSubscriber is how the Event Bus reaches plugins (§8.2, I270). Implemented
+// by component extensibility, called by component engine, which records deliveries
+// as plugin:<id> and retries on error. EventID is the idempotency key, because
+// delivery is at-least-once.
+type EventSubscriber interface {
+	// EventSubscribers returns the plugin IDs that may receive this type in this
+	// tenant: declared in the manifest and granted by the tenant.
+	EventSubscribers(ctx context.Context, tenant domain.TenantID, eventType event.Type) ([]string, error)
+	// DeliverEvent hands one event to one plugin, checking the grant again.
+	DeliverEvent(ctx context.Context, pluginID string, e event.Envelope) error
 }

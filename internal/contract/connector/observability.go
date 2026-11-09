@@ -36,7 +36,32 @@ type LogSink interface {
 	Close(ctx context.Context) error
 }
 
-// MetricPoint is a push exporter's unit.
+// LogQuery selects records from a sink that keeps them locally. An empty TenantID
+// means every record and is used only for daemon-level access; tenant-scoped
+// reads always set it.
+type LogQuery struct {
+	TenantID string
+	Since    time.Time // zero means no lower bound
+	MinLevel string    // debug, info, warn, error; empty means all
+	JobID    string
+	Limit    int
+	Cursor   string // opaque, from LogPage.NextCursor
+}
+
+// LogPage is one page, newest record first.
+type LogPage struct {
+	Records    []LogRecord
+	NextCursor string
+}
+
+// LogQuerier is an optional capability of a LogSink that keeps records locally,
+// used by GET /logs so logs stay available with no external sink (§10.1).
+type LogQuerier interface {
+	QueryLogs(ctx context.Context, q LogQuery) (LogPage, error)
+}
+
+// MetricPoint is a push exporter's unit. Value is a delta for a counter, the
+// current value for a gauge and one observation for a histogram.
 type MetricPoint struct {
 	Name   string
 	Kind   string // "counter", "gauge" or "histogram"

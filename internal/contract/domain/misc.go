@@ -178,4 +178,11 @@ type PluginRecord struct {
 	Enabled     bool            `json:"enabled"`
 	InstalledBy string          `json:"installed_by,omitempty"`
 	InstalledAt time.Time       `json:"installed_at,omitzero"`
+	// Isolation is the sandbox this host would run the plugin under: landlock,
+	// seatbelt or none (I260). Computed at read time, never stored.
+	Isolation string `json:"isolation,omitempty"`
+	// TenantGrant is what the requesting tenant granted, a plugin.Permissions
+	// document, absent when it granted nothing (I261). Computed at read time, never
+	// stored.
+	TenantGrant json.RawMessage `json:"tenant_grant,omitempty"`
 }

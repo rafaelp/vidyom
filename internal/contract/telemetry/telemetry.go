@@ -3,8 +3,18 @@
 // the OpenTelemetry API directly, and logging uses log/slog.
 package telemetry
 
+import "sort"
+
 // Labels are metric labels. tenant_id is mandatory on tenant-scoped metrics (D6).
 type Labels map[string]string
+
+// LabelTenant is the tenant label every metric carries (§10.3, D6).
+const LabelTenant = "tenant_id"
+
+// SystemTenant is the tenant_id of a measurement that belongs to no tenant, such
+// as a worker's CPU. The leading underscore cannot collide with a slug (I16). An
+// empty label would be the same as an absent one to Prometheus (I277).
+const SystemTenant = "_system"
 
 // Metrics records measurements.
 type Metrics interface {
@@ -47,4 +57,82 @@ const (
 	ExporterBacklog   = "vidyom_exporter_backlog"
 	ExporterDropped   = "vidyom_exporter_dropped_total"
 	ExporterDelay     = "vidyom_exporter_delay_seconds"
+
+	// Items of §10.3 that the names above did not cover (I277).
+	AITimeEstimate    = "vidyom_ai_time_estimate_seconds_total"
+	UsageQuantity     = "vidyom_usage_quantity_total" // operation, unit, month, tenant_id
+	StorageStored     = "vidyom_storage_stored_bytes" // role, driver
+	PluginFailures    = "vidyom_plugin_failures_total"
+	SecurityAnomalies = "vidyom_security_anomalies_total" // kind
 )
+
+// Kind says how a metric aggregates. Add goes with KindCounter, Set with KindGauge
+// and Observe with KindHistogram.
+type Kind string
+
+const (
+	KindCounter   Kind = "counter"
+	KindGauge     Kind = "gauge"
+	KindHistogram Kind = "histogram"
+)
+
+// MetricSpec is one metric's contract. Labels always include LabelTenant.
+type MetricSpec struct {
+	Name    string
+	Kind    Kind
+	Help    string
+	Labels  []string
+	Buckets []float64 // histograms only; nil means DurationBuckets
+}
+
+// DurationBuckets span a quick hook to a long transcode, in seconds.
+var DurationBuckets = []float64{0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60, 300, 600, 1800, 3600, 7200, 14400}
+
+// Catalog lists every metric of §10.3. Exporters use it for fixed label sets.
+var Catalog = []MetricSpec{
+	{Name: JobsByState, Kind: KindGauge, Help: "Jobs by state.", Labels: []string{"state", LabelTenant}},
+	{Name: NodeDuration, Kind: KindHistogram, Help: "Node execution time.", Labels: []string{"node_type", LabelTenant}},
+	{Name: WorkflowDuration, Kind: KindHistogram, Help: "Workflow execution time.", Labels: []string{"workflow_id", LabelTenant}},
+	{Name: PluginDuration, Kind: KindHistogram, Help: "Plugin call time.", Labels: []string{"plugin", "method", LabelTenant}},
+	{Name: ConnectorDuration, Kind: KindHistogram, Help: "Connector call time.", Labels: []string{"family", "driver", LabelTenant}},
+	{Name: ConnectorFailures, Kind: KindCounter, Help: "Connector call failures.", Labels: []string{"family", "driver", LabelTenant}},
+	{Name: NodeRetries, Kind: KindCounter, Help: "Node retries.", Labels: []string{"node_type", LabelTenant}},
+	{Name: NodeFailures, Kind: KindCounter, Help: "Node failures.", Labels: []string{"node_type", LabelTenant}},
+	{Name: StorageBytes, Kind: KindCounter, Help: "Bytes moved per logical role and provider.", Labels: []string{"role", "driver", "direction", LabelTenant}},
+	{Name: StorageStored, Kind: KindGauge, Help: "Bytes stored per logical role and provider.", Labels: []string{"role", "driver", LabelTenant}},
+	{Name: WorkerCPU, Kind: KindGauge, Help: "CPU cores of a worker.", Labels: []string{"worker", LabelTenant}},
+	{Name: WorkerGPU, Kind: KindGauge, Help: "GPUs of a worker.", Labels: []string{"worker", LabelTenant}},
+	{Name: WorkerMemory, Kind: KindGauge, Help: "Memory of a worker, in bytes.", Labels: []string{"worker", "kind", LabelTenant}},
+	{Name: WorkerDisk, Kind: KindGauge, Help: "Free disk of a worker, in bytes.", Labels: []string{"worker", "path", LabelTenant}},
+	{Name: QueueDepth, Kind: KindGauge, Help: "Tasks waiting per pool.", Labels: []string{"pool", LabelTenant}},
+	{Name: AICostEstimate, Kind: KindCounter, Help: "Estimated AI cost, in minor units.", Labels: []string{"operation", LabelTenant}},
+	{Name: AITimeEstimate, Kind: KindCounter, Help: "Estimated AI processing time.", Labels: []string{"operation", LabelTenant}},
+	{Name: UsageCostEstimate, Kind: KindCounter, Help: "Estimated cost per operation and month, in minor units.", Labels: []string{"operation", "month", LabelTenant}},
+	{Name: UsageQuantity, Kind: KindCounter, Help: "Usage per operation and month.", Labels: []string{"operation", "unit", "month", LabelTenant}},
+	{Name: BudgetPercent, Kind: KindGauge, Help: "Budget consumption, in percent.", Labels: []string{LabelTenant}},
+	{Name: AssetsNoBackup, Kind: KindGauge, Help: "Originals and derivatives without a verified backup.", Labels: []string{LabelTenant}},
+	{Name: ClipsInReview, Kind: KindGauge, Help: "Clips awaiting editorial review.", Labels: []string{LabelTenant}},
+	{Name: AuthFailures, Kind: KindCounter, Help: "Authentication failures.", Labels: []string{"reason", LabelTenant}},
+	{Name: AuthzDenials, Kind: KindCounter, Help: "Authorization denials.", Labels: []string{"permission", LabelTenant}},
+	{Name: SecurityAnomalies, Kind: KindCounter, Help: "Security anomalies.", Labels: []string{"kind", LabelTenant}},
+	{Name: PluginFailures, Kind: KindCounter, Help: "Plugin call failures.", Labels: []string{"plugin", "reason", LabelTenant}},
+	{Name: ExporterFailures, Kind: KindCounter, Help: "Failed writes to a telemetry exporter.", Labels: []string{"exporter", "kind", LabelTenant}},
+	{Name: ExporterBacklog, Kind: KindGauge, Help: "Entries waiting for a telemetry exporter.", Labels: []string{"exporter", "kind", LabelTenant}},
+	{Name: ExporterDropped, Kind: KindCounter, Help: "Entries dropped for a telemetry exporter.", Labels: []string{"exporter", "kind", LabelTenant}},
+	{Name: ExporterDelay, Kind: KindGauge, Help: "Delivery delay of a telemetry exporter's last batch.", Labels: []string{"exporter", "kind", LabelTenant}},
+}
+
+// Spec returns a metric's entry in Catalog.
+func Spec(name string) (MetricSpec, bool) {
+	i := sort.Search(len(catalogIndex), func(i int) bool { return catalogIndex[i].Name >= name })
+	if i < len(catalogIndex) && catalogIndex[i].Name == name {
+		return catalogIndex[i], true
+	}
+	return MetricSpec{}, false
+}
+
+var catalogIndex = func() []MetricSpec {
+	out := append([]MetricSpec(nil), Catalog...)
+	sort.Slice(out, func(a, b int) bool { return out[a].Name < out[b].Name })
+	return out
+}()
