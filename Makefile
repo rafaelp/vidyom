@@ -18,7 +18,7 @@ FORBIDDEN_DEPS := rqlite|sqlite-vec|internal/persistence
 
 CROSS_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: help all build vidyom vidyomd vidyom-worker test test-race vet fmt-check check-static cross check clean
+.PHONY: help all build vidyom vidyomd vidyom-worker test test-race test-python vet fmt-check check-static cross check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
@@ -41,6 +41,9 @@ test: ## Run all Go tests
 
 test-race: ## Run all Go tests with the race detector
 	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(GO) test -race ./...
+
+test-python: ## Run the Python AI worker's tests (standard library only)
+	cd aiworker && python3 -m unittest discover -s tests -t .
 
 vet: ## Run go vet
 	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(GO) vet ./...
