@@ -467,7 +467,12 @@ func (sc *scenario) stepSecrets(t *testing.T) {
 		t.Fatal("secret list shows the value")
 	}
 	sc.admin.ok(t, "secret", "test", "demo-token")
-	sc.viewer.refused(t, "forbidden", "secret", "add", "viewer-token", "--location", "server")
+	refused := exec.Command(sc.viewer.bin, "--json", "secret", "add", "viewer-token", "--location", "server")
+	refused.Env = sc.viewer.env()
+	refused.Stdin = strings.NewReader(value)
+	if out, err := refused.CombinedOutput(); err == nil || !strings.Contains(string(out), "forbidden") {
+		t.Errorf("a viewer's secret add: %v %s", err, out)
+	}
 
 	// Nothing that was ever a credential sits in plain text where it should not.
 	forbidden := map[string]string{"the secret's value": value}
