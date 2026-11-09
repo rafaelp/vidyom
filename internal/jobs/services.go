@@ -288,6 +288,15 @@ func (w workflowsService) Run(ctx context.Context, s service.Scope, workflowID s
 	if err != nil {
 		return api.RunWorkflowResponse{}, err
 	}
+	if req.DryRun && workflowID == "" && len(req.Definition) > 0 {
+		// A dry run reports what is wrong with a definition; it does not refuse it.
+		res := e.d.Validator.Validate(req.Definition)
+		if res.Definition == nil {
+			result := res.API()
+			return api.RunWorkflowResponse{Validation: &result}, nil
+		}
+		return w.dryRun(ctx, s, store, req.Definition, res.Definition, req)
+	}
 	raw, def, err := w.definition(workflowID, req)
 	if err != nil {
 		return api.RunWorkflowResponse{}, err

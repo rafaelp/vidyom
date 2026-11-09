@@ -154,21 +154,29 @@ func infoFor(infos []connector.Info, family connector.Family, driver string) (co
 
 func checkConnectors(is *issues, defs []*wfdef.Definition, env DryRunEnv) {
 	tenant := env.Tenant
+	reported := map[string]bool{}
+	once := func(nodeID, format string, args ...any) {
+		msg := fmt.Sprintf(format, args...)
+		if !reported[nodeID+msg] {
+			reported[nodeID+msg] = true
+			is.err(IssueConnector, nodeID, "", "%s", msg)
+		}
+	}
 	checkRole := func(nodeID string, role domain.StorageRole) (connector.Info, bool) {
 		inst, ok := tenant.Storages.Roles[role]
 		if !ok {
-			is.err(IssueConnector, nodeID, "", "storage role %s is not configured for this tenant", role)
+			once(nodeID, "storage role %s is not configured for this tenant", role)
 			return connector.Info{}, false
 		}
 		info, ok := infoFor(env.Connectors, connector.FamilyStorage, inst.Driver)
 		if !ok {
 			if env.Connectors != nil {
-				is.err(IssueConnector, nodeID, "", "storage role %s uses driver %s, which is not registered", role, inst.Driver)
+				once(nodeID, "storage role %s uses driver %s, which is not registered", role, inst.Driver)
 			}
 			return connector.Info{}, false
 		}
 		if !info.Available {
-			is.err(IssueConnector, nodeID, "", "storage driver %s is not available: %s", inst.Driver, info.Reason)
+			once(nodeID, "storage driver %s is not available: %s", inst.Driver, info.Reason)
 			return info, false
 		}
 		return info, true
@@ -378,9 +386,9 @@ func CheckClientCredentials(is *issues, def *wfdef.Definition, defs []*wfdef.Def
 		loc, known := location[name]
 		switch {
 		case known && loc == domain.SecretClient:
-			is.warn(IssueCredential, "", "", "%s references the client credential %s through %s; a job with a %s trigger runs with no client connected and can only use server or delegated credentials (R37)", def.ID, name, refs[name], def.Trigger.Type)
+			is.warn(IssueCredential, "", "", "%s references the client credential %s through %s; a job started by its %s trigger runs with no client connected and can only use server or delegated credentials (R37)", def.ID, name, refs[name], def.Trigger.Type)
 		case !known && env.SecretsKnown:
-			is.warn(IssueUnknownRef, "", "", "%s references credential %s through %s, which is not in the tenant vault; a job with a %s trigger can only use server or delegated credentials (R37)", def.ID, name, refs[name], def.Trigger.Type)
+			is.warn(IssueUnknownRef, "", "", "%s references credential %s through %s, which is not in the tenant vault; a job started by its %s trigger can only use server or delegated credentials (R37)", def.ID, name, refs[name], def.Trigger.Type)
 		}
 	}
 }

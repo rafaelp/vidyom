@@ -18,6 +18,7 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/connector"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
+	"github.com/rafaelp/vidyom/internal/contract/event"
 	"github.com/rafaelp/vidyom/internal/contract/hook"
 	"github.com/rafaelp/vidyom/internal/contract/id"
 	"github.com/rafaelp/vidyom/internal/contract/jobqueue"
@@ -584,3 +585,5 @@ type schedulerStart = scheduler.StartRequest
 func idULID(s string) id.ULID { return id.ULID(s) }
 
 type connectorSecrets = connector.SecretResolver
+
+func eventDraft() event.Draft { return event.Draft{Type: "custom.from_node"} }

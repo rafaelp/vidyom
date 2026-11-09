@@ -305,7 +305,7 @@ func (v *Validator) checkTrigger(is *issues, def *wfdef.Definition) {
 	if t.Type == wfdef.TriggerEvent || t.Type == wfdef.TriggerSchedule {
 		for _, name := range sortedSpecKeys(def.Inputs) {
 			if spec := def.Inputs[name]; spec.Required && len(spec.Default) == 0 {
-				is.err(IssueTrigger, "", "inputs."+name, "input %q is required, but nothing supplies inputs to a %s trigger", name, t.Type)
+				is.err(IssueTrigger, "", "inputs."+name, "input %q is required, but nothing supplies inputs when trigger %s starts this workflow", name, t.Type)
 			}
 		}
 	}

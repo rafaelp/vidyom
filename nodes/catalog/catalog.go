@@ -91,6 +91,19 @@ func Register(r node.Registrar) {
 	}
 }
 
+// liveAsset resolves an asset, treating a deleted one as gone: its friendly ID stays
+// burned, but nothing works on it any more (D17).
+func liveAsset(ctx context.Context, repos interface{ Assets() repo.AssetRepo }, ref string) (domain.Asset, error) {
+	a, err := repos.Assets().Get(ctx, id.Ref(ref))
+	if err != nil {
+		return domain.Asset{}, err
+	}
+	if a.DeletedAt != nil {
+		return domain.Asset{}, errs.NotFound("asset")
+	}
+	return a, nil
+}
+
 func invalid(format string, args ...any) error {
 	return errs.Newf(errs.CodeInvalidArgument, format, args...)
 }
@@ -439,7 +452,7 @@ func updateMetadata(ctx context.Context, env node.DaemonEnv, in node.Input) (nod
 	who := actor(ctx, env)
 	var friendly id.Friendly
 	err := env.Store().InTx(ctx, func(tx repo.TenantRepos) error {
-		a, err := tx.Assets().Get(ctx, id.Ref(p.AssetID))
+		a, err := liveAsset(ctx, tx, p.AssetID)
 		if err != nil {
 			return err
 		}
@@ -504,7 +517,7 @@ func setStatus(ctx context.Context, env node.DaemonEnv, in node.Input) (node.Res
 	who := actor(ctx, env)
 	var friendly id.Friendly
 	err := env.Store().InTx(ctx, func(tx repo.TenantRepos) error {
-		a, err := tx.Assets().Get(ctx, id.Ref(p.AssetID))
+		a, err := liveAsset(ctx, tx, p.AssetID)
 		if err != nil {
 			return err
 		}
@@ -543,7 +556,7 @@ func setFlags(ctx context.Context, env node.DaemonEnv, in node.Input) (node.Resu
 	}
 	var friendly id.Friendly
 	err := env.Store().InTx(ctx, func(tx repo.TenantRepos) error {
-		a, err := tx.Assets().Get(ctx, id.Ref(p.AssetID))
+		a, err := liveAsset(ctx, tx, p.AssetID)
 		if err != nil {
 			return err
 		}
@@ -612,7 +625,7 @@ func recordFile(ctx context.Context, env node.DaemonEnv, in node.Input) (node.Re
 		return node.Result{}, invalid("%v", err)
 	}
 	store := env.Store()
-	a, err := store.Assets().Get(ctx, id.Ref(p.AssetID))
+	a, err := liveAsset(ctx, store, p.AssetID)
 	if err != nil {
 		return node.Result{}, err
 	}
@@ -649,7 +662,7 @@ func recordProvenance(ctx context.Context, env node.DaemonEnv, in node.Input) (n
 		return node.Result{}, err
 	}
 	store := env.Store()
-	a, err := store.Assets().Get(ctx, id.Ref(p.AssetID))
+	a, err := liveAsset(ctx, store, p.AssetID)
 	if err != nil {
 		return node.Result{}, err
 	}
@@ -713,7 +726,7 @@ func nextVersion(ctx context.Context, env node.DaemonEnv, in node.Input) (node.R
 	}
 	var out map[string]any
 	err := env.Store().InTx(ctx, func(tx repo.TenantRepos) error {
-		a, err := tx.Assets().Get(ctx, id.Ref(p.AssetID))
+		a, err := liveAsset(ctx, tx, p.AssetID)
 		if err != nil {
 			return err
 		}
@@ -762,7 +775,7 @@ func markReady(ctx context.Context, env node.DaemonEnv, in node.Input) (node.Res
 	}
 	var friendly id.Friendly
 	err := env.Store().InTx(ctx, func(tx repo.TenantRepos) error {
-		a, err := tx.Assets().Get(ctx, id.Ref(p.AssetID))
+		a, err := liveAsset(ctx, tx, p.AssetID)
 		if err != nil {
 			return err
 		}
@@ -950,7 +963,7 @@ func getTranscript(ctx context.Context, env node.DaemonEnv, in node.Input) (node
 		return node.Result{}, err
 	}
 	store := env.Store()
-	a, err := store.Assets().Get(ctx, id.Ref(p.AssetID))
+	a, err := liveAsset(ctx, store, p.AssetID)
 	if err != nil {
 		return node.Result{}, err
 	}
