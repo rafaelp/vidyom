@@ -10,16 +10,16 @@ Decisions of the `publishing` component, numbered from its range `I220–I239` (
 
   | From | To |
   |---|---|
-  | `pending_approval` | `uploading`, `published`, `scheduled`, `failed`, `withdrawn` |
-  | `uploading` | `processing`, `failed`, `rejected_by_destination`, `withdrawn` |
+  | `pending_approval` | `uploading`, `processing`, `published`, `scheduled`, `failed`, `rejected_by_destination`, `withdrawn` |
+  | `uploading` | `processing`, `scheduled`, `failed`, `rejected_by_destination`, `withdrawn` |
   | `processing` | `published`, `scheduled`, `pending_approval`, `failed`, `rejected_by_destination`, `withdrawn` |
   | `scheduled` | `published`, `failed`, `rejected_by_destination`, `withdrawn` |
   | `published` | `rejected_by_destination`, `withdrawn` |
-  | `failed` | `uploading`, `processing`, `withdrawn` |
+  | `failed` | `uploading`, `processing`, `rejected_by_destination`, `withdrawn` |
   | `rejected_by_destination` | `withdrawn` |
   | `withdrawn` | none |
 
-  Repeating a state is allowed, so retries stay idempotent. Publishing again after a withdrawal creates a new `PUB-nnn`; the old record is history. A private-first upload that finished waits in `pending_approval`, which is what it is waiting for. `published` with visibility `private` is legal: the destination confirmed the video, nobody can see it, and D35 applies.
+  Repeating a state is allowed, so retries stay idempotent. Publishing again after a withdrawal creates a new `PUB-nnn`; the old record is history. A private-first upload that finished waits in `pending_approval`, which is what it is waiting for; once `publish.prepare` adopts it with an approval, `publish.await_processing` moves it back to `processing` until `publish.finalize` runs. `published` with visibility `private` is legal: the destination confirmed the video, nobody can see it, and D35 applies.
 - **Why.** §12.4 says each publication is an independent record, and the audit question "what happened to this upload" needs history.
 - **Revisit if.** The maintainer wants a dedicated `uploaded` state.
 
@@ -37,7 +37,7 @@ Decisions of the `publishing` component, numbered from its range `I220–I239` (
 
 ### I222. One active record per asset, version and destination
 
-- **Choice.** `publish.prepare` looks up its idempotency key first. If another job already has a record for the same asset, version and destination in any state except `failed`, `rejected_by_destination` or `withdrawn`, it adopts that record, keeps its idempotency key, and adds its own approval if the record has none. So a second `vidyom publish` of the same version to the same destination is not a second upload. `already_published` is true when the adopted record is `published`. A per-publication lock in the daemon stops `publish.upload` and `publish.withdraw` running at once on the same record; a second caller gets a transient error.
+- **Choice.** `publish.prepare` looks up its idempotency key first. If another job already has a record for the same asset, version and destination in any state except `failed`, `rejected_by_destination` or `withdrawn`, it adopts that record, keeps its idempotency key, and adds its own approval if the record has none. So a second `vidyom publish` of the same version to the same destination is not a second upload. `already_published` is true when the adopted record is `published` at the requested visibility. A different visibility is false, so the flow reaches `publish.finalize`, which requires a new approval (D7). A per-publication lock in the daemon stops `publish.upload` and `publish.withdraw` running at once on the same record; a second caller gets a transient error.
   `domain.Publication` has no tags field, and §7.3's list of recorded fields has none. So `tags` on `publish.prepare` merge into the asset's tags with a history entry, and uploads send the asset's tags.
 - **Why.** §15.5 forbids duplicate uploads, and YouTube has no server-side idempotency key, so the protection has to be here. Failed and rejected records stay as history, and a new attempt gets a fresh key, because the old key may have been recorded by the destination in a state that blocks it.
 - **Revisit if.** Per-destination tags are needed: that is an additive field that `core` must persist.
@@ -163,7 +163,7 @@ Decisions of the `publishing` component, numbered from its range `I220–I239` (
 
 ### I238. `Register` takes options, and the service lives with the nodes
 
-- **Choice.** `publishingnodes.Register(reg node.Registrar, opts ...Options)`, with `Options{Exporter, Connectors, PollMin, PollMax}`. The call shape of the master plan's section 9 still compiles. With no options every node registers, and `catalog.public.sync` and `mediacms.register` fail with `failed_precondition` saying they are not wired. `node.DaemonEnv` has no public catalog or external catalog accessor, and adding one would change an interface `engine` implements. `service.Publications` is `publishingnodes.NewService(ServiceDeps)`, because it shares the state rules with the nodes. `connector.PublishingResolver` is `connectors/publishing/resolver`, mirroring `connectors/storage/resolver`.
+- **Choice.** `publishingnodes.Register(reg node.Registrar, opts ...Options)`, with `Options{Exporter, Connectors, PollMin, PollMax}`. The call shape of the master plan's section 9 still compiles. With no options every node registers, and `catalog.public.sync` fails with `failed_precondition` saying it is not wired; `mediacms.register` records `catalog_sync = failed` as I235 requires. `node.DaemonEnv` has no public catalog or external catalog accessor, and adding one would change an interface `engine` implements. `service.Publications` is `publishingnodes.NewService(ServiceDeps)`, because it shares the state rules with the nodes. `connector.PublishingResolver` is `connectors/publishing/resolver`, mirroring `connectors/storage/resolver`.
 - **Why.** Section 7 forbids adding methods to `DaemonEnv`; section 9 allows extra options.
 - **Revisit if.** `integration` prefers these accessors on the environment.
 

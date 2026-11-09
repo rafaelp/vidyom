@@ -63,6 +63,7 @@ stateDiagram-v2
   failed --> processing: reconcile found it
   processing --> published: URL returned (R43)
   processing --> pending_approval: private-first, uploaded and waiting
+  pending_approval --> processing: adopted with an approval
   pending_approval --> published: approved, URL returned
   pending_approval --> scheduled
   processing --> scheduled
@@ -212,7 +213,7 @@ publishingnodes.Register(nodeReg, publishingnodes.Options{Exporter: exporter, Co
 pubs := publishingnodes.NewService(publishingnodes.ServiceDeps{...})
 ```
 
-`publishingnodes.Register(reg)` with no options still registers every node so validation works, and `catalog.public.sync` and `mediacms.register` then fail with a clear "not wired" error.
+`publishingnodes.Register(reg)` with no options still registers every node so validation works. `catalog.public.sync` then fails with a clear "not wired" error, and `mediacms.register` records `catalog_sync = failed`.
 
 ## 12. Tests
 
