@@ -84,7 +84,7 @@ Decisions the `engine` component took to fill gaps, in the format of [`docs/deci
 
 ### I152. Timers are a sweep, not an in-memory wheel
 
-- **Choice.** Every second a sweeper asks `advance` to look at each active job, which handles leases, backoff, `flow.wait` and approval timeouts by comparing deadlines with the clock; jobs in `waiting_approval` are looked at every 30 s. Every 30 s reconciliation re-enqueues `queued` nodes missing from Redis. Direct wake-ups cover the common paths. All intervals are options on `jobs.Deps`.
+- **Choice.** `advance` handles leases, backoff, `flow.wait` and approval timeouts by comparing deadlines with the clock, and remembers the job's next deadline in memory. Every second a sweeper wakes the active jobs whose deadline has come, and any job not looked at for 30 s; an empty memory after a restart only means one extra look. Every 30 s reconciliation re-enqueues `queued` nodes missing from Redis. Direct wake-ups cover the common paths. The intervals are options on `jobs.Deps`.
 - **Why.** The database is the source of truth, so there is no timer state to rebuild after a restart. One host and SQLite make the cost negligible at this scale. Reconciling periodically and not only at startup means `FLUSHALL` under a running daemon heals too (§1.1 step 13).
 - **Revisit if.** Tenants hold many thousands of active jobs.
 
@@ -137,3 +137,15 @@ Decisions the `engine` component took to fill gaps, in the format of [`docs/deci
 - **Choice.** Input names follow §6.3 and §6.4: `ingest-original` takes `file`, `title`, `category`, `create-clip` takes `source_id`, `prompt`, `publish-video` takes `assetId`, `destinations`, `requireApproval`, and `delete-asset` takes `asset_id` as `api` calls it (I132). Helpers added: `publish-private-first` and `publish-upload-private` (D37), `verify-asset` (one asset of `verify-storage`), `expire-render` (one asset of `expire-unapproved-renders`) and `purge-deleted-archives` with `purge-archive-object` (D17's deferred purge). Catalog entries added: `catalog.get_transcript` for `reindex-asset`, `catalog.list_purgeable_archives` for the purge. `ingest-original` omits `mediacms.register`, since §6.3 says it appears only for tenants that enabled it, and they override the file (I22, D24). `public-library-on-updated` has no filter: `catalog.public.sync` rebuilds from approved records, so a metadata change is reflected too, not only a visibility drop (R15). A derivative's backup is written at ingest, because R11 makes a verified backup part of readiness and §3.2 step 11 and §15.2 item 5 ask for it, although D16 says approved masters are what is archived; `expire-unapproved-renders` removes only the `master` copy (I45), so the archive keeps a rejected render until its class allows deleting it, which is flagged rather than resolved here.
 - **Why.** `flow.foreach` takes a workflow, and §10 lists only the outer ones. The purge has no other home, and D17 states it as decided.
 - **Revisit if.** The maintainer wants these named differently.
+
+---
+
+## Disagreements found, not resolved in the sources
+
+| # | Where | Disagreement | This implementation |
+|---|---|---|---|
+| 1 | D16 vs R11, §3.2 step 11, §15.2 item 5 | D16 archives approved masters and expires unapproved renders; R11 requires a verified backup before a derivative is ready, so every render reaches the archive at ingest | Backup at ingest, as R11 and §15.2 require. `expire-unapproved-renders` removes the `master` copy only, so a rejected render's archive copy has no sweep yet (I159). A maintainer decision is needed |
+| 2 | §6.4 vs I21 | The example uses `requiredStatus: ready_for_clipping`, which would refuse a clip of a clip already published | `requireClipEligible` (I21) |
+| 3 | §6.3 vs the node catalog | The example's `ai.index` has no `assetId`, which the catalog requires | The shipped `ingest-original` passes it; the example stays as the spec's illustration (R26 calls it minimal) |
+| 4 | Master plan 3.6 vs D11 | "Any `OutcomeUnknown` that cannot be reconciled" could include an idempotent node; D11 says idempotent is retried with its key | Retried (I148) |
+| 5 | §6.2 vs the node catalog | §6.2 lists `flow.if` with a condition and no way to name branches, while the title says "branch" | One output, and a second `flow.if` for the other branch (I140) |
