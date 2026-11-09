@@ -104,8 +104,12 @@ func SetDefault(t *Tool) {
 var versionPattern = regexp.MustCompile(`^ffmpeg version n?(\d+)\.(\d+)`)
 
 // Version returns the first line's version, such as "9.0.2", for provenance (R21).
-func (t *Tool) Version(ctx context.Context) (string, error) {
+// It runs once for the process, so it does not use a task's context: a cancelled
+// task must not leave every later task without a version.
+func (t *Tool) Version(context.Context) (string, error) {
 	t.versionOnce.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 		out, err := t.output(ctx, t.FFmpeg, "-hide_banner", "-version")
 		if err != nil {
 			t.versionErr = err

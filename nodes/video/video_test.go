@@ -49,7 +49,7 @@ func probeFile(t *testing.T, path string) ffmpeg.Info {
 	return info
 }
 
-// withServerFile makes a fixture reachable as a server: input.
+// withServerRoot makes a directory reachable through server: inputs.
 func withServerRoot(t *testing.T, h *workertest.Harness) string {
 	t.Helper()
 	root := t.TempDir()
@@ -166,6 +166,45 @@ func TestTranscodeMasterAndProxyAreNeverUpscaled(t *testing.T) {
 	}
 	info := probeFile(t, h.ScratchPath(master.Field("file")))
 	if info.VFR || info.AudioCodec != "aac" {
+		t.Fatalf("%+v", info)
+	}
+}
+
+func TestTranscodeRoundsOddDimensionsDown(t *testing.T) {
+	h := workertest.New(t)
+	root := withServerRoot(t, h)
+	raw := fixture.Video(t, root, fixture.Spec{Seconds: 0.5, Width: 322, Height: 242, Filter: "crop=321:241"})
+	out := h.MustRun(ctx, nodeOf(t, "video.transcode"), "master", map[string]any{"source": "server:" + raw, "profile": "auto:master"})
+	if out.Number("width") != 320 || out.Number("height") != 240 {
+		t.Fatalf("%+v", out.Output)
+	}
+}
+
+// I184: a portrait 1080p recording is 1080p, not a 1920-line source to shrink or to
+// promote to HEVC.
+func TestAutoMasterKeepsAPortraitRecordingWhole(t *testing.T) {
+	h := workertest.New(t)
+	root := withServerRoot(t, h)
+	raw := fixture.Video(t, root, fixture.Spec{Seconds: 0.3, Width: 1080, Height: 1920, Rate: "10"})
+	out := h.MustRun(ctx, nodeOf(t, "video.transcode"), "master", map[string]any{"source": "server:" + raw, "profile": "auto:master"})
+	if out.Field("profile") != "master-1080p@1" || out.Number("width") != 1080 || out.Number("height") != 1920 {
+		t.Fatalf("%+v", out.Output)
+	}
+}
+
+// D14: sources of 2160p keep 4K, in HEVC.
+func TestAutoMasterOf2160pIsHEVCAt2160p(t *testing.T) {
+	if !ffmpeg.Default().HasEncoder(ctx, "libx265") {
+		t.Skip("no libx265")
+	}
+	h := workertest.New(t)
+	root := withServerRoot(t, h)
+	raw := fixture.Video(t, root, fixture.Spec{Seconds: 0.4, Width: 3840, Height: 2160, Rate: "5", NoAudio: true})
+	out := h.MustRun(ctx, nodeOf(t, "video.transcode"), "master", map[string]any{"source": "server:" + raw, "profile": "auto:master"})
+	if out.Field("profile") != "master-2160p-hevc@1" || out.Number("height") != 2160 {
+		t.Fatalf("%+v", out.Output)
+	}
+	if info := probeFile(t, h.ScratchPath(out.Field("file"))); info.VideoCodec != "hevc" {
 		t.Fatalf("%+v", info)
 	}
 }
