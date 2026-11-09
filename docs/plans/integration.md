@@ -12,7 +12,7 @@ Status vocabulary: everything below is a **target** until its commit lands. `doc
 | 2 | `tests/e2e`, `make e2e` | All 13 steps of §1.1 pass with real binaries, real API, real Redis, real FFmpeg, the real Python worker process (fake engine), `local` storage, `mock` destination, mock LLM, real Next.js server, each step asserting its evidence |
 | 3 | `scripts/demo.sh` | Runs the lifecycle visibly, cleans up after itself, also when interrupted |
 | 4 | `deploy/`, `config/` | Images built on this host; the scenario passes against Compose under project `vidyom-dev-integration`; optional observability profile starts; torn down with its volumes |
-| 5 | Real-model proof, `tests/realmodels` or a script under `deploy/` | Ingest and search with faster-whisper large-v3 and BGE-M3 on CPU in the AI worker image, on real speech, with a paraphrase query. Real numbers reported, whatever they are |
+| 5 | Real-model proof, `tests/e2e/realmodels_test.go`, `make real-model-proof` | Ingest and search with faster-whisper large-v3 and BGE-M3 on CPU in the AI worker image, on real speech, with paraphrase queries. Real numbers reported, whatever they are |
 | 6 | `.github/workflows/ci.yml`, `CHANGELOG.md` | Go, Python, static checks, library, e2e. `docs.yml` and the dirty templates untouched |
 | 7 | `docs/status.md` | What is real, mock-only, skeleton, gapped, **Validate**; how to run it; quick start |
 
@@ -28,7 +28,7 @@ Two phases, because `wireDeps` also runs for `vidyomd init` with `cfg.Bootstrapp
 4. `authentication`, `authorization`, `tenants`, `catalog`. `Deps.Bootstrap` over `tenants.Bootstrap`.
 5. If `Bootstrapping`: return now, with no Redis.
 6. Connector registry: storage (`local`, `gcs`), AI (`fasterwhisper`, `bgem3`, `openai`), publishing (`mock`, `youtube`, skeletons), catalog (`public`, skeletons), observability built-ins.
-7. Node registry: `controlnodes`, `approvalnodes`, `catalognodes`, `ainodes`, `publishingnodes`, plus `storagenodes`, `videonodes`, `audionodes` so the validator and `node describe` see all types even though workers execute them. The daemon never leases media or AI pools.
+7. Node registry: `controlnodes`, `approvalnodes`, `catalognodes`, `ainodes`, `publishingnodes`. The validator knows the media nodes from the catalog (I280).
 8. `storage resolver`, `auditor.SetStorage(resolver)`; `publicexport`; `retrieval` wrapped in `catalog.NewSearchGuard`, required by I118.
 9. Plugin runtime, hooks dispatcher, Redis client and queue, workflow registry, scheduler, Event Bus, engine.
 10. `publishingnodes.NewService`, connectors service, `daemon.Deps` with engine, maintenance and health checks.
@@ -59,7 +59,7 @@ Before writing any assertions: start everything by hand against a temporary dire
 
 ## 4. Acceptance suite
 
-`tests/e2e`, Go test package, build tag `e2e` so `go test ./...` stays fast and needs nothing installed. `make e2e` builds the binaries and runs it serially.
+`tests/e2e`, Go test package, build tag `e2e` so `go test ./...` stays fast and needs nothing installed. `make e2e` builds the library and the binaries and runs it serially. `make e2e-compose` runs the same steps against Compose.
 
 Harness:
 
@@ -86,7 +86,7 @@ Images: `Dockerfile.vidyomd` (cgo, `libsqlite3-dev` at build time), `Dockerfile.
 
 ## 7. Real-model proof
 
-`deploy/realmodels/run.sh`: generate speech with `say`, build the `real` AI worker image, cache models in a Docker volume outside the repository, run the daemon and workers, ingest, search with a paraphrase sharing no content word with the speech. Print the transcription, timings and ranks. Not part of CI.
+`make real-model-proof`, a test sharing the suite's Compose harness: generate speech with `say`, build the `real` AI worker image, cache models in a Docker volume outside the repository, run the daemon and workers, ingest, search with paraphrases sharing no word with the speech. Write the transcription, timings and ranks to a report. Not part of CI (I291).
 
 ## 8. Order of work
 

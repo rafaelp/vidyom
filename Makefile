@@ -51,9 +51,11 @@ test-python: ## Run the Python AI worker's tests (standard library only)
 library: ## Install and build the public library
 	cd library && npm ci --no-audit --no-fund && NEXT_TELEMETRY_DISABLED=1 npm run build
 
+# Redis from PATH, or through mise when PATH only has a shim with no version set.
+E2E_REDIS := $(shell redis-server --version >/dev/null 2>&1 || echo "mise exec redis@8.8.0 --")
+
 e2e: library ## Run the §1.1 scenario with the real binaries, Redis, FFmpeg, Python and Next.js
-	@command -v redis-server >/dev/null 2>&1 || { echo "e2e needs redis-server on PATH (mise exec redis@8.8.0 -- make e2e, or install Redis)"; exit 1; }
-	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(GO) test -tags e2e -count=1 -timeout 40m -v ./tests/e2e
+	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(E2E_REDIS) $(GO) test -tags e2e -count=1 -timeout 40m -v ./tests/e2e
 
 e2e-compose: ## Run the same scenario against Docker Compose on this host
 	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' VIDYOM_E2E_TARGET=compose $(GO) test -tags e2e -count=1 -timeout 60m -v ./tests/e2e
