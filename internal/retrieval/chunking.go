@@ -82,6 +82,11 @@ func chunkWindows(sentences []Sentence) []domain.SearchChunk {
 func nextWindowStart(sentences []Sentence, first, last int) int {
 	span := sentences[last].End - sentences[first].Start
 	want := sentences[last].End - span*overlapRatio
+	// Overlap keeps context across a cut. Across a silence longer than the overlap
+	// there is none to keep, and reaching back could repeat a whole window.
+	if sentences[last+1].Start-sentences[last].End >= span*overlapRatio {
+		return last + 1
+	}
 	best, bestDistance := last+1, math.Abs(sentences[last+1].Start-want)
 	for i := first + 1; i <= last; i++ {
 		if distance := math.Abs(sentences[i].Start - want); distance < bestDistance {
@@ -108,7 +113,8 @@ func windowChunk(sentences []Sentence) domain.SearchChunk {
 }
 
 // splitLongSentences cuts sentences no window can hold, common in unpunctuated ASR
-// output, at word boundaries. A single word longer than the limit stays whole.
+// output, at word boundaries. A single word longer than the limit stays whole, the one
+// case where a window passes 60 s.
 func splitLongSentences(sentences []Sentence) []Sentence {
 	out := make([]Sentence, 0, len(sentences))
 	for _, s := range sentences {

@@ -252,7 +252,8 @@ func (c *Client) LastDescribed() (aiworker.InitializeResult, bool) {
 // Health asks the worker for its readiness.
 func (c *Client) Health(ctx context.Context) (aiworker.HealthResult, error) {
 	var out aiworker.HealthResult
-	return out, c.call(ctx, aiworker.MethodHealth, struct{}{}, &out)
+	err := c.call(ctx, aiworker.MethodHealth, struct{}{}, &out)
+	return out, err
 }
 
 // Shutdown asks the worker to finish in-flight work and exit.
@@ -280,13 +281,15 @@ func (c *Client) Transcribe(ctx context.Context, params aiworker.TranscribeParam
 		})
 		defer c.listeners.Delete(token)
 	}
-	return out, c.call(ctx, aiworker.MethodTranscribe, params, &out)
+	err := c.call(ctx, aiworker.MethodTranscribe, params, &out)
+	return out, err
 }
 
 // Embed computes vectors for at most aiworker.MaxEmbedBatch texts.
 func (c *Client) Embed(ctx context.Context, params aiworker.EmbedParams) (aiworker.EmbedResult, error) {
 	var out aiworker.EmbedResult
-	return out, c.call(ctx, aiworker.MethodEmbed, params, &out)
+	err := c.call(ctx, aiworker.MethodEmbed, params, &out)
+	return out, err
 }
 
 func (c *Client) call(ctx context.Context, method string, params, result any) error {

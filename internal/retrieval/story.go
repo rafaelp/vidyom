@@ -105,6 +105,7 @@ type proposal struct {
 // result comes from retrieval and is marked ambiguous (I28).
 func Find(ctx context.Context, req FindRequest) (FindResult, error) {
 	sentences := SplitSentences(req.Transcript)
+	req.Hits = onlyVersion(req.Hits, req.Version)
 	if len(sentences) == 0 || len(req.Hits) == 0 {
 		return FindResult{}, ErrNoMatch
 	}
@@ -243,7 +244,7 @@ func excerptOf(redacted []Sentence, intervals []Interval) string {
 const retrievalRationale = "Found by hybrid search. No LLM confirmed the narrative, so the boundaries are estimated from the surrounding sentences: review them."
 
 func retrievalProposals(req FindRequest, sentences []Sentence) []proposal {
-	hits := hitsOfVersion(req.Hits, req.Version)
+	hits := seeds(req.Hits)
 	if len(hits) == 0 {
 		return nil
 	}
@@ -257,14 +258,25 @@ func retrievalProposals(req FindRequest, sentences []Sentence) []proposal {
 	}
 }
 
-// hitsOfVersion keeps the best hits of the transcript's version, preferring speech
-// windows: a chapter hit spans too much to propose as a clip when a window also matched.
-func hitsOfVersion(hits []domain.SearchHit, version string) []domain.SearchHit {
+// onlyVersion drops hits of another version: their timestamps are on another timeline.
+func onlyVersion(hits []domain.SearchHit, version string) []domain.SearchHit {
+	if version == "" {
+		return hits
+	}
+	var out []domain.SearchHit
+	for _, hit := range hits {
+		if hit.Version == "" || hit.Version == version {
+			out = append(out, hit)
+		}
+	}
+	return out
+}
+
+// seeds keeps the best hits to build proposals from, preferring speech windows: a
+// chapter hit spans too much to propose as a clip when a window also matched.
+func seeds(hits []domain.SearchHit) []domain.SearchHit {
 	var windows, chapters []domain.SearchHit
 	for _, hit := range hits {
-		if version != "" && hit.Version != "" && hit.Version != version {
-			continue
-		}
 		if hit.Level == domain.ChunkChapter {
 			chapters = append(chapters, hit)
 		} else {

@@ -440,8 +440,13 @@ func TestHitsOfAnotherVersionAreIgnored(t *testing.T) {
 	for i := range req.Hits {
 		req.Hits[i].Version = "v2"
 	}
+	llm := &scriptedLLM{class: config.EndpointLocal}
+	req.LLM = llm
 	if _, err := Find(context.Background(), req); !errors.Is(err, ErrNoMatch) {
 		t.Fatalf("err = %v", err)
+	}
+	if len(llm.requests) != 0 {
+		t.Fatal("another version's timeline is no context")
 	}
 }
 

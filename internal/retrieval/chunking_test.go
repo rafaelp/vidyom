@@ -213,6 +213,22 @@ func TestChunkingAroundSilence(t *testing.T) {
 	}
 }
 
+// A long sentence before a silence must not be repeated by the next window.
+func TestChunkingDoesNotOverlapAcrossSilence(t *testing.T) {
+	transcript := domain.Transcript{Segments: []domain.TranscriptSegment{
+		{Start: 0, End: 2, Text: "Short opening."},
+		{Start: 2, End: 46, Text: "A long sentence that nearly fills the window by itself."},
+		{Start: 250, End: 260, Text: "Much later, after a silence."},
+	}}
+	chunks := ChunkTranscript(transcript, nil)
+	if len(chunks) != 2 {
+		t.Fatalf("chunks = %+v", chunks)
+	}
+	if chunks[1].StartSeconds != 250 {
+		t.Fatalf("second window = %+v", chunks[1])
+	}
+}
+
 func TestChapterLevel(t *testing.T) {
 	analysis := &domain.Analysis{
 		Available: true,

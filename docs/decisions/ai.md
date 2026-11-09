@@ -35,9 +35,9 @@ Component decisions for the first executable version, numbered `I200`–`I219` p
 - **Choice.** Strategy name `sentence-window-30-60s-overlap15@1`, stored per vector.
   - Sentences end at `.`, `!`, `?`, `…` and their CJK and Arabic forms followed by a space or the end of text. Timing comes from word timestamps; without them, proportional to characters inside the segment.
   - A window grows sentence by sentence until it reaches 45 s, the middle of the range, or until the next sentence would pass 60 s.
-  - The next window starts at the sentence whose start is closest to 15% of the closed window's span before its end, always at least one sentence further on, so chunking terminates.
+  - The next window starts at the sentence whose start is closest to 15% of the closed window's span before its end, always at least one sentence further on, so chunking terminates. Across a silence longer than that overlap it starts after the silence.
   - A sentence over 60 s, common in unpunctuated ASR output, is split at word boundaries, or proportionally when there are no words, into pieces of up to 45 s.
-  - A tail under 30 s starts earlier when earlier sentences exist, so it reaches 30 s. A recording under 30 s gets one short window. A silence that makes 30 s impossible yields a short window: spans never pass 60 s.
+  - A tail under 30 s starts earlier when earlier sentences exist, so it reaches 30 s. A recording under 30 s gets one short window. A silence that makes 30 s impossible yields a short window. Spans never pass 60 s, except for a single timed word longer than that, which cannot be split.
   - A chapter with a summary becomes one `chapter`-level chunk, `"<title>. <summary>"`, spanning the chapter.
 - **Why.** D15 fixes the numbers but not the edge cases. Overlap is measured in time, not sentences, because sentence length varies. Sentence boundaries always win over the exact 15%.
 - **Revisit if.** Retrieval quality on real content (Validate, D9) calls for other sizes: a new strategy name, then a reindex.
