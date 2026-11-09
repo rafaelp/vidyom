@@ -249,7 +249,7 @@ func (a *app) assetCommand() *cobra.Command {
 			if err := validateRef("asset", args[0]); err != nil {
 				return err
 			}
-			if err := a.confirm(fmt.Sprintf("Delete %s? This cannot be undone.", args[0]), yes); err != nil {
+			if err := a.confirm(cmd.Context(), fmt.Sprintf("Delete %s? This cannot be undone.", args[0]), yes); err != nil {
 				return err
 			}
 			resp, err := invoke[api.RunWorkflowResponse](cmd.Context(), a, apiclient.Call{Route: api.RouteAssetsDelete, Path: apiclient.PathParam("id", args[0])})

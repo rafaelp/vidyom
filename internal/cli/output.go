@@ -100,6 +100,17 @@ func (a *app) hintFor(coded *errs.Error) string {
 		return "check that the daemon is running and that 'vidyom server list' points at it"
 	case errs.CodeBudgetExceeded:
 		return "an admin can review it with 'vidyom budget show' and allow it with 'vidyom budget override'"
+	case errs.CodeNotFound:
+		// From the server, this also means another tenant's ID (§12.1).
+		if coded.RequestID == "" {
+			return ""
+		}
+		if name, entry, _, err := a.resolveServer(); err == nil {
+			if tenant, err := a.currentTenant(entry); err == nil && tenant != "" {
+				return fmt.Sprintf("looked in tenant %s on %s", tenant, name)
+			}
+		}
+		return ""
 	default:
 		return ""
 	}

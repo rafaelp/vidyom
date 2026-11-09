@@ -139,10 +139,7 @@ func (a *app) workflowSpecs(ctx context.Context, workflow, version string) (map[
 }
 
 func (a *app) ingestServerFile(cmd *cobra.Command, path string, flags ingestFlags) error {
-	if !filepath.IsAbs(path) {
-		return usagef("--server-path needs an absolute path on the server, got %q", path)
-	}
-	uri, err := domain.ParseUserInputURI("server:" + path)
+	uri, err := parseFileReference("server:" + path)
 	if err != nil {
 		return usagef("%v", err)
 	}
@@ -155,7 +152,7 @@ func (a *app) ingestServerFile(cmd *cobra.Command, path string, flags ingestFlag
 	if err != nil {
 		return err
 	}
-	inputs[fileInputName(specs)] = uri.String()
+	inputs[fileInputName(specs)] = uri
 	return a.runRegisteredWorkflow(cmd, flags.workflow, flags.version, inputs)
 }
 

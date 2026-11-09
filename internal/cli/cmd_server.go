@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -96,6 +97,18 @@ func (a *app) serverAddCommand() *cobra.Command {
 			if (add.ClientCert == "") != (add.ClientKey == "") {
 				return usagef("--client-cert and --client-key go together")
 			}
+			// Later commands run from anywhere, so stored paths must not depend on where
+			// this one ran.
+			for _, path := range []*string{&add.Socket, &add.CAFile, &add.ClientCert, &add.ClientKey} {
+				if *path == "" {
+					continue
+				}
+				abs, err := filepath.Abs(*path)
+				if err != nil {
+					return errs.Wrap(errs.CodeInvalidArgument, err, "cannot resolve "+*path)
+				}
+				*path = abs
+			}
 			// Fails early on a bad target, CA file or client certificate.
 			probe, err := a.newClient(name, &add, "")
 			if err != nil {
@@ -172,7 +185,7 @@ func (a *app) serverPairCommand() *cobra.Command {
 				return err
 			}
 			if code == "" {
-				code, err = a.readSecret("One-time pairing code: ")
+				code, err = a.readSecret(cmd.Context(), "One-time pairing code: ")
 				if err != nil {
 					return err
 				}

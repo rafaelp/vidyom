@@ -20,6 +20,9 @@ import (
 // event's data can hold a node output, capped at 32 MiB (I35), plus its encoding.
 const maxSSEEvent = 64 << 20
 
+// streamHeaderTimeout bounds the wait for a stream's first answer.
+const streamHeaderTimeout = time.Minute
+
 // Event is one frame of a Server-Sent Events stream.
 type Event struct {
 	ID   string
@@ -147,7 +150,7 @@ func (c *Client) Stream(ctx context.Context, opts StreamOptions) error {
 	lastID := opts.LastEventID
 	backoff := opts.MinBackoff
 	for {
-		progressed, serverDelay, err := c.streamOnce(ctx, opts, &lastID)
+		progressed, hint, err := c.streamOnce(ctx, opts, &lastID)
 		switch {
 		case err == nil:
 			return nil
@@ -164,8 +167,11 @@ func (c *Client) Stream(ctx context.Context, opts StreamOptions) error {
 			backoff = opts.MinBackoff
 		}
 		delay := backoff
-		if serverDelay != nil {
-			delay = *serverDelay
+		if asked, ok := serverDelay(err); ok && asked > delay {
+			delay = asked
+		}
+		if hint != nil && *hint > delay {
+			delay = min(*hint, maxServerDelay)
 		}
 		if opts.OnReconnect != nil {
 			opts.OnReconnect(err, delay)
@@ -212,8 +218,15 @@ func (c *Client) streamOnce(ctx context.Context, opts StreamOptions, lastID *str
 	if *lastID != "" {
 		req.Header.Set(api.HeaderLastEventID, *lastID)
 	}
+	// Only the wait for the headers is bounded here. Once the stream is open, the
+	// watchdog below takes over.
+	headerTimer := time.AfterFunc(streamHeaderTimeout, cancel)
 	resp, err := c.http.Do(req)
+	headerTimer.Stop()
 	if err != nil {
+		if ctx.Err() == nil && connCtx.Err() != nil {
+			return false, nil, errs.New(errs.CodeUnavailable, "the server accepted the stream but did not answer")
+		}
 		return false, nil, c.transportError(ctx, err)
 	}
 	defer resp.Body.Close()
@@ -221,7 +234,7 @@ func (c *Client) streamOnce(ctx context.Context, opts StreamOptions, lastID *str
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return false, nil, errs.Newf(errs.CodeFailedPrecondition, "the server answered %s on a stream", resp.Status)
 		}
-		return false, parseRetryAfter(resp), decodeError(resp)
+		return false, nil, decodeError(resp)
 	}
 	if mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mediaType != api.SSEContentType {
 		return false, nil, errs.Newf(errs.CodeFailedPrecondition, "expected an event stream, got %q", resp.Header.Get("Content-Type"))

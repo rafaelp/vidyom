@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -256,6 +257,54 @@ func TestStreamRejectsNonStreamAnswer(t *testing.T) {
 	err := c.Stream(context.Background(), apiclient.StreamOptions{Call: apiclient.Call{Route: api.RouteLogsStream}})
 	if err == nil {
 		t.Fatal("expected an error")
+	}
+}
+
+func TestStreamStopsOnPinMismatch(t *testing.T) {
+	srv := apitest.New(t)
+	url, _ := srv.ServeTLS()
+	c := httpsClient(t, url, strings.Repeat("ab", 32), token(testToken, nil))
+	err := c.Stream(context.Background(), streamOpts(nil))
+	var coded *errs.Error
+	if !errors.As(err, &coded) || coded.Details["reason"] != "tls_fingerprint_mismatch" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestStreamRespectsRetryHintsWithACap(t *testing.T) {
+	srv := apitest.New(t)
+	var connections atomic.Int32
+	srv.Handle(api.RouteJobsEvents, func(w http.ResponseWriter, _ *http.Request) {
+		switch connections.Add(1) {
+		case 1:
+			w.Header().Set("Retry-After", "86400")
+			apitest.WriteError(w, errs.New(errs.CodeUnavailable, "restarting"))
+		case 2:
+			apitest.WriteSSEHeaders(w)
+			_, _ = w.Write([]byte("retry: 7000\n\n"))
+		default:
+			apitest.WriteSSEHeaders(w)
+			apitest.WriteSSE(w, apitest.SSEFrame{Name: api.SSEEnd})
+		}
+	})
+	var slept []time.Duration
+	client, err := apiclient.New(apiclient.Options{
+		Endpoint: apiclient.Endpoint{Kind: apiclient.KindUnix, Socket: srv.ServeUnix()},
+		Tenant:   "acme",
+		Sleep: func(_ context.Context, d time.Duration) error {
+			slept = append(slept, d)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.Stream(context.Background(), streamOpts(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if len(slept) != 2 || slept[0] != 5*time.Minute || slept[1] != 7*time.Second {
+		t.Fatalf("slept = %v", slept)
 	}
 }
 

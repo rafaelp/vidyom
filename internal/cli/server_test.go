@@ -259,6 +259,16 @@ func TestServerAddListUseRemove(t *testing.T) {
 	}
 }
 
+func TestServerAddStoresAbsolutePaths(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("server", "add", "relative", "--socket", "run/vidyomd.sock")
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContains(t, h.config(), filepath.Join(cwd, "run/vidyomd.sock"))
+}
+
 func TestForceWithANewEndpointDropsTheCredential(t *testing.T) {
 	h := newHarness(t)
 	url, fp := addRemote(t, h)

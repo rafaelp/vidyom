@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -165,13 +166,11 @@ func parseInputs(values []string, specs map[string]wfdef.InputSpec) (map[string]
 func coerceInput(key, value string, spec wfdef.InputSpec) (any, error) {
 	switch {
 	case spec.Type == wfdef.InputFile, spec.Type == "" && key == "file":
-		// The four forms of R20. A bare absolute path is a server path, for
-		// compatibility with the examples. scratch:// and relative paths are refused.
-		uri, err := domain.ParseUserInputURI(value)
+		uri, err := parseFileReference(value)
 		if err != nil {
 			return nil, usagef("invalid --input %s: %v", key, err)
 		}
-		return uri.String(), nil
+		return uri, nil
 	case spec.Type == wfdef.InputNumber:
 		var number json.Number
 		if err := json.Unmarshal([]byte(value), &number); err != nil || number.String() != value {
@@ -205,6 +204,35 @@ func coerceInput(key, value string, spec wfdef.InputSpec) (any, error) {
 	default:
 		return value, nil
 	}
+}
+
+var windowsAbsolutePath = regexp.MustCompile(`^[A-Za-z]:[\\/]|^\\\\`)
+
+// isServerAbsolute judges a server path by its shape, not by this client's operating
+// system: a Windows client names paths on a Linux server, and the other way around.
+// The daemon applies its own rules (R20).
+func isServerAbsolute(path string) bool {
+	return strings.HasPrefix(path, "/") || windowsAbsolutePath.MatchString(path)
+}
+
+// parseFileReference validates a file input: the four forms of R20. A bare absolute
+// path is a server path, for compatibility with the examples. scratch:// and relative
+// paths are refused.
+func parseFileReference(value string) (string, error) {
+	for _, prefix := range []string{"upload:", "storage://", "import:", "scratch://"} {
+		if strings.HasPrefix(value, prefix) {
+			uri, err := domain.ParseUserInputURI(value)
+			if err != nil {
+				return "", err
+			}
+			return uri.String(), nil
+		}
+	}
+	path := strings.TrimPrefix(value, "server:")
+	if !isServerAbsolute(path) {
+		return "", fmt.Errorf("server path %q must be absolute; a file on this machine is uploaded with 'vidyom asset upload'", path)
+	}
+	return "server:" + path, nil
 }
 
 // validateRef checks a friendly ID or ULID argument before it reaches a path.

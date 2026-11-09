@@ -122,6 +122,28 @@ func TestCoerceNumberKeepsTheLiteral(t *testing.T) {
 	}
 }
 
+func TestParseFileReference(t *testing.T) {
+	good := map[string]string{
+		"/data/class.mp4":                  "server:/data/class.mp4",
+		"server:/data/class.mp4":           "server:/data/class.mp4",
+		`C:\data\class.mp4`:                `server:C:\data\class.mp4`, // a Windows server, from any client
+		"upload:UPL-001":                   "upload:UPL-001",
+		"storage://master/originals/x.mp4": "storage://master/originals/x.mp4",
+		"import:youtube-main/abc":          "import:youtube-main/abc",
+	}
+	for input, want := range good {
+		got, err := parseFileReference(input)
+		if err != nil || got != want {
+			t.Errorf("%q: got %q, %v; want %q", input, got, err, want)
+		}
+	}
+	for _, input := range []string{"", "class.mp4", "./class.mp4", "server:class.mp4", "upload:ORI-001", "storage://nowhere/x", "scratch://01JC0000000000000000000000/n/f", "import:nothing"} {
+		if got, err := parseFileReference(input); err == nil {
+			t.Errorf("%q: expected an error, got %q", input, got)
+		}
+	}
+}
+
 func TestSplitList(t *testing.T) {
 	got := splitList([]string{"a,b", " c ", ""})
 	if strings.Join(got, "|") != "a|b|c" {

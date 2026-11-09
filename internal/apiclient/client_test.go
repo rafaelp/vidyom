@@ -393,8 +393,9 @@ func TestTLS12ServerIsRefused(t *testing.T) {
 	url, fp := srv.ServeTLSConfig(&tls.Config{MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12})
 	c := httpsClient(t, url, fp, nil)
 	err := c.Do(context.Background(), apiclient.Call{Route: api.RouteHealth}, nil)
-	if err == nil {
-		t.Fatal("TLS 1.2 must be refused")
+	var coded *errs.Error
+	if !errors.As(err, &coded) || coded.Details["reason"] != "tls_version" {
+		t.Fatalf("TLS 1.2 must be refused with its own reason: %v", err)
 	}
 	if len(srv.Calls()) != 0 {
 		t.Fatal("no request may cross TLS 1.2")
@@ -413,8 +414,11 @@ func TestRedirectIsNotFollowed(t *testing.T) {
 	url, fp := srv.ServeTLS()
 	c := httpsClient(t, url, fp, token(testToken, nil))
 	err := c.Do(context.Background(), apiclient.Call{Route: api.RouteAssetsList}, nil)
-	if err == nil {
-		t.Fatal("a redirect must surface as an error")
+	if !errs.IsCode(err, errs.CodeFailedPrecondition) || !strings.Contains(err.Error(), "redirect") {
+		t.Fatalf("a redirect must surface as a clear error: %v", err)
+	}
+	if apiclient.IsTransient(err) {
+		t.Fatal("a redirect must not be retried")
 	}
 	if reached {
 		t.Fatal("the redirect was followed, which could leak the credential")

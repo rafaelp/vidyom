@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -86,15 +87,18 @@ func (a *app) forgetCredential(server string) {
 
 // readSecret takes a secret value through a no-echo prompt on a terminal, otherwise
 // from stdin, and never from an argument (R36).
-func (a *app) readSecret(prompt string) (string, error) {
+func (a *app) readSecret(ctx context.Context, prompt string) (string, error) {
 	var (
 		raw []byte
 		err error
 	)
 	if a.opts.StdinIsTerminal() {
 		fmt.Fprint(a.stderr(), prompt)
-		raw, err = a.opts.ReadPassword()
+		raw, err = a.opts.ReadPassword(ctx)
 		fmt.Fprintln(a.stderr())
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		if err != nil {
 			return "", errs.Wrap(errs.CodeInvalidArgument, err, "cannot read from the terminal")
 		}
@@ -119,7 +123,7 @@ func (a *app) readSecret(prompt string) (string, error) {
 
 // confirm asks a yes-or-no question on the terminal. With no terminal and no --yes it
 // refuses, because a script must decide explicitly (I178).
-func (a *app) confirm(question string, yes bool) error {
+func (a *app) confirm(ctx context.Context, question string, yes bool) error {
 	if yes {
 		return nil
 	}
@@ -127,11 +131,26 @@ func (a *app) confirm(question string, yes bool) error {
 		return errs.Newf(errs.CodeFailedPrecondition, "%s Refusing without a terminal; pass --yes to confirm", question)
 	}
 	fmt.Fprintf(a.stderr(), "%s [y/N] ", question)
-	line, err := readLine(a.opts.Stdin)
-	if err != nil {
-		return errs.Wrap(errs.CodeInvalidArgument, err, "cannot read the answer")
+	type answer struct {
+		line string
+		err  error
 	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
+	answered := make(chan answer, 1)
+	go func() {
+		line, err := readLine(a.opts.Stdin)
+		answered <- answer{line, err}
+	}()
+	var got answer
+	select {
+	case got = <-answered:
+	case <-ctx.Done():
+		fmt.Fprintln(a.stderr())
+		return ctx.Err()
+	}
+	if got.err != nil {
+		return errs.Wrap(errs.CodeInvalidArgument, got.err, "cannot read the answer")
+	}
+	switch strings.ToLower(strings.TrimSpace(got.line)) {
 	case "y", "yes":
 		return nil
 	default:

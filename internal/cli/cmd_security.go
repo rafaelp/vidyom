@@ -178,7 +178,7 @@ func (a *app) securityCommand() *cobra.Command {
 				return usagef("give --verify or --export, not both")
 			}
 			if verify {
-				result, err := invoke[domain.AuditVerification](ctx, a, apiclient.Call{Route: api.RouteAuditVerify, NoTimeout: true})
+				result, err := invoke[domain.AuditVerification](ctx, a, apiclient.Call{Route: api.RouteAuditVerify, Timeout: apiclient.LongCall})
 				if err != nil {
 					return err
 				}
@@ -194,7 +194,7 @@ func (a *app) securityCommand() *cobra.Command {
 				})
 			}
 			if export {
-				result, err := invoke[api.AuditExportResponse](ctx, a, apiclient.Call{Route: api.RouteAuditExport, Body: struct{}{}, NoTimeout: true})
+				result, err := invoke[api.AuditExportResponse](ctx, a, apiclient.Call{Route: api.RouteAuditExport, Body: struct{}{}, Timeout: apiclient.LongCall})
 				if err != nil {
 					return err
 				}

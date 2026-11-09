@@ -41,7 +41,6 @@ func (a *app) connectorCommand() *cobra.Command {
 func (a *app) storageCommand() *cobra.Command {
 	var (
 		verifyAsset             string
-		copyReq                 api.StorageCopyRequest
 		from, to                string
 		copyAsset               string
 		restoreAsset, restoreTo string
@@ -71,7 +70,7 @@ func (a *app) storageCommand() *cobra.Command {
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resp, err := invoke[api.StorageTestResponse](cmd.Context(), a, apiclient.Call{
-				Route: api.RouteStoragesTest, Path: apiclient.PathParam("role", args[0]), Body: struct{}{}, NoTimeout: true,
+				Route: api.RouteStoragesTest, Path: apiclient.PathParam("role", args[0]), Body: struct{}{}, Timeout: apiclient.LongCall,
 			})
 			if err != nil {
 				return err
@@ -92,7 +91,7 @@ func (a *app) storageCommand() *cobra.Command {
 			}
 			resp, err := invoke[api.StorageVerifyResponse](cmd.Context(), a, apiclient.Call{
 				Route: api.RouteStoragesVerify, Path: apiclient.PathParam("role", args[0]),
-				Body: api.StorageVerifyRequest{AssetID: verifyAsset}, NoTimeout: true,
+				Body: api.StorageVerifyRequest{AssetID: verifyAsset}, Timeout: apiclient.LongCall,
 			})
 			if err != nil {
 				return err
@@ -117,8 +116,10 @@ func (a *app) storageCommand() *cobra.Command {
 			if err := validateRef("asset", copyAsset); err != nil {
 				return err
 			}
-			copyReq = api.StorageCopyRequest{From: domain.StorageRole(from), To: domain.StorageRole(to), AssetID: copyAsset}
-			resp, err := invoke[api.RunWorkflowResponse](cmd.Context(), a, apiclient.Call{Route: api.RouteStoragesCopy, Body: copyReq})
+			resp, err := invoke[api.RunWorkflowResponse](cmd.Context(), a, apiclient.Call{
+				Route: api.RouteStoragesCopy,
+				Body:  api.StorageCopyRequest{From: domain.StorageRole(from), To: domain.StorageRole(to), AssetID: copyAsset},
+			})
 			if err != nil {
 				return err
 			}
@@ -170,7 +171,7 @@ func (a *app) storageCommand() *cobra.Command {
 				return a.emitRun(job)
 			}
 			a.showRestorePreview(preview)
-			if err := a.confirm(fmt.Sprintf("Restore %s from archive to %s?", restoreAsset, restoreTo), yes); err != nil {
+			if err := a.confirm(ctx, fmt.Sprintf("Restore %s from archive to %s?", restoreAsset, restoreTo), yes); err != nil {
 				if a.jsonOutput {
 					// A script sees the cost before deciding.
 					_ = a.writeJSON(struct {

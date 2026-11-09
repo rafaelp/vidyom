@@ -22,9 +22,16 @@ import (
 )
 
 const (
-	// defaultCallTimeout bounds a plain JSON call. Streams, uploads and calls that
-	// set Call.NoTimeout are bounded only by their context.
+	// defaultCallTimeout bounds a plain JSON call. Streams and chunks have their own
+	// limits; slow synchronous calls set Call.Timeout.
 	defaultCallTimeout = 5 * time.Minute
+
+	// LongCall is for calls that hash or scan a large amount of data on the server.
+	LongCall = 2 * time.Hour
+
+	// maxServerDelay caps a delay a server asks for, so a wrong header cannot hang a
+	// client for days.
+	maxServerDelay = 5 * time.Minute
 
 	maxErrorBody    = 1 << 20
 	maxResponseBody = 1 << 30
@@ -109,8 +116,8 @@ type Call struct {
 	Body any
 	// IdempotencyKey overrides the random key sent on mutating routes.
 	IdempotencyKey string
-	// NoTimeout removes the per-call timeout, for slow synchronous operations.
-	NoTimeout bool
+	// Timeout replaces the default per-call timeout.
+	Timeout time.Duration
 	// AcceptStatus lists non-2xx statuses whose body is the answer, such as the 503
 	// of an unhealthy GET /health.
 	AcceptStatus []int
@@ -239,11 +246,12 @@ func (c *Client) Do(ctx context.Context, call Call, out any) error {
 		body = bytes.NewReader(encoded)
 		contentType = "application/json"
 	}
-	if !call.NoTimeout {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, c.opts.CallTimeout)
-		defer cancel()
+	timeout := call.Timeout
+	if timeout == 0 {
+		timeout = c.opts.CallTimeout
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	req, _, err := c.request(ctx, call, body, contentType)
 	if err != nil {
 		return err
@@ -342,19 +350,45 @@ func cloneValues(v url.Values) url.Values {
 // is not the API's error format.
 func decodeError(resp *http.Response) error {
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-	var body errs.Body
-	if err := json.Unmarshal(raw, &body); err == nil && body.Error != nil && body.Error.Code != "" {
-		if body.Error.RequestID == "" {
-			body.Error.RequestID = resp.Header.Get(api.HeaderRequestID)
-		}
-		return body.Error
-	}
-	coded := errs.Newf(codeForStatus(resp.StatusCode), "the server answered %s", resp.Status)
-	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+	var (
+		body  errs.Body
+		coded *errs.Error
+	)
+	switch {
+	case json.Unmarshal(raw, &body) == nil && body.Error != nil && body.Error.Code != "":
+		coded = body.Error
+	case resp.StatusCode >= 300 && resp.StatusCode < 400:
 		coded = errs.Newf(errs.CodeFailedPrecondition, "the server answered %s, and this client does not follow redirects", resp.Status)
+	default:
+		coded = errs.Newf(codeForStatus(resp.StatusCode), "the server answered %s", resp.Status)
 	}
-	coded.RequestID = resp.Header.Get(api.HeaderRequestID)
+	if coded.RequestID == "" {
+		coded.RequestID = resp.Header.Get(api.HeaderRequestID)
+	}
+	if delay := parseRetryAfter(resp); delay != nil {
+		coded = coded.With(retryAfterDetail, delay.Seconds())
+	}
 	return coded
+}
+
+// retryAfterDetail carries a Retry-After header on a coded error.
+const retryAfterDetail = "retry_after_seconds"
+
+// serverDelay reads the delay a server asked for from a coded error, capped.
+func serverDelay(err error) (time.Duration, bool) {
+	var coded *errs.Error
+	if !errors.As(err, &coded) {
+		return 0, false
+	}
+	seconds, ok := coded.Details[retryAfterDetail].(float64)
+	if !ok || seconds < 0 {
+		return 0, false
+	}
+	delay := time.Duration(seconds * float64(time.Second))
+	if delay > maxServerDelay {
+		delay = maxServerDelay
+	}
+	return delay, true
 }
 
 func codeForStatus(status int) errs.Code {

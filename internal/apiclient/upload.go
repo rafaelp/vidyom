@@ -26,6 +26,10 @@ import (
 // record asks for (I172).
 const maxChunkBytes = 256 << 20
 
+// chunkTimeout bounds one PATCH, so a server that stopped answering cannot hang an
+// upload. A slow link retries the chunk from the server's offset.
+const chunkTimeout = 15 * time.Minute
+
 // Checkpoint is what survives a killed client (I172). It holds no file content.
 type Checkpoint struct {
 	Path           string `json:"path"`
@@ -356,7 +360,7 @@ func (c *Client) transfer(ctx context.Context, file *os.File, info os.FileInfo, 
 				Path:           PathParam("id", cp.UploadID),
 				Body:           struct{}{},
 				IdempotencyKey: DerivedKey("complete", cp.UploadULID, cp.UploadID),
-				NoTimeout:      true, // the server hashes the whole file before answering
+				Timeout:        LongCall, // the server hashes the whole file before answering
 			})
 		})
 		if err == nil {
@@ -492,6 +496,8 @@ func (c *Client) currentUpload(ctx context.Context, retry *retrier, uploadID str
 // not say; the caller then asks with GET (I171).
 func (c *Client) sendChunk(ctx context.Context, uploadID string, offset int64, chunk []byte) (int64, error) {
 	sum := sha256.Sum256(chunk)
+	ctx, cancel := context.WithTimeout(ctx, chunkTimeout)
+	defer cancel()
 	req, _, err := c.request(ctx, Call{Route: api.RouteUploadsChunk, Path: PathParam("id", uploadID)}, bytes.NewReader(chunk), "application/offset+octet-stream")
 	if err != nil {
 		return 0, err
@@ -506,14 +512,7 @@ func (c *Client) sendChunk(ctx context.Context, uploadID string, offset int64, c
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		err := decodeError(resp)
-		var coded *errs.Error
-		if errors.As(err, &coded) {
-			if delay := parseRetryAfter(resp); delay != nil {
-				return 0, coded.With("retry_after_seconds", delay.Seconds())
-			}
-		}
-		return 0, err
+		return 0, decodeError(resp)
 	}
 	if value := resp.Header.Get(api.HeaderUploadOffset); value != "" {
 		if next, err := strconv.ParseInt(value, 10, 64); err == nil {
@@ -551,7 +550,8 @@ func newRetrier(c *Client, opts UploadOptions) *retrier {
 func (r *retrier) progress() { r.count = 0 }
 
 // wait spends one attempt and sleeps, or returns the last error when the budget ran
-// out. Backoff is exponential with full jitter on its upper half.
+// out. Backoff is exponential with jitter on its upper half, and a server's
+// Retry-After extends it.
 func (r *retrier) wait(ctx context.Context, cause error) error {
 	if err := r.spend(cause); err != nil {
 		return err
@@ -561,11 +561,8 @@ func (r *retrier) wait(ctx context.Context, cause error) error {
 		delay = r.opts.MaxBackoff
 	}
 	delay = delay/2 + jitter(delay/2)
-	var coded *errs.Error
-	if errors.As(cause, &coded) {
-		if secs, ok := coded.Details["retry_after_seconds"].(float64); ok {
-			delay = time.Duration(secs * float64(time.Second))
-		}
+	if asked, ok := serverDelay(cause); ok && asked > delay {
+		delay = asked
 	}
 	if r.opts.OnRetry != nil {
 		r.opts.OnRetry(cause, delay)

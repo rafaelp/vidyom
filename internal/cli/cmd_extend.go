@@ -58,7 +58,7 @@ func (a *app) pluginCommand() *cobra.Command {
 				return err
 			}
 			path := args[0]
-			if !filepath.IsAbs(path) {
+			if !isServerAbsolute(path) {
 				if entry.Kind != apiclient.KindUnix {
 					return usagef("the plugin directory is on the server, so a remote server needs an absolute path")
 				}

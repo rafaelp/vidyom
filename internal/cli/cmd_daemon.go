@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -25,7 +26,10 @@ func (a *app) versionCommand() *cobra.Command {
 				APIVersion string               `json:"api_version"`
 				Server     *api.VersionResponse `json:"server,omitempty"`
 			}{Client: version.Version, APIVersion: version.APIVersion}
-			if server, err := invoke[api.VersionResponse](cmd.Context(), a, apiclient.Call{Route: api.RouteVersion}); err == nil {
+			// The client's own version must not wait on a host that does not answer.
+			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
+			defer cancel()
+			if server, err := invoke[api.VersionResponse](ctx, a, apiclient.Call{Route: api.RouteVersion}); err == nil {
 				out.Server = &server
 			}
 			return a.emit(out, func(w io.Writer) {

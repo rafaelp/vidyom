@@ -76,6 +76,31 @@ func TestJSONErrorsGoToStderrAsTheAPIFormat(t *testing.T) {
 	}
 }
 
+func TestNotFoundSaysWhichTenantWasSearched(t *testing.T) {
+	h := newHarness(t)
+	h.useTenant("acme")
+	h.srv.Error(api.RouteAssetsGet, errs.NotFound("asset"))
+	if code := h.run("asset", "show", "ORI-404"); code != 1 {
+		t.Fatalf("exit %d", code)
+	}
+	assertContains(t, h.stderr.String(), "tenant acme")
+}
+
+func TestInterruptedPromptExitsAsInterrupted(t *testing.T) {
+	h := newHarness(t)
+	h.useTenant("acme")
+	h.terminal = true
+	h.password = func() ([]byte, error) { return nil, errors.New("read interrupted") }
+	ctx, interrupt := context.WithCancel(context.Background())
+	interrupt()
+	if code := h.runContext(ctx, "secret", "add", "x", "--location", "server"); code != 130 {
+		t.Fatalf("exit %d, stderr %s", code, h.stderr.String())
+	}
+	if len(h.srv.Mutations()) != 0 {
+		t.Fatal("nothing may be sent")
+	}
+}
+
 func TestUsageErrorsInJSON(t *testing.T) {
 	h := newHarness(t)
 	if code := h.run("job", "status", "--json"); code != 2 {

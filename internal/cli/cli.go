@@ -40,8 +40,9 @@ type Options struct {
 	// StdinIsTerminal and StderrIsTerminal replace the terminal checks.
 	StdinIsTerminal  func() bool
 	StderrIsTerminal func() bool
-	// ReadPassword reads a line from the terminal without echo.
-	ReadPassword func() ([]byte, error)
+	// ReadPassword reads a line from the terminal without echo. It must return, with
+	// the terminal restored, when ctx ends.
+	ReadPassword func(ctx context.Context) ([]byte, error)
 	// Sleep replaces waits between retries.
 	Sleep func(ctx context.Context, d time.Duration) error
 	// SSHBinary replaces the ssh client program.
@@ -78,13 +79,7 @@ func (o Options) withDefaults() Options {
 	}
 	if o.ReadPassword == nil {
 		stdin := o.Stdin
-		o.ReadPassword = func() ([]byte, error) {
-			file, ok := stdin.(*os.File)
-			if !ok {
-				return nil, errors.New("standard input is not a terminal")
-			}
-			return term.ReadPassword(int(file.Fd()))
-		}
+		o.ReadPassword = func(ctx context.Context) ([]byte, error) { return readPassword(ctx, stdin) }
 	}
 	if o.Hostname == nil {
 		o.Hostname = os.Hostname
@@ -98,6 +93,36 @@ func (o Options) withDefaults() Options {
 func isTerminal(v any) bool {
 	file, ok := v.(*os.File)
 	return ok && term.IsTerminal(int(file.Fd()))
+}
+
+// readPassword reads without echo. On interruption it restores the terminal itself,
+// because the blocked read would otherwise leave echo off when the process exits.
+func readPassword(ctx context.Context, stdin io.Reader) ([]byte, error) {
+	file, ok := stdin.(*os.File)
+	if !ok {
+		return nil, errors.New("standard input is not a terminal")
+	}
+	fd := int(file.Fd())
+	state, err := term.GetState(fd)
+	if err != nil {
+		return nil, err
+	}
+	type result struct {
+		value []byte
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		value, err := term.ReadPassword(fd)
+		done <- result{value, err}
+	}()
+	select {
+	case r := <-done:
+		return r.value, r.err
+	case <-ctx.Done():
+		_ = term.Restore(fd, state)
+		return nil, ctx.Err()
+	}
 }
 
 // Execute runs the CLI as the wiring surface declares it (master plan, section 9).

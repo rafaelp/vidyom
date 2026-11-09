@@ -105,7 +105,7 @@ func (a *app) secretCommand() *cobra.Command {
 			} else if _, err := a.api(); err != nil {
 				return err
 			}
-			value, err := a.readSecret(fmt.Sprintf("Value of %s (not echoed): ", name))
+			value, err := a.readSecret(cmd.Context(), fmt.Sprintf("Value of %s (not echoed): ", name))
 			if err != nil {
 				return err
 			}
@@ -201,7 +201,7 @@ func (a *app) secretCommand() *cobra.Command {
 					return err
 				}
 			}
-			value, err := a.readSecret(fmt.Sprintf("New value of %s (not echoed): ", name))
+			value, err := a.readSecret(cmd.Context(), fmt.Sprintf("New value of %s (not echoed): ", name))
 			if err != nil {
 				return err
 			}

@@ -172,7 +172,7 @@ func (h *harness) options(ctx context.Context) cli.Options {
 		Now:              func() time.Time { return h.now },
 		StdinIsTerminal:  func() bool { return h.terminal },
 		StderrIsTerminal: func() bool { return false },
-		ReadPassword: func() ([]byte, error) {
+		ReadPassword: func(context.Context) ([]byte, error) {
 			if h.password == nil {
 				return nil, errors.New("no terminal in this test")
 			}

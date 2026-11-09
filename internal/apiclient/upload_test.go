@@ -211,6 +211,44 @@ func TestUploadGivesUpWithoutProgressAndKeepsCheckpoint(t *testing.T) {
 	}
 }
 
+func TestUploadHonorsRetryAfterWithACap(t *testing.T) {
+	srv := apitest.New(t)
+	uploads := srv.EnableUploads(testChunk)
+	var slept []time.Duration
+	client, err := apiclient.New(apiclient.Options{
+		Endpoint: apiclient.Endpoint{Kind: apiclient.KindUnix, Socket: srv.ServeUnix()},
+		Tenant:   "acme",
+		Sleep: func(_ context.Context, d time.Duration) error {
+			slept = append(slept, d)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	throttle := func(seconds string) func(http.ResponseWriter, *http.Request) bool {
+		return func(w http.ResponseWriter, _ *http.Request) bool {
+			w.Header().Set("Retry-After", seconds)
+			apitest.WriteError(w, errs.New(errs.CodeRateLimited, "slow down"))
+			return true
+		}
+	}
+	uploads.FailNextChunk(throttle("120"))
+	uploads.FailNextChunk(throttle("86400"))
+	path, _ := fixture(t, testChunk)
+	store := apiclient.FileCheckpoints{Dir: filepath.Join(t.TempDir(), "uploads")}
+	_, err = client.Upload(context.Background(), apiclient.UploadOptions{
+		Path: path, CheckpointKey: "k", Store: store, MinBackoff: time.Millisecond, MaxBackoff: 2 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(slept) != 2 || slept[0] != 120*time.Second || slept[1] != 5*time.Minute {
+		t.Fatalf("slept = %v", slept)
+	}
+}
+
 func TestUploadPermanentErrorStopsAtOnce(t *testing.T) {
 	env := newUploadEnv(t)
 	path, _ := fixture(t, testChunk)
