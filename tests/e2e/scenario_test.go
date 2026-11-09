@@ -1083,6 +1083,23 @@ func (sc *scenario) step10(t *testing.T) {
 	}
 	check()
 
+	// The pages a person reads, not only the API.
+	_, found := sc.librarySearch(t, "conscious breathing")
+	status, page, err := plainGet(sc.stack.LibraryURL() + found.Results[0].URL)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("the video page: %d %v", status, err)
+	}
+	if !strings.Contains(strings.ToLower(string(page)), "conscious breathing") {
+		t.Errorf("the video page does not show its title: %s", truncate(string(page), 300))
+	}
+	if !strings.Contains(string(page), "https://media.example.internal/") {
+		t.Error("the video page has no link to its destination")
+	}
+	status, _, err = plainGet(sc.stack.LibraryURL() + "/search?q=" + url.QueryEscape("conscious breathing"))
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("the search page: %d %v", status, err)
+	}
+
 	// Speaker search, which had no data before (§13.2).
 	if code, result := sc.librarySearch(t, "Maria Example"); code != http.StatusOK || len(result.Results) != 1 {
 		t.Errorf("search by speaker: %d %+v", code, result)
@@ -1102,7 +1119,7 @@ func (sc *scenario) step10(t *testing.T) {
 	// D34, R44: with the daemon dead, the library answers just the same.
 	sc.stack.KillDaemon(t)
 	check()
-	status, _, err := plainGet(sc.stack.LibraryURL() + "/")
+	status, _, err = plainGet(sc.stack.LibraryURL() + "/")
 	if err != nil || status != http.StatusOK {
 		t.Fatalf("the library's home page with no daemon: %d %v", status, err)
 	}
