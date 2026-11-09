@@ -1,0 +1,5 @@
+{
+  "catalogs": {
+    "publicLibrary": { "driver": "local-file", "parameters": { "directory": "/var/lib/vidyom/public" } }
+  }
+}

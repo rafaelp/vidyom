@@ -1,0 +1,77 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # The sqlite-vec bindings need the header at build time (I1). FFmpeg, Python and
+      # sqlite3 are used by real-process tests that otherwise skip themselves.
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libsqlite3-dev ffmpeg sqlite3
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: make fmt-check
+      - run: make vet
+      - run: make build
+      - run: make check-static
+      - run: make cross
+      - run: go test ./...
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: make test-python
+
+  library:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: library
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: library/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:e2e
+
+  e2e:
+    # The §1.1 scenario with the real binaries, fake AI engine, mock LLM and destination.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: library/package-lock.json
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq libsqlite3-dev ffmpeg sqlite3 redis-server
+      - run: make e2e

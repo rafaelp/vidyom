@@ -1,0 +1,28 @@
+{
+  "storages": {
+    "archive": {
+      "driver": "gcs",
+      "bucket": "acme-videos-archive",
+      "storageClass": "ARCHIVE",
+      "credentialsRef": "gcs-acme",
+      "usage": "backup_only"
+    },
+    "master": {
+      "driver": "gcs",
+      "bucket": "acme-videos-standard",
+      "prefix": "masters/",
+      "storageClass": "STANDARD",
+      "credentialsRef": "gcs-acme",
+      "usage": "operational"
+    },
+    "proxy": {
+      "driver": "gcs",
+      "bucket": "acme-videos-standard",
+      "prefix": "proxies/",
+      "storageClass": "STANDARD",
+      "credentialsRef": "gcs-acme",
+      "usage": "operational"
+    }
+  },
+  "archivePolicy": "approved_versions"
+}

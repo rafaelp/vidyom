@@ -1,0 +1,18 @@
+{
+  "publishing": {
+    "destinations": {
+      "youtube-main": {
+        "driver": "youtube",
+        "credentialsRef": "youtube-oauth",
+        "visibility": "private",
+        "allowPrivateUploadBeforeApproval": true
+      }
+    },
+    "defaults": {
+      "requireApproval": true,
+      "allowPrivateUploadBeforeApproval": false,
+      "uploadResumable": true,
+      "savePublicationRecord": true
+    }
+  }
+}

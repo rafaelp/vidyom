@@ -1,0 +1,11 @@
+{
+  "ai": {
+    "defaultProcessing": "local_only",
+    "llmEndpoints": [
+      { "name": "local-llm", "baseUrl": "http://llm.example.internal:11434/v1", "model": "llama3.1", "class": "local" },
+      { "name": "cloud", "baseUrl": "https://llm-gateway.example.internal/v1", "model": "large", "class": "external", "credentialsRef": "llm-gateway" }
+    ],
+    "embeddingModel": "bge-m3",
+    "transcriptionModel": "large-v3"
+  }
+}

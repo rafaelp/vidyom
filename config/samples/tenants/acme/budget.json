@@ -1,0 +1,7 @@
+{
+  "perUnitMinor": {
+    "ai.external": 0.002,
+    "storage.egress": 12,
+    "storage.archive.retrieval": 2
+  }
+}

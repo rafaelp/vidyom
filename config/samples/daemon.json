@@ -1,0 +1,35 @@
+{
+  "dataDir": "/var/lib/vidyom/data",
+  "scratchDir": "/var/lib/vidyom/work/scratch",
+  "cacheDir": "/var/lib/vidyom/work/cache",
+  "spoolDir": "/var/lib/vidyom/work/spool",
+  "listeners": {
+    "unix": { "path": "/run/vidyom/vidyomd.sock" },
+    "https": {
+      "interface": "tailscale0",
+      "port": 8443,
+      "tls": {
+        "mode": "files",
+        "certFile": "/etc/vidyom/tls/media.example.internal.crt",
+        "keyFile": "/etc/vidyom/tls/media.example.internal.key"
+      }
+    }
+  },
+  "redis": { "url": "redis://127.0.0.1:6379/0" },
+  "vault": { "unseal": { "provider": "systemd-creds", "itemName": "vidyom-master-key" } },
+  "ingestRoots": ["/var/lib/vidyom/ingest"],
+  "localUsers": [{ "uid": 1000, "email": "admin@example.com" }],
+  "aiWorker": { "endpoint": "unix:///run/vidyom/ai.sock", "engine": "real" },
+  "retention": { "logDays": 30, "jobDays": 90, "auditDays": 365, "unapprovedRenderDays": 30 },
+  "observability": {
+    "logs": {
+      "level": "info",
+      "sinks": [
+        { "id": "local", "driver": "file", "enabled": true, "parameters": { "path": "/var/lib/vidyom/data/logs/vidyomd.jsonl", "retentionDays": 30 } },
+        { "id": "loki", "driver": "loki", "enabled": true, "parameters": { "url": "https://logs.example.internal" }, "credentialsRef": "loki-token" }
+      ]
+    },
+    "metrics": [{ "id": "prometheus", "driver": "prometheus", "enabled": true }],
+    "traces": [{ "id": "otlp", "driver": "otlp", "enabled": true, "parameters": { "endpoint": "https://traces.example.internal" } }]
+  }
+}

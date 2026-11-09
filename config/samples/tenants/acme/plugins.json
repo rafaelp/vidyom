@@ -1,0 +1,8 @@
+{
+  "plugins": {
+    "sample-notifier": {
+      "enabled": false,
+      "permissions": { "filesystem": ["job-temp"], "events": ["publication.completed"] }
+    }
+  }
+}
