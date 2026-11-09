@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Contributing
 
-Vidyom is intended to become an open-source project available to any person or organization, although it originates from the MapaDeva use case.
+Vidyom is an open-source project under the Apache License 2.0, meant for any person or organization, although it originates from the MapaDeva use case.
 
 ## Contribution principles
 
@@ -15,7 +15,7 @@ Vidyom is intended to become an open-source project available to any person or o
 - Treat any user-supplied workflow JSON and plugin package as potentially untrusted.
 - Do not add APIs or CLI examples as if implemented until an integration test proves them.
 - Add schemas, capability declarations, idempotency tests, structured logs, audit and permission tests for every new node or connector.
-- Keep a public decision log and mark speculative designs as proposals.
+- Mark requirement status as **Decided**, **Proposed**, **Future** or **Validate**, and label speculative designs as proposals.
 
 ## Documentation changes
 
@@ -27,7 +27,7 @@ npm run typecheck
 npm run build
 ```
 
-Pull requests should explain whether they change a decided requirement or only a proposed technical implementation. Changes to established user decisions should receive explicit design approval before merging.
+Pull requests should explain whether they change a **Decided** requirement or only a **Proposed** technical implementation. Changes to a Decided requirement need maintainer approval in an issue before merging.
 
 ## Open-source governance
 

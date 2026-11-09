@@ -68,7 +68,7 @@ The runtime code will live alongside `website/`, following the [proposed reposit
 
 ## Contributing
 
-Contributions to the specification are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request. Everything in this project (code, documentation, comments and commit messages) is written in English.
+Contributions to the specification are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request. Everything in this project (code, documentation, comments and commit messages) is written in English, except the original Portuguese specification in [`spec/`](spec/).
 
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 

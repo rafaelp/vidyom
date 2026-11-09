@@ -6,7 +6,7 @@ sidebar_position: 1
 # CLI command reference
 
 :::warning Proposed interface
-The following commands describe the planned `vidyom` client. They are **not implemented or installable** from this documentation website.
+The following commands describe the planned `vidyom` client. They are **not implemented or installable** yet.
 :::
 
 ## Daemon and servers

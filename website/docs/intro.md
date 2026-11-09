@@ -18,6 +18,10 @@ This site is the **implementation specification**, not documentation for a relea
 
 A recording may be 10 GB or larger and contain many distinct stories. Vidyom preserves its raw original in archival storage, keeps a production-quality working master in direct-access storage, transcribes and indexes it, and makes it available for generating clips **at any future time** without touching the archive. Each approved clip becomes its own traceable asset, with its own backup, master, metadata, catalog entry, and optional publication to multiple providers.
 
+![Overview of the two Vidyom workflows: original ingestion builds a searchable library, and clip creation finds key moments, renders new videos and publishes them across channels.](/img/workflows-overview.webp)
+
+*Illustrative overview. The specified stages are described in [Workflow A — Ingest Original](./workflows/ingest-original.md) and [Workflow B — Create Semantic Clip](./workflows/create-clip.md).*
+
 ## Core principles
 
 1. **Originals first.** "Original" is a media asset category, not a synonym for lecture; content can be yoga lessons, courses, meetings, interviews, retreats, lectures, or other recordings.
@@ -37,3 +41,4 @@ A recording may be 10 GB or larger and contain many distinct stories. Vidyom pre
 - [System architecture](./architecture/overview.md)
 - [Ingest originals](./workflows/ingest-original.md)
 - [Create semantic clips](./workflows/create-clip.md)
+- [Source repository on GitHub](https://github.com/rafaelp/vidyom)

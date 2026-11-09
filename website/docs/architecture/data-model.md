@@ -31,9 +31,9 @@ The canonical catalog must outlive any individual vendor integration. MediaCMS i
   "status": "ready_for_clipping",
   "visibility": "private",
   "storage": {
-    "archive": "storage://archive/originais/ORI-001/original.mp4",
-    "master": "storage://master/originais/ORI-001/master.mp4",
-    "proxy": "storage://proxy/originais/ORI-001/proxy.mp4"
+    "archive": "storage://archive/originals/ORI-001/original.mp4",
+    "master": "storage://master/originals/ORI-001/master.mp4",
+    "proxy": "storage://proxy/originals/ORI-001/proxy.mp4"
   },
   "transcript": "ORI-001/transcript.json",
   "parents": [],

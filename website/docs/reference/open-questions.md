@@ -28,4 +28,4 @@ The architecture is settled at a high level, but these detailed choices should b
 
 ## Non-goals of the documentation site
 
-This Docusaurus repository is not a video player, not an interactive workflow designer and not a substitute for the runtime. Its role is to make contracts and decisions explicit for implementation and review.
+This documentation site is not a video player, not an interactive workflow designer and not a substitute for the runtime. Its role is to make contracts and decisions explicit for implementation and review.

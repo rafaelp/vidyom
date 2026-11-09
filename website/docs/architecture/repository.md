@@ -3,7 +3,30 @@ title: "Repository structure"
 sidebar_position: 1
 ---
 
-# Proposed repository layout
+# Repository layout
+
+## Current contents
+
+The [repository](https://github.com/rafaelp/vidyom) currently holds the specification only:
+
+```text
+vidyom/
+├── .github/                    # CI, Dependabot, issue and pull request templates
+├── spec/                       # Original product specification (Portuguese, v1.0 and v1.1)
+├── website/                    # This Docusaurus documentation site
+│   ├── docs/                   # Specification pages
+│   └── examples/               # Illustrative workflows, provider bindings and media profiles
+├── CODE_OF_CONDUCT.md
+├── CONTRIBUTING.md
+├── LICENSE                     # Apache License 2.0
+├── NOTICE
+├── README.md
+└── SECURITY.md
+```
+
+## Proposed runtime layout
+
+The runtime code will be added alongside `website/`:
 
 ```text
 vidyom/
@@ -48,6 +71,7 @@ vidyom/
 ├── profiles/
 ├── config/
 ├── tests/
+├── spec/                       # Original product specification
 └── website/                    # Docusaurus documentation
 ```
 
