@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -486,6 +487,30 @@ func TestAnalyzeExternalAllowedSendsWithoutSensitiveSpeech(t *testing.T) {
 	}
 	if result.Usage[0].Operation != "ai.external" {
 		t.Fatalf("usage = %+v", result.Usage)
+	}
+}
+
+// The selection D8 asks of env.LLM, with the real function and the real driver.
+func TestEndpointSelectionFollowsThePolicy(t *testing.T) {
+	server, _ := mockEndpoint(t, config.EndpointLocal)
+	web := httptest.NewServer(server)
+	t.Cleanup(web.Close)
+	external := config.LLMEndpoint{Name: "vendor", BaseURL: "https://llm.example.internal/v1", Model: "m", Class: config.EndpointExternal}
+	local := config.LLMEndpoint{Name: "local", BaseURL: web.URL + "/v1", Model: "m", Class: config.EndpointLocal}
+
+	env := newDaemonEnv(t)
+	env.store.PutAsset(original())
+	env.useAllowedEndpoints(t, external)
+	if analysis, _ := analyzeResult(t, env); analysis.Available || analysis.UnavailableReason != retrieval.ReasonNoEndpoint {
+		t.Fatalf("only an external endpoint on local_only: %+v", analysis)
+	}
+
+	env.useAllowedEndpoints(t, external, local)
+	if analysis, _ := analyzeResult(t, env); !analysis.Available || analysis.Endpoint != "local" {
+		t.Fatalf("the local endpoint must be chosen: %+v", analysis)
+	}
+	if len(server.Requests()) == 0 {
+		t.Fatal("the local endpoint was not asked")
 	}
 }
 
