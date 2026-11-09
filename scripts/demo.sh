@@ -244,20 +244,27 @@ good "with no master key configured it refuses: $output"
 spawn mock-llm "$ROOT/bin/vidyom-mock-llm" --listen "127.0.0.1:$MOCK_PORT"
 spawn vidyomd "$ROOT/bin/vidyomd" start --config-dir "$ROOT/config"
 DAEMON_PID=$LAST_PID
-for _ in $(seq 1 30); do
-  [ -S "$ROOT/run/vidyomd.sock" ] && break
-  sleep 1
-done
-[ -S "$ROOT/run/vidyomd.sock" ] || fail "the daemon did not start"
+wait_daemon() {
+  for _ in $(seq 1 30); do
+    curl -sfk -o /dev/null "https://127.0.0.1:$HTTPS_PORT/api/v1/health" && return 0
+    sleep 1
+  done
+  fail "the daemon did not start"
+}
+wait_daemon
 
 (cd aiworker && PYTHONDONTWRITEBYTECODE=1 exec python3 -m vidyom --engine fake --socket "$ROOT/run/ai.sock") >>"$ROOT/logs/ai-python.log" 2>&1 &
 PIDS+=($!)
+for _ in $(seq 1 30); do
+  [ -S "$ROOT/run/ai.sock" ] && break
+  sleep 1
+done
 start_workers() {
   spawn worker-media "$ROOT/bin/vidyom-worker" --config "$ROOT/config/daemon.json" --pools media \
-    --token-file "$ROOT/data/secrets/worker.token" --cpu-cores 8 --memory-mb 16384 --disk-mb 102400
+    --token-file "$ROOT/data/secrets/worker.token" --cpu-cores 8 --memory-mb 16384 --disk-mb 102400 --shutdown-grace 2s
   MEDIA_PID=$LAST_PID
   spawn worker-ai "$ROOT/bin/vidyom-worker" --config "$ROOT/config/daemon.json" --pools ai \
-    --token-file "$ROOT/data/secrets/worker.token" --cpu-cores 8 --memory-mb 16384 --disk-mb 102400
+    --token-file "$ROOT/data/secrets/worker.token" --cpu-cores 8 --memory-mb 16384 --disk-mb 102400 --shutdown-grace 2s
   AI_PID=$LAST_PID
 }
 start_workers
@@ -426,10 +433,12 @@ for _ in $(seq 1 600); do
 done
 [ "$state" = "running" ] || fail "the transcode never started"
 kill -9 "$DAEMON_PID"
+wait "$DAEMON_PID" 2>/dev/null || true
 good "kill -9 with the transcode running. The worker keeps encoding."
 sleep 2
 spawn vidyomd "$ROOT/bin/vidyomd" start --config-dir "$ROOT/config"
 DAEMON_PID=$LAST_PID
+wait_daemon
 wait_job editor "$JOB" completed
 attempts=$(as editor --json job status "$JOB" | json 'sorted({n["attempt"] for n in d["nodes"]})')
 good "$JOB completed after the restart; node attempts: $attempts"
