@@ -1,4 +1,8 @@
-// Package keyring: the client OS keyring, with no plaintext fallback (§9.1).
+// Package keyring is the client machine's OS keyring (§9.1): Keychain on macOS,
+// Credential Manager on Windows, Secret Service (GNOME Keyring, KWallet) on Linux.
+// There is no fallback. A client without a usable keyring gets
+// security.ErrKeyringUnavailable, and no code path writes a credential to a file
+// (§15.6).
 //
-// Owner: component core (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// The package is cgo-free and imports no database code, because the CLI links it.
 package keyring
