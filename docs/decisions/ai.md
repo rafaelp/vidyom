@@ -57,7 +57,7 @@ Component decisions for the first executable version, numbered `I200`–`I219` p
 
 ### I206. A failing LLM degrades; it does not block ingest
 
-- **Choice.** The driver retries 429, 5xx and connection errors up to 3 times with backoff. After that, or on invalid output after one more try, `ai.analyze` returns `available: false` with additive `unavailable_reason` (`no_endpoint_allowed`, `endpoint_failed` or `no_speech`), `ai.find_segment` returns retrieval candidates marked ambiguous and `ai.editorial` returns its fallback. Cancellation still propagates as cancellation. The failure is logged without content.
+- **Choice.** The driver makes up to 3 attempts on 429, 5xx and connection errors, with backoff. After that, or on invalid output after one more try, `ai.analyze` returns `available: false` with additive `unavailable_reason` (`no_endpoint_allowed`, `endpoint_failed` or `no_speech`), `ai.find_segment` returns retrieval candidates marked ambiguous and `ai.editorial` returns its fallback. Cancellation still propagates as cancellation. The failure is logged without content.
 - **Why.** The consolidated condition of §3.1 (R11) requires no analysis, so an LLM outage must not hold back `ready_for_clipping`. I28 states the fallback for a disallowed endpoint, and an unreachable one leaves the editor in the same place. `reindex-asset` regenerates the analysis later.
 - **Revisit if.** Operators want ingest to wait for analysis.
 
