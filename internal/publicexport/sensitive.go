@@ -16,13 +16,19 @@ type Interval struct {
 	End   float64
 }
 
+// maxLineageDepth bounds a walk along a lineage; real chains are short (D36).
+const maxLineageDepth = 16
+
 // SensitiveIntervals returns what must not reach anything public for an asset
-// version (D30): its own marks, plus each lineage source's marks mapped onto its
-// timeline. ai.index copies marks onto a derivative when it is indexed; reading the
-// sources here too means a mark added later still counts (I207, I231).
-//
-// An error means the answer is unknown, so callers release nothing timed.
+// version: its own marks plus every lineage source's, mapped onto its timeline through
+// the whole chain (D30, I231, I284). A mark added to a grandparent after a clip of a
+// clip was cut therefore still counts. A source that cannot be read is an error, which
+// the caller turns into withholding the text.
 func SensitiveIntervals(ctx context.Context, store repo.TenantRepos, asset domain.Asset, version string) ([]Interval, error) {
+	return sensitiveIntervals(ctx, store, asset, version, 0)
+}
+
+func sensitiveIntervals(ctx context.Context, store repo.TenantRepos, asset domain.Asset, version string, depth int) ([]Interval, error) {
 	own, err := store.Transcripts().Sensitive(ctx, id.Ref(asset.ID), version)
 	if err != nil {
 		return nil, err
@@ -34,6 +40,9 @@ func SensitiveIntervals(ctx context.Context, store repo.TenantRepos, asset domai
 	if asset.Lineage == nil {
 		return out, nil
 	}
+	if depth >= maxLineageDepth {
+		return nil, errs.New(errs.CodeFailedPrecondition, "a lineage is too deep to read its sensitive marks")
+	}
 
 	// The clip's timeline is its lineage segments concatenated in order. A version
 	// other than the current one may have been cut from other segments.
@@ -41,22 +50,41 @@ func SensitiveIntervals(ctx context.Context, store repo.TenantRepos, asset domai
 	offset := 0.0
 	for _, seg := range asset.Lineage.Segments {
 		length := seg.EndSeconds - seg.StartSeconds
-		sourceMarks, err := store.Transcripts().Sensitive(ctx, id.Ref(seg.SourceAssetID), seg.SourceVersion)
+		if length <= 0 {
+			continue
+		}
+		start := offset
+		offset += length
+		sourceID := seg.SourceAssetID
+		if sourceID == "" {
+			sourceID = asset.Lineage.SourceAssetID
+		}
+		if sourceID == "" {
+			continue
+		}
+		source, err := store.Assets().Get(ctx, id.Ref(sourceID))
+		if err != nil {
+			return nil, err
+		}
+		sourceVersion := seg.SourceVersion
+		if sourceVersion == "" {
+			sourceVersion = source.CurrentVersion
+		}
+		sourceMarks, err := sensitiveIntervals(ctx, store, source, sourceVersion, depth+1)
 		if err != nil {
 			return nil, err
 		}
 		for _, m := range sourceMarks {
-			start := max(m.StartSeconds, seg.StartSeconds)
-			end := min(m.EndSeconds, seg.EndSeconds)
-			if start >= end {
+			from := max(m.Start, seg.StartSeconds)
+			to := min(m.End, seg.EndSeconds)
+			if from >= to {
 				continue
 			}
 			if !sameCut {
 				return nil, errs.New(errs.CodeFailedPrecondition, "a source mark cannot be mapped onto an older version's timeline")
 			}
-			out = append(out, Interval{offset + start - seg.StartSeconds, offset + end - seg.StartSeconds})
+			out = append(out, Interval{start + from - seg.StartSeconds, start + to - seg.StartSeconds})
 		}
-		offset += length
 	}
 	return out, nil
 }
