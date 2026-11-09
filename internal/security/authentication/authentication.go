@@ -608,7 +608,3 @@ func withTenant(scope service.Scope) domain.Principal {
 	return p
 }
 
-// IsUnauthenticated reports the error the API answers with 401.
-func IsUnauthenticated(err error) bool {
-	return errors.Is(err, errUnauthenticated) || errs.IsCode(err, errs.CodeUnauthenticated)
-}
