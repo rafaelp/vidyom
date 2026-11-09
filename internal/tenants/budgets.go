@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/api"
@@ -238,6 +239,10 @@ func (b budgetService) Record(ctx context.Context, tenant domain.TenantID, usage
 	}
 	for _, u := range costed {
 		b.s.metrics.Add(telemetry.UsageCostEstimate, float64(u.EstimatedMinor), telemetry.Labels{"operation": u.Operation, "tenant_id": string(tenant)})
+		b.s.metrics.Add(telemetry.UsageQuantity, u.Quantity, telemetry.Labels{"operation": u.Operation, "unit": u.Unit, "month": current, "tenant_id": string(tenant)})
+		if strings.HasPrefix(u.Operation, "ai.") {
+			b.s.metrics.Add(telemetry.AICostEstimate, float64(u.EstimatedMinor), telemetry.Labels{"operation": u.Operation, "tenant_id": string(tenant)})
+		}
 	}
 	if monthly > 0 {
 		b.s.metrics.Set(telemetry.BudgetPercent, float64(after)/float64(monthly)*100, telemetry.Labels{"tenant_id": string(tenant)})
