@@ -196,7 +196,15 @@ func (p *pump[T]) take(max int) []pumpEntry[T] {
 	}
 	p.head = (p.head + n) % len(p.buf)
 	p.size -= n
+	p.inflight.Store(int64(n)) // under the lock, so a flush never sees a taken batch as gone
 	return out
+}
+
+// idle reports that nothing is queued or being delivered.
+func (p *pump[T]) idle() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.size == 0 && p.inflight.Load() == 0
 }
 
 func (p *pump[T]) backlog() int {
@@ -218,6 +226,7 @@ func (p *pump[T]) run() {
 	defer close(p.done)
 	if !p.openLoop() {
 		p.drop(p.take(len(p.buf)))
+		p.inflight.Store(0)
 		return
 	}
 	for {
@@ -289,7 +298,6 @@ func (p *pump[T]) deliver(batch []pumpEntry[T]) {
 		items[i] = batch[i].item
 	}
 	backoff := p.tuning.BackoffBase
-	p.inflight.Store(int64(len(batch)))
 	defer p.inflight.Store(0)
 	for attempt := 1; ; attempt++ {
 		err := p.writeBatch(items)
@@ -406,7 +414,7 @@ func (p *pump[T]) flushCtx(ctx context.Context) error {
 		case p.flushed <- struct{}{}:
 		default:
 		}
-		if p.backlog() == 0 && p.inflight.Load() == 0 {
+		if p.idle() {
 			break
 		}
 		select {
