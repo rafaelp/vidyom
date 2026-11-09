@@ -199,6 +199,9 @@ type NodeData struct {
 	Output any
 	// Status is the node's state, visible to CEL as nodes.<id>.status.
 	Status string
+	// ErrorCode is why it failed, visible to CEL as nodes.<id>.error_code, so a workflow
+	// can tell "the object is missing" from "the storage is down".
+	ErrorCode string
 }
 
 // Scope is the data a job offers to references and conditions. None of it holds

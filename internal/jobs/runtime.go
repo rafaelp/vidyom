@@ -562,6 +562,9 @@ func (r *jobRun) scopeFor(nodeIDs []string) workflow.Scope {
 			continue
 		}
 		data := workflow.NodeData{Status: string(n.Status)}
+		if n.Error != nil {
+			data.ErrorCode = n.Error.Code
+		}
 		if n.Status == domain.NodeCompleted || (n.Status == domain.NodeRunning && len(n.Output) > 0) {
 			if v, seen := r.decoded[nodeID]; seen {
 				data.Output = v

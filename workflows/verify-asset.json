@@ -2,7 +2,7 @@
   "id": "verify-asset",
   "name": "Verify One Asset",
   "version": "1.0.0",
-  "description": "Check one asset's working master and record the result in master_available. Used by verify-storage.",
+  "description": "Check one asset's working master and record the result in master_available: a missing or corrupted master turns it off, and an unreachable storage changes nothing. Used by verify-storage.",
   "inputs": {
     "asset": {
       "type": "object",
@@ -51,7 +51,7 @@
       "type": "flow.if",
       "typeVersion": 1,
       "parameters": {
-        "condition": "!(nodes.verify.status == 'completed' && nodes.verify.output.verified)"
+        "condition": "(nodes.verify.status == 'completed' && !nodes.verify.output.verified) || (nodes.verify.status == 'failed' && nodes.verify.error_code == 'not_found')"
       }
     },
     {

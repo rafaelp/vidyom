@@ -163,7 +163,7 @@ func sortedKeys(m map[string]bool) []string {
 func (c *Condition) Eval(ctx context.Context, s Scope) (bool, error) {
 	nodes := make(map[string]any, len(s.Nodes))
 	for id, n := range s.Nodes {
-		nodes[id] = map[string]any{"output": normalizeForCEL(n.Output), "status": n.Status}
+		nodes[id] = map[string]any{"output": normalizeForCEL(n.Output), "status": n.Status, "error_code": n.ErrorCode}
 	}
 	vars := map[string]any{
 		"inputs": orEmpty(normalizeForCEL(s.Inputs)),

@@ -867,6 +867,14 @@ func TestMaintenanceWorkflows(t *testing.T) {
 	if !a.MasterAvailable {
 		t.Fatal("a good master stays available")
 	}
+	// An outage says nothing about the master.
+	s.on("storage.verify", func(context.Context, node.Env, node.Input) (node.Result, error) {
+		return node.Result{}, node.Permanent(errs.New(errs.CodeUnavailable, "storage is down"))
+	})
+	s.waitStatus(s.runAs(editor, "verify-storage", nil), domain.JobCompleted)
+	if a, _ = s.store.Assets().Get(ctx, id.Ref(source.ID)); !a.MasterAvailable {
+		t.Fatal("an unreachable storage must not mark the master missing")
+	}
 	s.on("storage.verify", func(context.Context, node.Env, node.Input) (node.Result, error) {
 		return node.Result{}, node.Permanent(errs.NotFound("object"))
 	})
