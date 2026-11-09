@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.vidyom.org/schemas/ai-worker-rpc.v1.json",
+  "title": "Vidyom AI worker JSON-RPC, version 1 (D31, I6)",
+  "description": "JSON-RPC 2.0, one JSON object per line. Transports: Unix domain socket (service), stdio (tests), loopback TCP with a required initialize token (native Windows). initialize must be the first request on a connection. Files travel by local path on a shared volume. The Go mirror is internal/contract/aiworker.",
+  "schemaVersion": 1,
+  "methods": {
+    "initialize": {
+      "params": {
+        "$ref": "#/$defs/initializeParams"
+      },
+      "result": {
+        "$ref": "#/$defs/initializeResult"
+      }
+    },
+    "shutdown": {
+      "description": "Finish in-flight work, then exit.",
+      "params": {
+        "type": "object"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "health": {
+      "params": {
+        "type": "object"
+      },
+      "result": {
+        "$ref": "#/$defs/healthResult"
+      }
+    },
+    "transcribe": {
+      "description": "Long-running. Sends $/progress when progress_token is set, honors $/cancelRequest. Fails with code -32001 if the engine or model is unusable; there is no fallback between engines (I27).",
+      "params": {
+        "$ref": "#/$defs/transcribeParams"
+      },
+      "result": {
+        "$ref": "#/$defs/transcribeResult"
+      }
+    },
+    "embed": {
+      "description": "At most 64 texts per call; clients split batches.",
+      "params": {
+        "$ref": "#/$defs/embedParams"
+      },
+      "result": {
+        "$ref": "#/$defs/embedResult"
+      }
+    }
+  },
+  "notifications": {
+    "$/progress": {
+      "description": "Server to client.",
+      "params": {
+        "type": "object",
+        "required": [
+          "token",
+          "percent"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "percent": {
+            "type": "number"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "$/cancelRequest": {
+      "description": "Client to server. The server answers the request with code -32800.",
+      "params": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "errorCodes": {
+    "-32601": "method not found",
+    "-32602": "invalid params",
+    "-32603": "internal error",
+    "-32800": "request cancelled",
+    "-32001": "engine or model unavailable",
+    "-32002": "initialize required, or wrong token"
+  },
+  "$defs": {
+    "initializeParams": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "client"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": 1
+        },
+        "client": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        }
+      }
+    },
+    "initializeResult": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "engine",
+        "transcription_model",
+        "embedding_model",
+        "embedding_dimensions",
+        "device",
+        "capabilities"
+      ],
+      "properties": {
+        "protocol_version": {
+          "const": 1
+        },
+        "engine": {
+          "enum": [
+            "real",
+            "fake"
+          ]
+        },
+        "transcription_model": {
+          "type": "string"
+        },
+        "embedding_model": {
+          "type": "string",
+          "description": "<name>@<version>, stored per vector (R18)."
+        },
+        "embedding_dimensions": {
+          "type": "integer"
+        },
+        "device": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "healthResult": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "degraded"
+          ]
+        },
+        "loaded_models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "transcribeParams": {
+      "type": "object",
+      "required": [
+        "audio_path",
+        "word_timestamps"
+      ],
+      "properties": {
+        "audio_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string"
+        },
+        "word_timestamps": {
+          "type": "boolean"
+        },
+        "progress_token": {
+          "type": "string"
+        }
+      }
+    },
+    "word": {
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "text"
+      ],
+      "properties": {
+        "start": {
+          "type": "number"
+        },
+        "end": {
+          "type": "number"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "required": [
+        "start",
+        "end",
+        "text"
+      ],
+      "properties": {
+        "start": {
+          "type": "number"
+        },
+        "end": {
+          "type": "number"
+        },
+        "text": {
+          "type": "string"
+        },
+        "words": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/word"
+          }
+        },
+        "speaker": {
+          "type": "string"
+        }
+      }
+    },
+    "transcribeResult": {
+      "type": "object",
+      "required": [
+        "language",
+        "duration_seconds",
+        "engine",
+        "segments"
+      ],
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "type": "number"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/segment"
+          }
+        }
+      }
+    },
+    "embedParams": {
+      "type": "object",
+      "required": [
+        "texts",
+        "kind"
+      ],
+      "properties": {
+        "texts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 64
+        },
+        "kind": {
+          "enum": [
+            "passage",
+            "query"
+          ]
+        }
+      }
+    },
+    "embedResult": {
+      "type": "object",
+      "required": [
+        "model",
+        "dimensions",
+        "vectors"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "dimensions": {
+          "type": "integer"
+        },
+        "vectors": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "fakeHashEmbed": {
+      "title": "fake-hash-embed@1 (I27)",
+      "description": "The fake engine's embedding, implemented identically in Python (aiworker/), TypeScript (library/) and Go (aiworker.FakeHashEmbed). Steps: (1) lowercase the text; (2) tokens are maximal runs of Unicode letters and numbers; (3) for each token, h = 32-bit FNV-1a over its UTF-8 bytes (offset basis 2166136261, prime 16777619); bucket = h mod 1024; sign = -1 when bit 31 of h is set, else +1; add sign to the bucket; (4) L2 normalize; an all-zero vector stays zero. It only finds shared words. It proves the search path, never semantic quality.",
+      "dimensions": 1024,
+      "testVectors": [
+        {
+          "text": "Conscious breathing",
+          "nonZeroBuckets": {
+            "49": 0.7071068,
+            "665": 0.7071068
+          }
+        },
+        {
+          "text": "Respiração consciente, breathing breathing!",
+          "nonZeroBuckets": {
+            "49": 0.8164966,
+            "712": 0.4082483,
+            "800": -0.4082483
+          }
+        }
+      ]
+    }
+  }
+}

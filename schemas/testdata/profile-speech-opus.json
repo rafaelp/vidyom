@@ -1,0 +1,6 @@
+{
+  "id": "speech-opus", "version": 1,
+  "video": false,
+  "audio": { "codec": "libopus", "bitrate": "24k", "channels": 1, "sampleRate": 16000 },
+  "container": "opus"
+}

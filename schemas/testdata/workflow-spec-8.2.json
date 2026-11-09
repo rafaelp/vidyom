@@ -1,0 +1,12 @@
+{
+  "id": "update-public-library",
+  "version": "1.0.0",
+  "trigger": {
+    "type": "event",
+    "event": "publication.completed",
+    "filter": "event.payload.visibility == 'public'"
+  },
+  "nodes": [
+    { "id": "sync", "type": "catalog.public.sync", "typeVersion": 1, "parameters": { "assetId": "${event.asset_id}" } }
+  ]
+}

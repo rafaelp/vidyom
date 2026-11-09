@@ -1,0 +1,35 @@
+{
+  "id": "ingest-original",
+  "name": "Ingest Original",
+  "version": "1.0.0",
+  "inputs": {
+    "file": { "type": "file", "required": true },
+    "title": { "type": "string", "required": true },
+    "category": { "type": "string", "default": "other" }
+  },
+  "nodes": [
+    { "id": "register", "type": "catalog.register", "typeVersion": 1,
+      "parameters": { "kind": "original", "title": "${inputs.title}", "category": "${inputs.category}" } },
+    { "id": "backup", "type": "storage.put", "typeVersion": 1,
+      "parameters": { "storage": "archive", "source": "${inputs.file}", "key": "originals/${nodes.register.output.id}/original.mp4", "verifyChecksum": true } },
+    { "id": "compress", "type": "video.transcode", "typeVersion": 1,
+      "parameters": { "source": "${inputs.file}", "profile": "master-1080p" } },
+    { "id": "store_master", "type": "storage.put", "typeVersion": 1,
+      "parameters": { "storage": "master", "source": "${nodes.compress.output.file}", "key": "originals/${nodes.register.output.id}/master.mp4", "verifyChecksum": true } },
+    { "id": "transcribe", "type": "ai.transcribe", "typeVersion": 1,
+      "parameters": { "source": "${nodes.compress.output.file}", "language": "pt" } },
+    { "id": "index", "type": "ai.index", "typeVersion": 1,
+      "parameters": { "transcript": "${nodes.transcribe.output}" } },
+    { "id": "catalog", "type": "mediacms.register", "typeVersion": 1,
+      "parameters": { "assetId": "${nodes.register.output.id}", "master": "${nodes.store_master.output}", "index": "${nodes.index.output}" } }
+  ],
+  "connections": {
+    "register": ["backup", "compress"],
+    "compress": ["store_master", "transcribe"],
+    "transcribe": ["index"],
+    "backup": ["catalog"],
+    "store_master": ["catalog"],
+    "index": ["catalog"]
+  },
+  "settings": { "retry": 3, "resumeOnFailure": true, "saveExecutionProgress": true }
+}

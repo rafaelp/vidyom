@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.vidyom.org/schemas/workflow.v1.json",
+  "title": "Vidyom workflow, version 1 (spec §6.2, D44)",
+  "description": "Structure only. The engine additionally checks cycles, ancestors of ${nodes.X} references (R24), CEL conditions and node parameters against node-catalog.v1.json.",
+  "type": "object",
+  "required": ["id", "version", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "$ref": "#/$defs/name" },
+    "name": { "type": "string" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "description": { "type": "string" },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/input" }
+    },
+    "trigger": { "$ref": "#/$defs/trigger" },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "connections": {
+      "type": "object",
+      "description": "Node ID to the IDs that depend on it.",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/nodeId" },
+        "uniqueItems": true
+      }
+    },
+    "hooks": { "$ref": "#/$defs/hooksWorkflow" },
+    "settings": { "$ref": "#/$defs/settings" },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "nodeId": { "type": "string", "pattern": "^[A-Za-z0-9_-]+$" },
+    "input": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["string", "number", "boolean", "file", "array", "object"] },
+        "required": { "type": "boolean" },
+        "default": {},
+        "description": { "type": "string" }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["cli", "event", "schedule", "webhook"] },
+        "event": { "type": "string" },
+        "filter": { "type": "string", "description": "CEL expression (D2)." },
+        "every": { "type": "string", "description": "Go duration, e.g. 24h (I22)." },
+        "cron": { "type": "string", "description": "Reserved." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "event" } } },
+          "then": { "required": ["event"] }
+        },
+        {
+          "if": { "properties": { "type": { "const": "schedule" } } },
+          "then": { "required": ["every"] }
+        }
+      ]
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "type", "typeVersion"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/nodeId" },
+        "type": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$" },
+        "typeVersion": { "type": "integer", "minimum": 1 },
+        "parameters": { "type": "object" },
+        "hooks": { "$ref": "#/$defs/hooksNode" },
+        "retry": { "type": "integer", "minimum": 0 },
+        "continueOnFailure": { "type": "boolean" }
+      }
+    },
+    "hook": {
+      "type": "object",
+      "required": ["id", "plugin", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "plugin": { "type": "string", "minLength": 1 },
+        "action": { "type": "string", "minLength": 1 },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "onFailure": { "enum": ["abort", "retry", "continue"] }
+      }
+    },
+    "hookList": { "type": "array", "items": { "$ref": "#/$defs/hook" } },
+    "hooksWorkflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before": { "$ref": "#/$defs/hookList" },
+        "start": { "$ref": "#/$defs/hookList" },
+        "after": { "$ref": "#/$defs/hookList" },
+        "finish": { "$ref": "#/$defs/hookList" },
+        "error": { "$ref": "#/$defs/hookList" },
+        "cancel": { "$ref": "#/$defs/hookList" }
+      }
+    },
+    "hooksNode": {
+      "description": "start and cancel do not apply to nodes (R34).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before": { "$ref": "#/$defs/hookList" },
+        "after": { "$ref": "#/$defs/hookList" },
+        "finish": { "$ref": "#/$defs/hookList" },
+        "error": { "$ref": "#/$defs/hookList" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "retry": { "type": "integer", "minimum": 0 },
+        "retryBackoffSeconds": { "type": "integer", "minimum": 0 },
+        "resumeOnFailure": { "type": "boolean" },
+        "saveExecutionProgress": { "type": "boolean" },
+        "timeoutSeconds": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

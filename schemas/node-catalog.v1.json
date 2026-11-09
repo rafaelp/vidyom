@@ -1,0 +1,2432 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.vidyom.org/schemas/node-catalog.v1.json",
+  "title": "Vidyom node catalog, version 1",
+  "description": "The contract between workflows and node implementations. Every node type a workflow may use is listed with its owner component, pool (I7), side-effect class (D11), parameter schema and output schema. Parameters are camelCase and outputs snake_case, as the spec's §6 examples show. Parameter schemas apply after ${...} references are resolved; the engine's static validation checks only required keys and types of literal values.",
+  "$defs": {
+    "uri": {
+      "type": "string",
+      "minLength": 1,
+      "description": "An input URI: server:, upload:, storage://<role>/<key>, import:<connector>/<id> (R20), or scratch:// for files between nodes (I5)."
+    },
+    "role": {
+      "enum": [
+        "archive",
+        "master",
+        "proxy"
+      ]
+    },
+    "assetRef": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A friendly ID or ULID, resolved in the job's tenant."
+    },
+    "segment": {
+      "type": "object",
+      "required": [
+        "start_seconds",
+        "end_seconds"
+      ],
+      "properties": {
+        "source_asset_id": {
+          "type": "string"
+        },
+        "source_version": {
+          "type": "string"
+        },
+        "start_seconds": {
+          "type": "number"
+        },
+        "end_seconds": {
+          "type": "number"
+        }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "location": {
+      "type": "object",
+      "properties": {
+        "driver": {
+          "type": "string"
+        },
+        "bucket": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        }
+      }
+    },
+    "storedObject": {
+      "type": "object",
+      "description": "Output of writing to a role; has the shape of domain.MediaFile plus uri.",
+      "required": [
+        "uri",
+        "storage",
+        "key"
+      ],
+      "properties": {
+        "uri": {
+          "type": "string"
+        },
+        "storage": {
+          "$ref": "#/$defs/role"
+        },
+        "key": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "verified": {
+          "type": "boolean"
+        },
+        "profile": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "description": "A file on the job's scratch volume.",
+      "required": [
+        "file"
+      ],
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/uri"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "duration_seconds": {
+          "type": "number"
+        }
+      }
+    },
+    "transcript": {
+      "type": "object",
+      "description": "domain.Transcript.",
+      "properties": {
+        "language": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "type": "number"
+        },
+        "timestamp_basis": {
+          "type": "string"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "description": "domain.Analysis.",
+      "required": [
+        "available"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "chapters": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stories": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "model": {
+          "type": "string"
+        },
+        "endpoint_class": {
+          "type": "string"
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "description": "domain.CandidateSegment: review evidence (D51).",
+      "required": [
+        "segments",
+        "excerpt",
+        "confidence"
+      ],
+      "properties": {
+        "segments": {
+          "$ref": "#/$defs/segments"
+        },
+        "excerpt": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      }
+    },
+    "assetOutput": {
+      "type": "object",
+      "description": "The asset, plus URIs usable as node parameters.",
+      "required": [
+        "id",
+        "kind",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ulid": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "current_version": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "type": "number"
+        },
+        "visibility": {
+          "type": "string"
+        },
+        "ai_processing": {
+          "type": "string"
+        },
+        "master_available": {
+          "type": "boolean"
+        },
+        "root_asset_id": {
+          "type": "string"
+        },
+        "working_master_uri": {
+          "type": "string"
+        },
+        "proxy_uri": {
+          "type": "string"
+        },
+        "source_original_uri": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "schemaVersion": 1,
+  "nodes": [
+    {
+      "type": "flow.if",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "engine",
+      "sideEffect": "none",
+      "title": "Branch on a CEL condition (D2, D33).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "condition": {
+            "type": "string",
+            "description": "CEL expression."
+          }
+        },
+        "required": [
+          "condition"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "result": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "type": "flow.merge",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "engine",
+      "sideEffect": "none",
+      "title": "Join branches (D33).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "all",
+              "any"
+            ]
+          }
+        },
+        "required": [
+          "mode"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "completed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "flow.wait",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "engine",
+      "sideEffect": "none",
+      "title": "Wait without holding a process.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "seconds": {
+            "type": "number"
+          },
+          "until": {
+            "type": "string",
+            "description": "RFC 3339 time."
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "type": "flow.foreach",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "engine",
+      "sideEffect": "none",
+      "title": "Run a subworkflow per item; each item is its own child job, with concurrency and item limits.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "An array, or a ${...} reference to one."
+          },
+          "workflow": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "itemInput": {
+            "type": "string",
+            "description": "Child input that receives the item. Default item."
+          },
+          "inputs": {
+            "type": "object"
+          },
+          "concurrency": {
+            "type": "integer"
+          },
+          "maxItems": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "workflow"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "workflow.execute",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "engine",
+      "sideEffect": "none",
+      "title": "Invoke a subworkflow with input and output isolation. Every parameter other than workflow and version is a child input; the output is the child's outputs (§6.4).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "workflow": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "workflow"
+        ]
+      },
+      "output": {
+        "type": "object"
+      }
+    },
+    {
+      "type": "approval.request",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "engine",
+      "sideEffect": "idempotent",
+      "title": "Human gate; the job waits without any CLI connected (R25, D7).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "clip_selection",
+              "publication",
+              "visibility_change",
+              "metadata_change",
+              "other"
+            ]
+          },
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "approvers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timeoutSeconds": {
+            "type": "integer"
+          },
+          "onTimeout": {
+            "enum": [
+              "reject",
+              "fail",
+              "remind"
+            ]
+          },
+          "evidence": {
+            "description": "Shown to the reviewer: excerpt, timestamps, confidence, alternatives (D51)."
+          },
+          "preview": {
+            "$ref": "#/$defs/uri"
+          },
+          "allowAdjust": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "approval_id": {
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected",
+              "expired"
+            ]
+          },
+          "decided_by": {
+            "type": "string"
+          },
+          "decided_at": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/segment"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "event.emit",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "engine",
+      "sideEffect": "idempotent",
+      "title": "Write an event to the outbox.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "payload": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "event_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.register",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Allocate an ID and create an asset (registered). Emits asset.created and clip.created.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "original",
+              "clip",
+              "edited"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ]
+          },
+          "aiProcessing": {
+            "enum": [
+              "local_only",
+              "external_allowed"
+            ]
+          },
+          "lineage": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ulid": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.get",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "Resolve an asset. requireClipEligible applies domain.Asset.ClipEligible (I21).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "requiredStatus": {
+            "type": "string"
+          },
+          "requireClipEligible": {
+            "type": "boolean"
+          },
+          "requireMasterAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/assetOutput"
+      }
+    },
+    {
+      "type": "catalog.list",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "List assets for maintenance workflows.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/assetOutput"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.update_metadata",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Edit metadata; never creates a media version (D35).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.set_status",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Move the asset state machine (§2.5).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "status": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "status"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.set_flags",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Set asset flags; master_available=false stops create-clip (§2.5).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "masterAvailable": {
+            "type": "boolean"
+          },
+          "backupVerified": {
+            "type": "boolean"
+          },
+          "proxyAvailable": {
+            "type": "boolean"
+          },
+          "timelineValidated": {
+            "type": "boolean"
+          },
+          "catalogSync": {
+            "enum": [
+              "none",
+              "pending",
+              "synced",
+              "failed"
+            ]
+          },
+          "durationSeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Record a stored file on a version. Refuses an immutable version (D35).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "version": {
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "source_original",
+              "working_master",
+              "proxy",
+              "backup",
+              "thumbnail",
+              "preview",
+              "transcription_audio",
+              "published_file",
+              "captions",
+              "transcript"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "object": {
+            "$ref": "#/$defs/storedObject"
+          }
+        },
+        "required": [
+          "assetId",
+          "purpose",
+          "object"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.record_provenance",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Write the permanent provenance summary (R21). The engine fills job and workflow fields.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "version": {
+            "type": "string"
+          },
+          "inputs": {
+            "type": "object"
+          },
+          "outputs": {
+            "type": "object"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tools": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.next_version",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Return the version to write: the current one, or a new one when it is immutable (D35).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "created": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.mark_ready",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Check the consolidated readiness condition (R11) and set ready_for_clipping. Emits asset.ready_for_clipping.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.check_overlap",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "Warn about clips overlapping these segments, without blocking (D47).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "segments": {
+            "$ref": "#/$defs/segments"
+          }
+        },
+        "required": [
+          "sourceId",
+          "segments"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "warning": {
+            "type": "boolean"
+          },
+          "overlaps": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.resolve_render_source",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "For clips of clips: map segments to the root original's timeline and pick its master when the edit is continuous (D36).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "segments": {
+            "$ref": "#/$defs/segments"
+          }
+        },
+        "required": [
+          "sourceId",
+          "segments"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "source_uri": {
+            "type": "string"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/segment"
+            }
+          },
+          "root_asset_id": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.export_package",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Build the per-asset metadata package (§12.5). Sensitive segments are redacted (D30).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "destinationRole": {
+            "$ref": "#/$defs/role"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "uri": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.list_expired_renders",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "List rejected or never-approved renders past their retention (D16).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "olderThanDays": {
+            "type": "integer"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.release_input",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Release an input's spool copy once archive and master are verified (R9). A server: path is never deleted.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "released": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.delete",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Soft-delete after publications are withdrawn; keeps the audited fact and reports the early-deletion estimate (D17, R16).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "archive_purge_after": {
+            "type": "string"
+          },
+          "early_deletion_estimate_minor": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    {
+      "type": "storage.put",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Write a file to a role and verify its checksum.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "storage": {
+            "$ref": "#/$defs/role"
+          },
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "key": {
+            "type": "string"
+          },
+          "verifyChecksum": {
+            "type": "boolean"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "storageClass": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "storage",
+          "source",
+          "key"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/storedObject"
+      },
+      "paid": true,
+      "supportsAbort": true
+    },
+    {
+      "type": "storage.get",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Read an object to scratch through the verified cache. Refuses archive unless allowArchive and the job holds storage.archive.restore.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "forbidStorageRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/role"
+            }
+          },
+          "allowArchive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/artifact"
+      },
+      "paid": true,
+      "supportsAbort": true
+    },
+    {
+      "type": "storage.verify",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "none",
+      "title": "Verify an object's checksum.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "allowArchive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "verified": {
+            "type": "boolean"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "uri": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "storage.delete",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Delete an object. Missing is success.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "type": "storage.copy",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Copy between roles. Reading archive needs allowArchive and storage.archive.restore; only restore-archived does it.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "storage": {
+            "$ref": "#/$defs/role"
+          },
+          "key": {
+            "type": "string"
+          },
+          "allowArchive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source",
+          "storage",
+          "key"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/storedObject"
+      },
+      "paid": true
+    },
+    {
+      "type": "video.probe",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "none",
+      "title": "Inspect a file with ffprobe, including VFR and broken-timestamp detection (D21).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "duration_seconds": {
+            "type": "number"
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "fps": {
+            "type": "number"
+          },
+          "vfr": {
+            "type": "boolean"
+          },
+          "broken_timestamps": {
+            "type": "boolean"
+          },
+          "video_codec": {
+            "type": "string"
+          },
+          "audio_codec": {
+            "type": "string"
+          },
+          "container": {
+            "type": "string"
+          },
+          "ext": {
+            "type": "string",
+            "description": "Original file extension without the dot, for original.<ext> (R26)."
+          }
+        }
+      }
+    },
+    {
+      "type": "video.transcode",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Transcode to a profile, or auto:master to pick by source height (D14, I25). Never upscales. Normalizes VFR to CFR in the master (D21).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "profile": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "profile"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "required": [
+          "file",
+          "profile"
+        ],
+        "properties": {
+          "file": {
+            "$ref": "#/$defs/uri"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "duration_seconds": {
+            "type": "number"
+          },
+          "profile": {
+            "type": "string",
+            "description": "Concrete id@version."
+          },
+          "width": {
+            "type": "integer"
+          },
+          "height": {
+            "type": "integer"
+          },
+          "ffmpeg_version": {
+            "type": "string"
+          }
+        }
+      },
+      "supportsAbort": true,
+      "requirements": {
+        "cpu_cores": 4,
+        "memory_mb": 4096,
+        "disk_mb": 20480
+      }
+    },
+    {
+      "type": "video.validate_timeline",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "none",
+      "title": "Compare durations to the reference; fails above max(100 ms, 1 frame) (R10, D21).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reference": {
+            "$ref": "#/$defs/uri"
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/uri"
+            }
+          }
+        },
+        "required": [
+          "reference",
+          "candidates"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "tolerance_seconds": {
+            "type": "number"
+          },
+          "reference_duration": {
+            "type": "number"
+          },
+          "durations": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "type": "video.preview",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Render a preview of the segments from the proxy (§3.2).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "segments": {
+            "$ref": "#/$defs/segments"
+          }
+        },
+        "required": [
+          "source",
+          "segments"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/artifact"
+      },
+      "supportsAbort": true,
+      "requirements": {
+        "cpu_cores": 2,
+        "memory_mb": 2048
+      }
+    },
+    {
+      "type": "video.cut",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Render a clip master. The source must be the master role or a verified cached copy of it; archive is refused with no fallback (§6.4).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "segments": {
+            "$ref": "#/$defs/segments"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "forbidStorageRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/role"
+            }
+          }
+        },
+        "required": [
+          "source",
+          "segments"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "properties": {
+          "file": {
+            "$ref": "#/$defs/uri"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer"
+          },
+          "duration_seconds": {
+            "type": "number"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/segment"
+            }
+          },
+          "ffmpeg_version": {
+            "type": "string"
+          }
+        }
+      },
+      "supportsAbort": true,
+      "requirements": {
+        "cpu_cores": 4,
+        "memory_mb": 4096,
+        "disk_mb": 10240
+      }
+    },
+    {
+      "type": "video.thumbnail",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Extract a thumbnail.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "atSeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    {
+      "type": "audio.extract",
+      "typeVersion": 1,
+      "owner": "media",
+      "pool": "media",
+      "sideEffect": "idempotent",
+      "title": "Extract ASR audio from the working master, never from the proxy or archive (D56). Never upscales (D40).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "profile": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/artifact"
+      },
+      "supportsAbort": true
+    },
+    {
+      "type": "ai.transcribe",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "ai",
+      "sideEffect": "idempotent",
+      "title": "Transcribe local audio through the AI worker (D9). Refuses external engines on local_only assets (D8).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "$ref": "#/$defs/uri"
+          },
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "aiProcessing": {
+            "enum": [
+              "local_only",
+              "external_allowed"
+            ]
+          },
+          "language": {
+            "type": "string"
+          },
+          "wordTimestamps": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "required": [
+          "transcript"
+        ],
+        "properties": {
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          },
+          "language": {
+            "type": "string"
+          },
+          "engine": {
+            "type": "string"
+          },
+          "duration_seconds": {
+            "type": "number"
+          }
+        }
+      },
+      "paid": true,
+      "supportsAbort": true,
+      "requirements": {
+        "cpu_cores": 4,
+        "memory_mb": 8192
+      }
+    },
+    {
+      "type": "ai.embed",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "ai",
+      "sideEffect": "none",
+      "title": "Chunk a transcript per D15 and embed it (D9).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          },
+          "analysis": {
+            "$ref": "#/$defs/analysis"
+          },
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          }
+        },
+        "required": [
+          "transcript"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "dimensions": {
+            "type": "integer"
+          },
+          "chunking": {
+            "type": "string"
+          },
+          "chunks": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "supportsAbort": true,
+      "requirements": {
+        "cpu_cores": 2,
+        "memory_mb": 4096
+      }
+    },
+    {
+      "type": "ai.analyze",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Summary, chapters, tags and stories through an allowed LLM endpoint (D8, D9). available=false when none is allowed (I28). Sensitive segments never go to external AI (D30).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          }
+        },
+        "required": [
+          "assetId",
+          "transcript"
+        ]
+      },
+      "output": {
+        "$ref": "#/$defs/analysis"
+      },
+      "paid": true
+    },
+    {
+      "type": "ai.index",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Store the transcript and analysis and index text and vectors in the canonical catalog (D5). Emits asset.indexed and original.indexed.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "version": {
+            "type": "string"
+          },
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          },
+          "analysis": {
+            "$ref": "#/$defs/analysis"
+          },
+          "embeddings": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "assetId",
+          "transcript"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "indexed": {
+            "type": "boolean"
+          },
+          "lexical_documents": {
+            "type": "integer"
+          },
+          "vectors": {
+            "type": "integer"
+          },
+          "embedding_model": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "ai.find_segment",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "Hybrid retrieval restricted to the asset, then complete-story boundaries (§3.2, §4.4). Works with no LLM, marking the result ambiguous (I28). segments is the top candidate.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "asset": {
+            "description": "Output of catalog.get, or an asset reference."
+          },
+          "query": {
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "complete_story",
+              "short",
+              "best_moments"
+            ]
+          },
+          "targetDurationSeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "asset",
+          "query"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "required": [
+          "segments",
+          "candidates",
+          "ambiguous"
+        ],
+        "properties": {
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/segment"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/candidate"
+            }
+          },
+          "ambiguous": {
+            "type": "boolean"
+          },
+          "confidence": {
+            "type": "number"
+          },
+          "excerpt": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "ai.derive_transcript",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Derive a clip's transcript from its source by mapping segments to the clip's timeline (§4.3).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sourceId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "segments": {
+            "$ref": "#/$defs/segments"
+          }
+        },
+        "required": [
+          "sourceId",
+          "segments"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "required": [
+          "transcript"
+        ],
+        "properties": {
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          }
+        }
+      }
+    },
+    {
+      "type": "ai.editorial",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Draft title, description and tags (§3.2 step 12); falls back to the prompt and source title with no LLM (I28).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          },
+          "prompt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "generated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "paid": true
+    },
+    {
+      "type": "ai.export_transcript",
+      "typeVersion": 1,
+      "owner": "ai",
+      "pool": "ai",
+      "sideEffect": "none",
+      "title": "Write open formats to scratch: JSON, SRT, VTT, Markdown (§4.1). excludeSensitive drops marked segments for anything public (D30).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          },
+          "formats": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "json",
+                "srt",
+                "vtt",
+                "md"
+              ]
+            }
+          },
+          "sensitive": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "excludeSensitive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "transcript"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "type": "publish.prepare",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Create the publication record and pick the file: the master when identical (R4). Enforces approval timing (D37). Emits publication.created.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ]
+          },
+          "approvalId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "assetId",
+          "destination"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "publication_id": {
+            "type": "string"
+          },
+          "source_uri": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "asset_version": {
+            "type": "string"
+          },
+          "already_published": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    {
+      "type": "publish.upload",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "reconcilable",
+      "title": "Resumable upload from the master role, with the idempotency key. Reconciles with the destination before any retry (D11).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "publicationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "publicationId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "publication_id": {
+            "type": "string"
+          },
+          "remote_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "paid": true,
+      "supportsAbort": true
+    },
+    {
+      "type": "publish.await_processing",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "Poll until the destination finishes; rejected_by_destination is distinct from failed (D52).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "publicationId": {
+            "type": "string"
+          },
+          "timeoutSeconds": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "publicationId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "publication_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "publish.finalize",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Set visibility, thumbnail and captions, write published only with a URL from the destination (R43), mark the version immutable (D35), emit publication.completed.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "publicationId": {
+            "type": "string"
+          },
+          "visibility": {
+            "enum": [
+              "private",
+              "unlisted",
+              "public"
+            ]
+          },
+          "thumbnail": {
+            "$ref": "#/$defs/uri"
+          },
+          "captions": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "publicationId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "publication_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "publish.withdraw",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Withdraw from destinations; repeating is a no-op (§15.8). Emits publication.withdrawn.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "destinations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "all": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "delete",
+              "private"
+            ]
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "withdrawn": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "already": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "publish.refresh",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "Re-read remote state into the record. Emits publication.updated on change.",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "publicationId": {
+            "type": "string"
+          },
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "publications": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.public.sync",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Rebuild this tenant's public.db from approved public records and ship it (D18). Withdrawals disappear on rebuild (R44).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "records": {
+            "type": "integer"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "destination": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "type": "mediacms.register",
+      "typeVersion": 1,
+      "owner": "publishing",
+      "pool": "daemon",
+      "sideEffect": "idempotent",
+      "title": "Optional MediaCMS connector (D24), a skeleton in this version (I11). Sets catalog_sync; use continueOnFailure so it never blocks readiness (R11).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "catalog_sync": {
+            "type": "string"
+          },
+          "external_ref": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ]
+}

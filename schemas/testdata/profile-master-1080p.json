@@ -1,0 +1,7 @@
+{
+  "id": "master-1080p", "version": 1,
+  "selector": { "family": "master", "maxSourceHeight": 1439 },
+  "video": { "codec": "libx264", "profile": "high", "preset": "slow", "crf": 18, "maxHeight": 1080 },
+  "audio": { "codec": "aac", "bitrate": "192k" },
+  "container": "mp4", "faststart": true
+}

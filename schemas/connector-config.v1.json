@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.vidyom.org/schemas/connector-config.v1.json",
+  "title": "Vidyom connector configuration, version 1 (spec §7.2, §7.3, §7.4, I34)",
+  "description": "Validates storages.json, publishing.json, observability.json, ai.json and catalogs.json. Files carry only credentialsRef, never a secret (§9.1). Namespace disjointness is checked by config.ValidateStorages (R28).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "storages": {
+      "type": "object",
+      "required": ["archive", "master", "proxy"],
+      "additionalProperties": false,
+      "properties": {
+        "archive": { "$ref": "#/$defs/storage" },
+        "master": { "$ref": "#/$defs/storage" },
+        "proxy": { "$ref": "#/$defs/storage" }
+      }
+    },
+    "archivePolicy": { "enum": ["all_versions", "approved_versions", "latest"] },
+    "publishing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "destinations": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/destination" }
+        },
+        "defaults": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requireApproval": { "type": "boolean" },
+            "allowPrivateUploadBeforeApproval": { "type": "boolean" },
+            "uploadResumable": { "type": "boolean" },
+            "savePublicationRecord": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "logs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "level": { "enum": ["debug", "info", "warn", "error"] },
+            "sinks": { "type": "array", "items": { "$ref": "#/$defs/sink" } }
+          }
+        },
+        "metrics": { "type": "array", "items": { "$ref": "#/$defs/sink" } },
+        "traces": { "type": "array", "items": { "$ref": "#/$defs/sink" } }
+      }
+    },
+    "ai": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaultProcessing": { "enum": ["local_only", "external_allowed"] },
+        "embeddingModel": { "type": "string" },
+        "transcriptionModel": { "type": "string" },
+        "llmEndpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "baseUrl", "model", "class"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "baseUrl": { "type": "string", "format": "uri" },
+              "model": { "type": "string", "minLength": 1 },
+              "class": { "enum": ["local", "external"] },
+              "credentialsRef": { "$ref": "#/$defs/credentialsRef" }
+            }
+          }
+        }
+      }
+    },
+    "catalogs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "external": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/catalog" }
+        },
+        "publicLibrary": { "$ref": "#/$defs/catalog" }
+      }
+    }
+  },
+  "$defs": {
+    "credentialsRef": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "parameters": {
+      "description": "Driver settings. A key that looks like an inline credential is rejected: use credentialsRef.",
+      "type": "object",
+      "propertyNames": {
+        "not": { "pattern": "(?i)(secret|token|password|passwd|api[-_]?key|private[-_]?key|credential)" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "required": ["driver"],
+      "additionalProperties": false,
+      "properties": {
+        "driver": { "type": "string", "minLength": 1 },
+        "bucket": { "type": "string" },
+        "root": { "type": "string", "description": "Local driver root (I9)." },
+        "prefix": { "type": "string" },
+        "storageClass": { "type": "string" },
+        "credentialsRef": { "$ref": "#/$defs/credentialsRef" },
+        "usage": { "enum": ["backup_only", "operational"] },
+        "parameters": { "$ref": "#/$defs/parameters" }
+      }
+    },
+    "destination": {
+      "type": "object",
+      "required": ["driver"],
+      "additionalProperties": false,
+      "properties": {
+        "driver": { "type": "string", "minLength": 1 },
+        "credentialsRef": { "$ref": "#/$defs/credentialsRef" },
+        "visibility": { "enum": ["private", "unlisted", "public"] },
+        "allowPrivateUploadBeforeApproval": { "type": "boolean" },
+        "parameters": { "$ref": "#/$defs/parameters" }
+      }
+    },
+    "sink": {
+      "type": "object",
+      "required": ["id", "driver", "enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "driver": { "type": "string", "minLength": 1 },
+        "enabled": { "type": "boolean" },
+        "credentialsRef": { "$ref": "#/$defs/credentialsRef" },
+        "parameters": { "$ref": "#/$defs/parameters" }
+      }
+    },
+    "catalog": {
+      "type": "object",
+      "required": ["driver"],
+      "additionalProperties": false,
+      "properties": {
+        "driver": { "type": "string", "minLength": 1 },
+        "credentialsRef": { "$ref": "#/$defs/credentialsRef" },
+        "parameters": { "$ref": "#/$defs/parameters" }
+      }
+    }
+  }
+}

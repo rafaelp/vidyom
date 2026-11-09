@@ -1,0 +1,8 @@
+{
+  "id": "vidyom.connector.storage.gcs",
+  "version": "1.0.0",
+  "runtime": "process",
+  "provides": { "storageDrivers": ["gcs"] },
+  "permissions": { "network": ["storage.googleapis.com"], "secrets": ["gcs-main"], "filesystem": ["job-temp"] },
+  "contracts": { "storage": "1.x" }
+}

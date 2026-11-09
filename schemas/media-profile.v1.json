@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.vidyom.org/schemas/media-profile.v1.json",
+  "title": "Vidyom media profile, version 1 (spec §4.1, D14, D40)",
+  "description": "Resolution is a ceiling: profiles never upscale (R17). An asset records the profile as id@version.",
+  "type": "object",
+  "required": ["id", "version", "audio", "container"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "description": { "type": "string" },
+    "selector": {
+      "description": "For auto:<family> profile selection: the source height range this profile serves (I25).",
+      "type": "object",
+      "required": ["family"],
+      "additionalProperties": false,
+      "properties": {
+        "family": { "type": "string" },
+        "minSourceHeight": { "type": "integer", "minimum": 0 },
+        "maxSourceHeight": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "video": {
+      "oneOf": [
+        { "const": false },
+        {
+          "type": "object",
+          "required": ["codec", "crf", "preset", "maxHeight"],
+          "additionalProperties": false,
+          "properties": {
+            "codec": { "enum": ["libx264", "libx265"] },
+            "profile": { "type": "string" },
+            "preset": { "type": "string" },
+            "crf": { "type": "integer", "minimum": 0, "maximum": 51 },
+            "maxHeight": { "type": "integer", "minimum": 144 },
+            "pixelFormat": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "audio": {
+      "type": "object",
+      "required": ["codec", "bitrate"],
+      "additionalProperties": false,
+      "properties": {
+        "codec": { "enum": ["aac", "libopus"] },
+        "bitrate": { "type": "string", "pattern": "^[0-9]+k$" },
+        "channels": { "type": "integer", "minimum": 1 },
+        "sampleRate": { "type": "integer", "minimum": 8000 }
+      }
+    },
+    "container": { "enum": ["mp4", "opus", "ogg", "m4a", "flac", "wav"] },
+    "faststart": { "type": "boolean" }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://www.vidyom.org/schemas/plugin-manifest.v1.json",
+  "title": "Vidyom plugin manifest, version 1 (spec §7.6, D43)",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "runtime",
+    "provides",
+    "permissions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(\\.[a-z0-9-]+)*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+"
+    },
+    "runtime": {
+      "enum": [
+        "process",
+        "remote"
+      ],
+      "description": "remote validates and refuses to start in this version (I42)."
+    },
+    "entrypoint": {
+      "description": "No shell is involved. Relative to the plugin directory. §7.6's example omits it; a process plugin must have it, which installation checks.",
+      "type": "object",
+      "required": [
+        "command"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "provides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "storageDrivers": {
+          "$ref": "#/$defs/names"
+        },
+        "publishingDrivers": {
+          "$ref": "#/$defs/names"
+        },
+        "catalogDrivers": {
+          "$ref": "#/$defs/names"
+        },
+        "logSinkDrivers": {
+          "$ref": "#/$defs/names"
+        },
+        "nodeTypes": {
+          "$ref": "#/$defs/names"
+        },
+        "hookActions": {
+          "$ref": "#/$defs/names"
+        },
+        "eventSubscriptions": {
+          "$ref": "#/$defs/names"
+        }
+      }
+    },
+    "permissions": {
+      "description": "Nothing is granted automatically (§7.6, §9.4).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "network": {
+          "$ref": "#/$defs/names"
+        },
+        "secrets": {
+          "$ref": "#/$defs/names"
+        },
+        "filesystem": {
+          "$ref": "#/$defs/names"
+        },
+        "events": {
+          "$ref": "#/$defs/names"
+        }
+      }
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "names": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  }
+}

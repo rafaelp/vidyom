@@ -1,0 +1,12 @@
+{
+  "observability": {
+    "logs": {
+      "level": "info",
+      "sinks": [
+        { "id": "local", "driver": "file", "enabled": true, "parameters": { "path": "/var/log/vidyomd/vidyomd.jsonl", "rotation": "daily", "retentionDays": 30 } },
+        { "id": "loki", "driver": "loki", "enabled": true, "credentialsRef": "loki-auth", "parameters": { "url": "https://loki.example.com" } },
+        { "id": "datadog", "driver": "datadog", "enabled": false, "credentialsRef": "datadog-api-key", "parameters": { "site": "datadoghq.com" } }
+      ]
+    }
+  }
+}

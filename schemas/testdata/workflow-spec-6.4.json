@@ -1,0 +1,34 @@
+{
+  "id": "create-clip",
+  "name": "Create Semantic Clip",
+  "version": "1.0.0",
+  "inputs": {
+    "source_id": { "type": "string", "required": true },
+    "prompt": { "type": "string", "required": true }
+  },
+  "nodes": [
+    { "id": "source", "type": "catalog.get", "typeVersion": 1,
+      "parameters": { "id": "${inputs.source_id}", "requiredStatus": "ready_for_clipping" } },
+    { "id": "find_story", "type": "ai.find_segment", "typeVersion": 1,
+      "parameters": { "asset": "${nodes.source.output}", "query": "${inputs.prompt}", "mode": "complete_story" } },
+    { "id": "preview", "type": "video.preview", "typeVersion": 1,
+      "parameters": { "source": "${nodes.source.output.proxy_uri}", "segments": "${nodes.find_story.output.segments}" } },
+    { "id": "approve_selection", "type": "approval.request", "typeVersion": 1,
+      "parameters": { "kind": "clip_selection", "approvers": ["editor"], "assetId": "${inputs.source_id}", "evidence": "${nodes.find_story.output}", "preview": "${nodes.preview.output.file}", "allowAdjust": true } },
+    { "id": "render", "type": "video.cut", "typeVersion": 1,
+      "parameters": { "source": "${nodes.source.output.working_master_uri}", "segments": "${nodes.approve_selection.output.segments}" } },
+    { "id": "ingest_derived", "type": "workflow.execute", "typeVersion": 1,
+      "parameters": { "workflow": "ingest-derived", "file": "${nodes.render.output.file}", "kind": "clip",
+        "lineage": { "method": "computed", "source_asset_id": "${inputs.source_id}", "segments": "${nodes.approve_selection.output.segments}" } } },
+    { "id": "publish", "type": "workflow.execute", "typeVersion": 1,
+      "parameters": { "workflow": "publish-video", "assetId": "${nodes.ingest_derived.output.asset_id}", "destinations": ["youtube-main"], "requireApproval": true } }
+  ],
+  "connections": {
+    "source": ["find_story"],
+    "find_story": ["preview"],
+    "preview": ["approve_selection"],
+    "approve_selection": ["render"],
+    "render": ["ingest_derived"],
+    "ingest_derived": ["publish"]
+  }
+}

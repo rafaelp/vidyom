@@ -1,0 +1,12 @@
+{
+  "id": "hooked",
+  "version": "1.0.0",
+  "hooks": {
+    "before": [ { "id": "validate-source", "plugin": "asset-validator", "action": "check-ready-for-clipping", "timeoutSeconds": 15, "onFailure": "abort" } ],
+    "after": [ { "id": "notify-review", "plugin": "notifications", "action": "send-review-notification", "timeoutSeconds": 10, "onFailure": "continue" } ],
+    "finish": [ { "id": "record-metrics", "plugin": "analytics", "action": "record-execution", "timeoutSeconds": 10, "onFailure": "continue" } ]
+  },
+  "nodes": [
+    { "id": "n", "type": "flow.if", "typeVersion": 1, "parameters": { "condition": "nodes.review.output.decision == 'approved' && inputs.visibility == 'public'" } }
+  ]
+}
