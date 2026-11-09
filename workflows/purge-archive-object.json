@@ -2,7 +2,7 @@
   "id": "purge-archive-object",
   "name": "Purge One Archive Object",
   "version": "1.0.0",
-  "description": "Delete one archive object of a deleted asset and record that it is gone. Used by purge-deleted-archives.",
+  "description": "Delete one archive object of a deleted asset. Used by purge-deleted-archives.",
   "inputs": {
     "item": {
       "type": "object",
@@ -18,22 +18,8 @@
       "parameters": {
         "source": "${inputs.item.archive_uri}"
       }
-    },
-    {
-      "id": "flags",
-      "type": "catalog.set_flags",
-      "typeVersion": 1,
-      "parameters": {
-        "assetId": "${inputs.item.asset_id}",
-        "backupVerified": false
-      }
     }
   ],
-  "connections": {
-    "delete_archive": [
-      "flags"
-    ]
-  },
   "settings": {
     "retry": 2,
     "retryBackoffSeconds": 30

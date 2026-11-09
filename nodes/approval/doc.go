@@ -1,4 +1,4 @@
-// Package approvalnodes: approval.request (R25).
-//
-// Owner: component engine (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Package approvalnodes implements approval.request, the human gate (R25, D7, I41,
+// I158). It runs inline in the engine. The job waits with no process held and no CLI
+// connected; service.Approvals in internal/jobs records the decision and resumes it.
 package approvalnodes
