@@ -284,21 +284,12 @@ func checkHandshake(result plugin.InitializeResult, m plugin.Manifest) error {
 	}
 	for _, c := range claims {
 		for _, item := range c.claimed {
-			if !contains(c.declared, item) {
+			if !slices.Contains(c.declared, item) {
 				return errs.Newf(errs.CodeFailedPrecondition, "plugin %s claims %s %q, which its manifest does not declare", m.ID, c.field, item)
 			}
 		}
 	}
 	return nil
-}
-
-func contains(list []string, want string) bool {
-	for _, item := range list {
-		if item == want {
-			return true
-		}
-	}
-	return false
 }
 
 func (p *process) touch() { p.lastUsed.Store(p.r.now().UnixNano()) }
@@ -412,7 +403,7 @@ func (p *process) hostSecret(ctx context.Context, params json.RawMessage) (any, 
 	if err := json.Unmarshal(params, &req); err != nil || req.Name == "" {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeInvalidParams, Message: "host.secret needs a name"}
 	}
-	granted := contains(p.perms.Secrets, req.Name)
+	granted := slices.Contains(p.perms.Secrets, req.Name)
 	result := "allowed"
 	if !granted {
 		result = "denied"

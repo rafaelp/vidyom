@@ -3,8 +3,9 @@
 //
 // Its arguments choose how it starts, which is the point of those tests:
 // --no-init never answers initialize, --wrong-id and --wrong-protocol answer falsely,
-// --claim-more claims more than a manifest says, --crash-at-start exits, and
-// --noisy-stdout writes garbage before answering.
+// --claim-more claims more than a manifest says, --crash-at-start exits,
+// --noisy-stdout writes garbage before answering, and --ignore-shutdown ignores shutdown,
+// a closed stdin and SIGTERM.
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"slices"
 	"strconv"
 	"strings"
@@ -57,8 +59,14 @@ func main() {
 	if has("--noisy-stdout") {
 		fmt.Fprintln(os.Stdout, "this is not JSON")
 	}
+	if has("--ignore-shutdown") {
+		signal.Ignore(syscall.SIGTERM)
+	}
 	conn = jsonrpc.NewConn(os.Stdin, os.Stdout, nil, handle)
 	_ = conn.Run(context.Background())
+	if has("--ignore-shutdown") {
+		select {} // stdin closed and SIGTERM ignored: only SIGKILL ends this
+	}
 }
 
 func handle(ctx context.Context, method string, params json.RawMessage) (any, error) {

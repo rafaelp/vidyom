@@ -184,4 +184,30 @@ One process per tenant and plugin (D6), started on demand, stopped when idle. JS
 
 ## 7. Wiring notes for `integration`
 
-Collected in the final report: `observability.New`, `plugins.New`, grant file location, install roots, `daemon.json` additions, passing `Manager.Handler` to `slog`, `Manager.InstallGlobals`, plugin deliveries to the Event Bus, and the Prometheus scraper's credential.
+Observability, in `vidyomd` (and in `vidyom-worker` with its own file path):
+
+```go
+reg := connector.NewRegistry()
+observability.RegisterBuiltins(reg) // file, loki, prometheus, otlp
+opts := observability.OptionsFromConfig(cfg) // <dataDir>/logs, state file, retention
+opts.Registry, opts.Auditor = reg, auditor
+opts.Secrets = systemResolver // nil refuses a daemon-level credentialsRef
+opts.Tenants, opts.TenantSecrets = tenantSource, perTenantResolver
+manager, err := observability.New(cfg.Observability, opts)
+slog.SetDefault(manager.Logger())
+manager.InstallGlobals() // for components using the OpenTelemetry API directly
+// manager is service.Observability and telemetry.Metrics. Close it last.
+```
+
+Plugins, in `vidyomd` only:
+
+```go
+opts := plugins.OptionsFromConfig(cfg) // store, grants, roots, forbidden paths
+opts.Repo, opts.Auditor = stores.System.Plugins(), auditor
+opts.Secrets, opts.Metrics, opts.Logger = perTenantResolver, manager, manager.Logger()
+runtime, err := plugins.New(opts)
+// runtime is service.Plugins, hook.ActionRunner (hooks.New) and
+// plugin.EventSubscriber (events.Options.Plugins). Close it before the manager.
+```
+
+`daemon.json` gains `plugins.installRoots` (install is off without it), `plugins.runtimePaths` and `plugins.allowUnsandboxed`. Tenants grant in `<config-dir>/tenants/<tenant>/plugins.json` (I261). `MetricsHandler` filters by `Vidyom-Tenant`, and the API filters again. `GET /metrics` needs a credential for a Prometheus scraper in the optional Compose profile.
