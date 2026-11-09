@@ -213,6 +213,9 @@ func newHarness(t *testing.T, opts ...harnessOpts) *harness {
 		{Type: "test.paid", TypeVersion: 1, Pool: node.PoolDaemon, SideEffect: node.EffectIdempotent, Paid: true},
 		{Type: "test.pure", TypeVersion: 1, Pool: node.PoolDaemon, SideEffect: node.EffectNone},
 		{Type: "test.suspends", TypeVersion: 1, Pool: node.PoolDaemon, SideEffect: node.EffectNone},
+		{Type: "test.gpu", TypeVersion: 1, Pool: node.PoolMedia, SideEffect: node.EffectIdempotent, Requirements: node.Requirements{GPU: true}},
+		{Type: "test.unsafe_worker", TypeVersion: 1, Pool: node.PoolMedia, SideEffect: node.EffectUnsafe},
+		{Type: "test.reconcilable_worker", TypeVersion: 1, Pool: node.PoolMedia, SideEffect: node.EffectReconcilable},
 	} {
 		h.reg.RegisterNode(&fakeNode{desc: d, h: h})
 	}
@@ -224,7 +227,7 @@ func newHarness(t *testing.T, opts ...harnessOpts) *harness {
 		Nodes:             h.reg,
 		Workflows:         h.wfs,
 		Validator:         h.val,
-		Hooks:             hooks.New(hookRunner{h}, hooks.Options{RetryBackoff: time.Millisecond}),
+		Hooks:             hooks.New(hookRunner{h}, hooks.Options{RetryBackoff: time.Millisecond, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}),
 		Config:            tenantSource{h},
 		Daemon:            config.Daemon{ScratchDir: t.TempDir(), SpoolDir: t.TempDir(), IngestRoots: []string{t.TempDir()}},
 		Budgets:           h.budgets,
@@ -575,4 +578,9 @@ func deliverEvents(h *harness) {
 	}
 }
 
-var _ = connector.Info{}
+type eventsStart = events.StartRequest
+type schedulerStart = scheduler.StartRequest
+
+func idULID(s string) id.ULID { return id.ULID(s) }
+
+type connectorSecrets = connector.SecretResolver

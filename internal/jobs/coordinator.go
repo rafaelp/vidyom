@@ -96,12 +96,10 @@ func (e *Engine) lease(ctx context.Context, taskID, workerID string, matchWorker
 		if len(n.Output) > 0 {
 			return workerproto.Lease{}, gone("its result is recorded")
 		}
-		live := n.LeaseExpiresAt != nil && now.Before(*n.LeaseExpiresAt)
-		if live && n.WorkerID == workerID {
-			// The worker never saw the answer to its first request.
-			return e.leaseOf(ctx, store, job, n)
-		}
-		if live {
+		// Exactly one live lease, even for the same worker: two entries for one task can
+		// reach one worker, and only the first may run. A worker that lost the answer
+		// to its request waits for the lease to expire.
+		if n.LeaseExpiresAt != nil && now.Before(*n.LeaseExpiresAt) {
 			return workerproto.Lease{}, errs.Newf(errs.CodeConflict, "task is leased by worker %s", n.WorkerID)
 		}
 		return workerproto.Lease{}, gone("its lease expired")

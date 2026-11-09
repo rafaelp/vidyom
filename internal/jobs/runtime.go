@@ -637,9 +637,9 @@ func (r *jobRun) startNode(nodeID string) error {
 	inv := r.invocation(&n)
 	inv.Data, _ = json.Marshal(map[string]json.RawMessage{"parameters": resolved})
 	e.spawn(func(ctx context.Context) {
-		res, hookErr := e.d.Hooks.Dispatch(ctx, hook.NodeBefore, chain, inv)
-		e.release(key)
 		defer e.Kick(tenant, ulid)
+		defer e.release(key) // held until the result is written, or a look at the job would run the hooks again
+		res, hookErr := e.d.Hooks.Dispatch(ctx, hook.NodeBefore, chain, inv)
 		if ctx.Err() != nil {
 			return
 		}
@@ -866,6 +866,7 @@ func (r *jobRun) finishNode(nodeID string) error {
 	base := r.invocation(&n)
 	e.spawn(func(ctx context.Context) {
 		defer e.Kick(tenant, ulid)
+		defer e.release(key) // held until the checkpoint is written
 		var blocked error
 		if !hooks.Empty(after) {
 			_, blocked = e.d.Hooks.Dispatch(ctx, hook.NodeAfter, after, base)
@@ -875,7 +876,6 @@ func (r *jobRun) finishNode(nodeID string) error {
 				e.d.Logger.Warn("node.finish hook failed", "job", ulid, "node_id", nodeID, "error", err)
 			}
 		}
-		e.release(key)
 		if ctx.Err() != nil {
 			return
 		}
@@ -1009,13 +1009,18 @@ func (r *jobRun) onFailure(nodeID string, f failure) error {
 		return r.failNode(nodeID, f)
 	}
 	if f.Code == CodeCancelled {
-		n := r.nodes[nodeID]
-		n.Status = domain.NodeCancelled
-		n.Error = &domain.JobError{Code: f.Code, Message: f.Message, NodeID: nodeID}
-		now := r.e.now()
-		n.FinishedAt = &now
-		n.LeaseExpiresAt = nil
-		return r.putNode(n, nil)
+		if r.cancelRequested() {
+			n := r.nodes[nodeID]
+			n.Status = domain.NodeCancelled
+			n.Error = &domain.JobError{Code: f.Code, Message: f.Message, NodeID: nodeID}
+			now := r.e.now()
+			n.FinishedAt = &now
+			n.LeaseExpiresAt = nil
+			return r.putNode(n, nil)
+		}
+		// Nobody asked for it, so a worker stopped it for its own reasons: an
+		// interruption like any other.
+		f.Retryable = true
 	}
 	retryable := f.Retryable || f.Unknown
 	switch desc.SideEffect {

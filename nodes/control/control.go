@@ -3,7 +3,6 @@ package controlnodes
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"sort"
 	"strconv"
@@ -309,7 +308,7 @@ func (n flowForeach) step(ctx context.Context, env node.Env, in node.Input) (nod
 		}
 		for i := range p.Items {
 			if c, ok := state[i]; ok && c.Status.Terminal() && c.Status != domain.JobCompleted {
-				return node.Result{}, node.Permanent(fmt.Errorf("item %d: %w", i, childError(c)))
+				return node.Result{}, node.Permanent(errs.Newf(errs.CodeFailedPrecondition, "item %d: %s", i, errs.Public(childError(c)).Message))
 			}
 		}
 	}
