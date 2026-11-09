@@ -179,6 +179,7 @@ func (r *jobRun) startJob() error {
 	base := r.invocation(nil)
 	// A job-level hook judges what the job was given, as a node's judges its parameters.
 	base.Data, _ = json.Marshal(map[string]json.RawMessage{"inputs": r.job.Inputs})
+	onError, onFinish := r.chain(hook.WorkflowError, nil), r.chain(hook.WorkflowFinish, nil)
 	e.spawn(func(ctx context.Context) {
 		defer e.Kick(tenant, job.ULID)
 		defer e.release(key)
@@ -188,6 +189,19 @@ func (r *jobRun) startJob() error {
 		}
 		if res == nil && !hooks.Empty(start) {
 			_, res = e.d.Hooks.Dispatch(ctx, hook.WorkflowStart, start, base)
+		}
+		if res != nil && ctx.Err() == nil {
+			// The job ends here, and that is still a terminal state a finish hook is owed
+			// (§8.1, §15.7). Like every terminal hook, these run before the state is
+			// written, and neither can change the outcome (I149).
+			ended := base
+			ended.Data, _ = json.Marshal(map[string]any{"outcome": domain.JobFailed})
+			if !hooks.Empty(onError) {
+				_, _ = e.d.Hooks.Dispatch(ctx, hook.WorkflowError, onError, ended)
+			}
+			if !hooks.Empty(onFinish) {
+				_, _ = e.d.Hooks.Dispatch(ctx, hook.WorkflowFinish, onFinish, ended)
+			}
 		}
 		if err := e.afterStartHooks(ctx, tenant, job.ULID, res); err != nil {
 			e.d.Logger.Warn("job start failed", "job_id", job.ID, "error", err)
