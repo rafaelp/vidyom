@@ -312,12 +312,22 @@ func (s *Service) createCode(ctx context.Context, by domain.Principal, tenant do
 	if ttl > MaxPairingTTL {
 		return "", time.Time{}, errs.Newf(errs.CodeInvalidArgument, "a pairing code lasts at most %s", MaxPairingTTL)
 	}
+	// Authorize first, so someone with no right to issue learns nothing about who exists.
+	if !by.SystemAdmin && (tenant == "" || !by.Can(domain.PermDeviceManage)) {
+		return "", time.Time{}, errs.Forbidden(string(domain.PermDeviceManage))
+	}
 	target, err := s.system.Users().GetByEmail(ctx, userEmail)
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	if err := s.mayIssueFor(ctx, by, tenant, target); err != nil {
-		return "", time.Time{}, err
+	if !by.SystemAdmin && by.UserULID != target.ULID {
+		managed, err := s.managedBy(ctx, tenant, target)
+		if err != nil {
+			return "", time.Time{}, err
+		}
+		if !managed {
+			return "", time.Time{}, errs.NotFound("user")
+		}
 	}
 	code, err := newPairingCode()
 	if err != nil {
@@ -332,6 +342,9 @@ func (s *Service) createCode(ctx context.Context, by domain.Principal, tenant do
 		RequestID:  requestID,
 		Details:    map[string]any{"ttl_seconds": int(ttl / time.Second)},
 	}
+	if err := s.tenantAudit(ctx, tenant, entry); err != nil {
+		return "", time.Time{}, err
+	}
 	err = s.system.InTx(ctx, func(tx repo.SystemRepos) error {
 		if err := tx.Pairing().Create(ctx, repo.PairingCode{Hash: hashCode(code), UserULID: target.ULID, CreatedBy: by.Actor(), ExpiresAt: expires}); err != nil {
 			return err
@@ -341,28 +354,22 @@ func (s *Service) createCode(ctx context.Context, by domain.Principal, tenant do
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	if err := s.tenantAudit(ctx, tenant, entry); err != nil {
-		return "", time.Time{}, err
-	}
 	return code, expires, nil
 }
 
-// mayIssueFor applies I112: a system admin for anyone; a tenant admin for members of
-// that tenant, never for a system admin.
-func (s *Service) mayIssueFor(ctx context.Context, by domain.Principal, tenant domain.TenantID, target domain.User) error {
-	if by.SystemAdmin {
-		return nil
+// managedBy reports whether a tenant's admin may hold credentials over this person: they
+// belong to that tenant and to no other, and are not a system admin. A device credential
+// is good for every tenant its user belongs to, so an admin of one tenant acting on a
+// user shared with another would reach into that other tenant (D6, I112).
+func (s *Service) managedBy(ctx context.Context, tenant domain.TenantID, user domain.User) (bool, error) {
+	if tenant == "" || user.SystemAdmin {
+		return false, nil
 	}
-	if tenant == "" || !by.Can(domain.PermDeviceManage) {
-		return errs.Forbidden(string(domain.PermDeviceManage))
+	memberships, err := s.system.Users().Memberships(ctx, user.ULID)
+	if err != nil {
+		return false, err
 	}
-	if target.SystemAdmin {
-		return errs.Forbidden(string(domain.PermSystemAdmin))
-	}
-	if _, err := s.system.Users().Membership(ctx, target.ULID, tenant); err != nil {
-		return err
-	}
-	return nil
+	return len(memberships) == 1 && memberships[0].TenantID == tenant, nil
 }
 
 // Pair exchanges a code for a device credential. It is the only unauthenticated
@@ -416,31 +423,26 @@ func deviceToken(device id.ULID, secret string) string {
 	return devicePrefix + string(device) + "_" + secret
 }
 
-// mayManage applies I112 to an existing device.
+// mayManage applies I112 to an existing device. Everything a caller may not act on is
+// not found, so a CLIENT-nnn says nothing about devices outside their reach.
 func (s *Service) mayManage(ctx context.Context, by domain.Principal, d domain.Device) error {
-	if by.SystemAdmin {
+	if by.SystemAdmin || (by.UserULID != "" && by.UserULID == d.UserULID) {
 		return nil
 	}
-	if by.UserULID != "" && by.UserULID == d.UserULID {
-		return nil
-	}
-	if by.TenantID == "" || !by.Can(domain.PermDeviceManage) {
-		return errs.Forbidden(string(domain.PermDeviceManage))
-	}
-	if _, err := s.system.Users().Membership(ctx, d.UserULID, by.TenantID); err != nil {
-		if errs.IsCode(err, errs.CodeNotFound) {
-			return errs.NotFound("device")
+	if by.TenantID != "" && by.Can(domain.PermDeviceManage) {
+		user, err := s.system.Users().Get(ctx, d.UserULID)
+		if err != nil {
+			return err
 		}
-		return err
+		managed, err := s.managedBy(ctx, by.TenantID, user)
+		if err != nil {
+			return err
+		}
+		if managed {
+			return nil
+		}
 	}
-	user, err := s.system.Users().Get(ctx, d.UserULID)
-	if err != nil {
-		return err
-	}
-	if user.SystemAdmin {
-		return errs.Forbidden(string(domain.PermSystemAdmin))
-	}
-	return nil
+	return errs.NotFound("device")
 }
 
 // Revoke implements security.Pairing.
@@ -457,8 +459,14 @@ func (s *Service) revoke(ctx context.Context, by domain.Principal, ref id.Ref, r
 	if err := s.mayManage(ctx, by, d); err != nil {
 		return domain.Device{}, err
 	}
+	if d.Status == domain.DeviceRevoked {
+		return d, nil
+	}
 	now := s.clock().UTC()
 	entry := security.AuditEntry{Principal: by, Action: "device.revoke", Permission: domain.PermDeviceManage, Resource: string(d.ID), RequestID: requestID}
+	if err := s.tenantAudit(ctx, by.TenantID, entry); err != nil {
+		return domain.Device{}, err
+	}
 	err = s.system.InTx(ctx, func(tx repo.SystemRepos) error {
 		current, err := tx.Devices().Get(ctx, ref)
 		if err != nil {
@@ -479,14 +487,14 @@ func (s *Service) revoke(ctx context.Context, by domain.Principal, ref id.Ref, r
 	if err != nil {
 		return domain.Device{}, err
 	}
-	if err := s.tenantAudit(ctx, by.TenantID, entry); err != nil {
-		return domain.Device{}, err
-	}
 	return d, nil
 }
 
 // Rotate implements security.Pairing. The old credential stops working in the same
-// transaction that creates the new one; a revoked device cannot rotate back to life.
+// transaction that creates the new one; a revoked device cannot rotate back to life. Only
+// the device's owner receives the new token (I112). For anyone else this is a forced
+// rotation: the token is discarded here, and that device must pair again, so holding the
+// right to rotate never means being able to act as the owner.
 func (s *Service) Rotate(ctx context.Context, by domain.Principal, ref id.Ref) (security.IssuedCredential, error) {
 	return s.rotate(ctx, by, ref, "")
 }
@@ -499,12 +507,20 @@ func (s *Service) rotate(ctx context.Context, by domain.Principal, ref id.Ref, r
 	if err := s.mayManage(ctx, by, d); err != nil {
 		return security.IssuedCredential{}, err
 	}
+	if d.Status != domain.DeviceActive {
+		return security.IssuedCredential{}, errs.Newf(errs.CodeFailedPrecondition, "device %s is revoked and cannot be rotated", d.ID)
+	}
 	secret, err := randomSecret()
 	if err != nil {
 		return security.IssuedCredential{}, err
 	}
 	now := s.clock().UTC()
 	entry := security.AuditEntry{Principal: by, Action: "device.rotate", Permission: domain.PermDeviceManage, Resource: string(d.ID), RequestID: requestID}
+	// The tenant chain goes first: once the hash commits the old token is dead, and a
+	// failure after that would throw away the only credential the device could have.
+	if err := s.tenantAudit(ctx, by.TenantID, entry); err != nil {
+		return security.IssuedCredential{}, err
+	}
 	err = s.system.InTx(ctx, func(tx repo.SystemRepos) error {
 		current, err := tx.Devices().Get(ctx, ref)
 		if err != nil {
@@ -524,8 +540,8 @@ func (s *Service) rotate(ctx context.Context, by domain.Principal, ref id.Ref, r
 	if err != nil {
 		return security.IssuedCredential{}, err
 	}
-	if err := s.tenantAudit(ctx, by.TenantID, entry); err != nil {
-		return security.IssuedCredential{}, err
+	if by.UserULID == "" || by.UserULID != d.UserULID {
+		return security.IssuedCredential{Device: d}, nil
 	}
 	return security.IssuedCredential{Device: d, Token: deviceToken(d.ULID, secret)}, nil
 }
@@ -570,6 +586,19 @@ func (d deviceService) List(ctx context.Context, scope service.Scope) ([]domain.
 		}
 		out := []domain.Device{}
 		for _, m := range members {
+			if m.UserULID != p.UserULID {
+				user, err := d.s.system.Users().Get(ctx, m.UserULID)
+				if err != nil {
+					return nil, err
+				}
+				managed, err := d.s.managedBy(ctx, scope.Tenant, user)
+				if err != nil {
+					return nil, err
+				}
+				if !managed {
+					continue
+				}
+			}
 			devices, err := d.s.system.Devices().List(ctx, m.UserULID)
 			if err != nil {
 				return nil, err

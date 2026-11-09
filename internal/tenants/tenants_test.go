@@ -266,6 +266,44 @@ func TestUsers(t *testing.T) {
 	}
 }
 
+// A tenant admin cannot attach someone who already exists outside the tenant. Otherwise
+// they could mint that person a credential, or pre-register an address and keep a device
+// for when another tenant adds it (D6, I112).
+func TestTenantAdminCannotAttachAnExistingUser(t *testing.T) {
+	f := setup(t)
+	root := f.admin(t)
+	for _, tn := range []domain.TenantID{"acme", "beta"} {
+		if _, err := f.svc.Create(ctx, root, api.CreateTenantRequest{ID: tn}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	svc := f.svc.Users()
+	if _, err := svc.Add(ctx, service.Scope{Tenant: "acme", Principal: root}, api.AddUserRequest{Email: "alice@example.com", Role: domain.RoleAdmin}); err != nil {
+		t.Fatal(err)
+	}
+	betaAdmin := domain.Principal{Email: "bob@example.com", Role: domain.RoleAdmin, TenantID: "beta"}
+	betaScope := service.Scope{Tenant: "beta", Principal: betaAdmin}
+	if _, err := svc.Add(ctx, betaScope, api.AddUserRequest{Email: "alice@example.com", Role: domain.RoleViewer}); !errs.IsCode(err, errs.CodeForbidden) {
+		t.Fatalf("attach: %v", err)
+	}
+	// Someone new is fine, and so is changing the role of an existing member.
+	if _, err := svc.Add(ctx, betaScope, api.AddUserRequest{Email: "carol@example.com", Role: domain.RoleViewer}); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := svc.Add(ctx, betaScope, api.AddUserRequest{Email: "carol@example.com", Role: domain.RoleEditor})
+	if err != nil || changed.Role != domain.RoleEditor {
+		t.Fatalf("role change = %+v, %v", changed, err)
+	}
+	// And so a tenant admin cannot pull carol into another tenant either.
+	if _, err := svc.Add(ctx, service.Scope{Tenant: "acme", Principal: domain.Principal{Email: "a@example.com", Role: domain.RoleAdmin, TenantID: "acme"}}, api.AddUserRequest{Email: "carol@example.com", Role: domain.RoleViewer}); !errs.IsCode(err, errs.CodeForbidden) {
+		t.Fatalf("attach back: %v", err)
+	}
+	// A system admin decides membership across tenants (D6).
+	if _, err := svc.Add(ctx, service.Scope{Tenant: "acme", Principal: root}, api.AddUserRequest{Email: "carol@example.com", Role: domain.RoleViewer}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestBootstrap(t *testing.T) {
 	stores, err := persistence.Open(ctx, persistence.Options{DataDir: t.TempDir()})
 	if err != nil {
@@ -670,6 +708,28 @@ func TestBudgetThresholds(t *testing.T) {
 	st, _ = svc.Status(ctx, scope)
 	if st.Period != "2026-12" || st.SpentMinor != 0 {
 		t.Fatalf("status = %+v", st)
+	}
+}
+
+// A budget of zero stops paid work; it is not the same as having no budget (I116).
+func TestZeroBudgetBlocks(t *testing.T) {
+	f := setup(t)
+	svc, scope, _ := f.budgetScope(t)
+	st, err := svc.Set(ctx, scope, api.SetBudgetRequest{MonthlyMinor: 0, Currency: "USD"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Blocked || st.Percent != 100 {
+		t.Fatalf("status = %+v", st)
+	}
+	if err := svc.Check(ctx, "acme"); !errs.IsCode(err, errs.CodeBudgetExceeded) {
+		t.Fatalf("check: %v", err)
+	}
+	if _, err := svc.Override(ctx, scope, api.BudgetOverrideRequest{Reason: "emergency"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.Check(ctx, "acme"); err != nil {
+		t.Fatalf("overridden: %v", err)
 	}
 }
 

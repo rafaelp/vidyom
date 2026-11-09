@@ -201,7 +201,10 @@ func (u userService) List(ctx context.Context, scope service.Scope) ([]domain.Me
 
 // Add adds a person to the tenant, creating the user if they are new. Users are global
 // to the daemon, with roles per tenant (D6). Adding someone already in the tenant
-// changes their role and keeps their grants.
+// changes their role and keeps their grants. Only a system admin attaches someone who
+// exists outside the tenant (I112): a tenant admin who could would be able to mint that
+// person a credential, or pre-register an address another tenant adds later. The
+// refusal does say that the address exists on this daemon, which is the smaller harm.
 func (u userService) Add(ctx context.Context, scope service.Scope, req api.AddUserRequest) (domain.Membership, error) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	if email == "" || !strings.Contains(email, "@") {
@@ -216,9 +219,11 @@ func (u userService) Add(ctx context.Context, scope service.Scope, req api.AddUs
 			return err
 		}
 		user, err := tx.Users().GetByEmail(ctx, email)
+		isNew := false
 		switch {
 		case err == nil:
 		case errs.IsCode(err, errs.CodeNotFound):
+			isNew = true
 			user = domain.User{ULID: id.New(), Email: email, CreatedAt: u.s.clock().UTC()}
 			if err := tx.Users().Create(ctx, user); err != nil {
 				return err
@@ -227,10 +232,13 @@ func (u userService) Add(ctx context.Context, scope service.Scope, req api.AddUs
 			return err
 		}
 		m := domain.Membership{UserULID: user.ULID, TenantID: scope.Tenant, Role: req.Role}
-		if existing, err := tx.Users().Membership(ctx, user.ULID, scope.Tenant); err == nil {
+		switch existing, err := tx.Users().Membership(ctx, user.ULID, scope.Tenant); {
+		case err == nil:
 			m.Grants = existing.Grants
-		} else if !errs.IsCode(err, errs.CodeNotFound) {
+		case !errs.IsCode(err, errs.CodeNotFound):
 			return err
+		case !isNew && !scope.Principal.SystemAdmin:
+			return errs.New(errs.CodeForbidden, "this address already has an account on this daemon: a system admin must add it to another tenant")
 		}
 		if err := tx.Users().SetMembership(ctx, m); err != nil {
 			return err
@@ -274,6 +282,10 @@ func (u userService) Grant(ctx context.Context, scope service.Scope, userRef str
 		}
 		m, err := tx.Users().Membership(ctx, user.ULID, scope.Tenant)
 		if err != nil {
+			if errs.IsCode(err, errs.CodeNotFound) {
+				// Same answer as an unknown address: who exists elsewhere stays private.
+				return errs.NotFound("user")
+			}
 			return err
 		}
 		grants := make([]domain.Permission, 0, len(m.Grants)+1)

@@ -55,9 +55,15 @@ func status(ctx context.Context, r repo.BudgetRepo, tenant domain.TenantID, now 
 	if active {
 		out.OverrideUntil = until
 	}
-	if found && budget.MonthlyMinor > 0 {
+	switch {
+	case !found:
+	case budget.MonthlyMinor > 0:
 		out.Percent = float64(out.SpentMinor) / float64(budget.MonthlyMinor) * 100
 		out.Blocked = out.SpentMinor >= budget.MonthlyMinor && !active
+	default:
+		// A stored zero is an admin stopping paid work, not the absence of a budget.
+		out.Percent = 100
+		out.Blocked = !active
 	}
 	return out, nil
 }

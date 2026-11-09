@@ -282,26 +282,34 @@ func TestDeviceScope(t *testing.T) {
 	editor := f.user(t, "editor@example.com", false, "acme", domain.RoleEditor)
 	viewer := f.user(t, "viewer@example.com", false, "acme", domain.RoleViewer)
 
-	// Codes: tenant admins for their members, never for a system admin or outsiders.
+	// Codes: tenant admins for their members, and the same answer for everyone else.
 	if _, err := f.auth.CreateCode(ctx, acmeAdmin, "editor@example.com", 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.auth.CreateCode(ctx, acmeAdmin, "beta-admin@example.com", 0); !errs.IsCode(err, errs.CodeNotFound) {
-		t.Fatalf("outsider: %v", err)
+	unknown := errs.Public(errOf(f.auth.CreateCode(ctx, acmeAdmin, "nobody@example.com", 0))).Message
+	for _, email := range []string{"beta-admin@example.com", "root@example.com", "nobody@example.com"} {
+		err := errOf(f.auth.CreateCode(ctx, acmeAdmin, email, 0))
+		if !errs.IsCode(err, errs.CodeNotFound) || errs.Public(err).Message != unknown {
+			t.Errorf("%s: %v: who exists elsewhere must stay private", email, err)
+		}
 	}
-	if _, err := f.auth.CreateCode(ctx, acmeAdmin, "root@example.com", 0); !errs.IsCode(err, errs.CodeForbidden) {
-		t.Fatalf("system admin target: %v", err)
+	// Someone with no right to issue learns nothing either.
+	for _, email := range []string{"editor@example.com", "nobody@example.com"} {
+		if err := errOf(f.auth.CreateCode(ctx, editor, email, 0)); !errs.IsCode(err, errs.CodeForbidden) {
+			t.Errorf("editor issuing for %s: %v", email, err)
+		}
 	}
-	if _, err := f.auth.CreateCode(ctx, editor, "editor@example.com", 0); !errs.IsCode(err, errs.CodeForbidden) {
-		t.Fatalf("editor: %v", err)
-	}
-	if _, err := f.auth.CreateCode(ctx, viewer, "", 0); !errs.IsCode(err, errs.CodeForbidden) {
+	if err := errOf(f.auth.CreateCode(ctx, viewer, "", 0)); !errs.IsCode(err, errs.CodeForbidden) {
 		t.Fatalf("viewer: %v", err)
 	}
-	if _, err := f.auth.CreateCode(ctx, domain.Principal{UserULID: editor.UserULID, Email: editor.Email}, "", 0); !errs.IsCode(err, errs.CodeForbidden) {
+	if err := errOf(f.auth.CreateCode(ctx, domain.Principal{UserULID: editor.UserULID, Email: editor.Email}, "", 0)); !errs.IsCode(err, errs.CodeForbidden) {
 		t.Fatalf("no tenant: %v", err)
 	}
 	if _, err := f.auth.CreateCode(ctx, root, "beta-admin@example.com", 0); err != nil {
+		t.Fatal(err)
+	}
+	// An admin pairs another device of their own.
+	if _, err := f.auth.CreateCode(ctx, acmeAdmin, "", 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -309,32 +317,32 @@ func TestDeviceScope(t *testing.T) {
 	viewerCred := f.pair(t, acmeAdmin, "viewer@example.com")
 	rootCred := f.pair(t, root, "root@example.com")
 
-	// Owners act on their own devices; others in the tenant do not.
-	if _, err := f.auth.Rotate(ctx, editor, id.Ref(editorCred.Device.ID)); err != nil {
-		t.Fatal(err)
+	// Owners act on their own devices; for anyone else it does not exist.
+	rotated, err := f.auth.Rotate(ctx, editor, id.Ref(editorCred.Device.ID))
+	if err != nil || rotated.Token == "" {
+		t.Fatalf("own rotation = %+v, %v", rotated, err)
 	}
-	if _, err := f.auth.Rotate(ctx, editor, id.Ref(viewerCred.Device.ID)); !errs.IsCode(err, errs.CodeForbidden) {
-		t.Fatalf("another user's device: %v", err)
+	notFound := []struct {
+		name string
+		err  error
+	}{
+		{"colleague rotating", errOf(f.auth.Rotate(ctx, editor, id.Ref(viewerCred.Device.ID)))},
+		{"colleague revoking", f.auth.Revoke(ctx, viewer, id.Ref(editorCred.Device.ID))},
+		{"other tenant's admin", f.auth.Revoke(ctx, betaAdmin, id.Ref(editorCred.Device.ID))},
+		{"no shared tenant", f.auth.Revoke(ctx, acmeAdmin, id.Ref(rootCred.Device.ID))},
+		{"unknown device", f.auth.Revoke(ctx, acmeAdmin, "CLIENT-999")},
 	}
-	if err := f.auth.Revoke(ctx, viewer, id.Ref(editorCred.Device.ID)); !errs.IsCode(err, errs.CodeForbidden) {
-		t.Fatalf("viewer revoking: %v", err)
+	for _, c := range notFound {
+		if !errs.IsCode(c.err, errs.CodeNotFound) {
+			t.Errorf("%s: %v", c.name, c.err)
+		}
 	}
-	// Another tenant's admin sees it as absent.
-	if err := f.auth.Revoke(ctx, betaAdmin, id.Ref(editorCred.Device.ID)); !errs.IsCode(err, errs.CodeNotFound) {
-		t.Fatalf("other tenant's admin: %v", err)
-	}
-	// A tenant admin cannot touch a system admin's device.
-	if err := f.auth.Revoke(ctx, acmeAdmin, id.Ref(rootCred.Device.ID)); !errs.IsCode(err, errs.CodeNotFound) {
-		t.Fatalf("no shared tenant: %v", err)
-	}
+	// A system admin who is also a member of the tenant stays out of a tenant admin's reach.
 	if err := f.sys.Users().SetMembership(ctx, domain.Membership{UserULID: root.UserULID, TenantID: "acme", Role: domain.RoleViewer}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.auth.Revoke(ctx, acmeAdmin, id.Ref(rootCred.Device.ID)); !errs.IsCode(err, errs.CodeForbidden) {
+	if err := f.auth.Revoke(ctx, acmeAdmin, id.Ref(rootCred.Device.ID)); !errs.IsCode(err, errs.CodeNotFound) {
 		t.Fatalf("system admin's device: %v", err)
-	}
-	if err := f.auth.Revoke(ctx, acmeAdmin, "CLIENT-999"); !errs.IsCode(err, errs.CodeNotFound) {
-		t.Fatalf("unknown device: %v", err)
 	}
 	if err := f.auth.Revoke(ctx, root, id.Ref(viewerCred.Device.ID)); err != nil {
 		t.Fatal(err)
@@ -360,8 +368,8 @@ func TestDeviceScope(t *testing.T) {
 	if got := list(service.Scope{Principal: root}); len(got) != 3 {
 		t.Fatalf("root = %v", got)
 	}
-	if got := list(service.Scope{Tenant: "acme", Principal: acmeAdmin}); len(got) != 3 {
-		t.Fatalf("acme admin = %v", got)
+	if got := list(service.Scope{Tenant: "acme", Principal: acmeAdmin}); len(got) != 2 {
+		t.Fatalf("acme admin sees what they can act on = %v", got)
 	}
 	if got := list(service.Scope{Tenant: "beta", Principal: betaAdmin}); len(got) != 0 {
 		t.Fatalf("beta admin = %v", got)
@@ -373,6 +381,83 @@ func TestDeviceScope(t *testing.T) {
 		t.Fatalf("anonymous list: %v", err)
 	}
 }
+
+// D6: a credential is good in every tenant its user belongs to, so an admin of one
+// tenant must not get or destroy one for a user they share with another tenant.
+func TestTenantAdminCannotReachASharedUser(t *testing.T) {
+	f := setup(t)
+	root := f.user(t, "root@example.com", true, "", "")
+	betaAdmin := f.user(t, "bob@example.com", false, "beta", domain.RoleAdmin)
+	alice := f.user(t, "alice@example.com", false, "acme", domain.RoleAdmin)
+	// A system admin made alice a member of both.
+	if err := f.sys.Users().SetMembership(ctx, domain.Membership{UserULID: alice.UserULID, TenantID: "beta", Role: domain.RoleViewer}); err != nil {
+		t.Fatal(err)
+	}
+	if err := errOf(f.auth.CreateCode(ctx, betaAdmin, "alice@example.com", 0)); !errs.IsCode(err, errs.CodeNotFound) {
+		t.Fatalf("code for a shared user: %v", err)
+	}
+	cred := f.pair(t, root, "alice@example.com")
+	if err := errOf(f.auth.Rotate(ctx, betaAdmin, id.Ref(cred.Device.ID))); !errs.IsCode(err, errs.CodeNotFound) {
+		t.Fatalf("rotating a shared user's device: %v", err)
+	}
+	if err := f.auth.Revoke(ctx, betaAdmin, id.Ref(cred.Device.ID)); !errs.IsCode(err, errs.CodeNotFound) {
+		t.Fatalf("revoking a shared user's device: %v", err)
+	}
+	devices, err := f.auth.Devices().List(ctx, service.Scope{Tenant: "beta", Principal: betaAdmin})
+	if err != nil || len(devices) != 0 {
+		t.Fatalf("listing a shared user's devices = %+v, %v", devices, err)
+	}
+	// Her credential still works, and alice manages it herself.
+	if _, err := f.auth.Authenticate(ctx, security.Credentials{BearerToken: cred.Token}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.auth.Revoke(ctx, alice, id.Ref(cred.Device.ID)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Only the owner receives a rotated token (I112): anyone else forces a re-pairing.
+func TestRotationGivesTheTokenOnlyToTheOwner(t *testing.T) {
+	f := setup(t)
+	root := f.user(t, "root@example.com", true, "", "")
+	admin := f.user(t, "admin@example.com", false, "acme", domain.RoleAdmin)
+	f.user(t, "editor@example.com", false, "acme", domain.RoleEditor)
+	for _, by := range []domain.Principal{admin, root} {
+		cred := f.pair(t, admin, "editor@example.com")
+		forced, err := f.auth.Rotate(ctx, by, id.Ref(cred.Device.ID))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if forced.Token != "" {
+			t.Fatalf("%s got someone else's token", by.Email)
+		}
+		if forced.Device.ID != cred.Device.ID || forced.Device.RotatedAt == nil {
+			t.Fatalf("device = %+v", forced.Device)
+		}
+		if _, err := f.auth.Authenticate(ctx, security.Credentials{BearerToken: cred.Token}); !errs.IsCode(err, errs.CodeUnauthenticated) {
+			t.Fatalf("a forced rotation must end the old credential: %v", err)
+		}
+	}
+}
+
+// The tenant chain is written before the commit, so a failure there leaves the device
+// working instead of discarding its only credential.
+func TestFailedTenantAuditLeavesTheCredentialWorking(t *testing.T) {
+	f := setup(t)
+	admin := f.user(t, "admin@example.com", false, "acme", domain.RoleAdmin)
+	cred := f.pair(t, admin, "admin@example.com")
+	broken := admin
+	broken.TenantID = "missing-tenant"
+	broken.Role = domain.RoleAdmin
+	if _, err := f.auth.Rotate(ctx, broken, id.Ref(cred.Device.ID)); err == nil {
+		t.Fatal("no audit, no rotation")
+	}
+	if _, err := f.auth.Authenticate(ctx, security.Credentials{BearerToken: cred.Token}); err != nil {
+		t.Fatalf("the old credential must still work: %v", err)
+	}
+}
+
+func errOf[T any](_ T, err error) error { return err }
 
 func TestPeerIdentity(t *testing.T) {
 	f := setup(t, Options{LocalUsers: []config.LocalUser{{UID: 1000, Email: "ops@example.com"}, {UID: 1001, Email: "ghost@example.com"}}})

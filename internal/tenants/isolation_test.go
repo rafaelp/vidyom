@@ -335,6 +335,22 @@ func TestTenantIsolation(t *testing.T) {
 	// A pairing code cannot be minted for another tenant's user.
 	wantNotFound(t, "code across tenants", errOf(s.auth.CreateCode(ctx, bob, "alice@example.com", 0)))
 
+	// The takeover path: bob cannot attach alice to his tenant to reach her credential,
+	// which would be good in acme too (D6, I112).
+	if _, err := s.tenants.Users().Add(ctx, bobScope, api.AddUserRequest{Email: "alice@example.com", Role: domain.RoleViewer}); !errs.IsCode(err, errs.CodeForbidden) {
+		t.Fatalf("bob attaching alice: %v", err)
+	}
+	wantNotFound(t, "alice in beta after the refusal", errOf(s.authz.Resolve(ctx, alice, "beta")))
+	wantNotFound(t, "code after the refusal", errOf(s.auth.CreateCode(ctx, bob, "alice@example.com", 0)))
+	// Pre-registration: bob creates an address and keeps a device for it. A tenant admin
+	// cannot later add that address to acme, so the device cannot reach acme.
+	if _, err := s.tenants.Users().Add(ctx, bobScope, api.AddUserRequest{Email: "carol@example.com", Role: domain.RoleViewer}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.tenants.Users().Add(ctx, aliceScope, api.AddUserRequest{Email: "carol@example.com", Role: domain.RoleViewer}); !errs.IsCode(err, errs.CodeForbidden) {
+		t.Fatalf("alice attaching carol: %v", err)
+	}
+
 	// Nothing bob tried changed acme's asset.
 	final, err := s.catalog.Get(ctx, aliceScope, id.Ref(acmeAsset.ID))
 	if err != nil || final.Title != "Acme's class" || final.AIProcessing != domain.AILocalOnly {
