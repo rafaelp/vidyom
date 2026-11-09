@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -141,7 +142,10 @@ func (s *server) execute(c *call, h handlerFunc) error {
 		Key: stored, RequestHash: hash, Status: c.rec.status,
 		Body: json.RawMessage(c.rec.capture.data), CreatedAt: s.now().UTC(),
 	}
-	if err := store.Idempotency().Put(c.ctx, record); err != nil {
+	// The action is done, so a client that hung up must not stop this record.
+	ctx, cancel := afterwards(c)
+	defer cancel()
+	if err := store.Idempotency().Put(ctx, record); err != nil {
 		// The answer is already on its way. A retry repeats the call, and a service
 		// that starts a job dedupes on Scope.IdempotencyKey too.
 		s.log.Error("idempotency.not_recorded", "request_id", c.requestID, "route", c.route.Name, "error", err)
@@ -160,10 +164,20 @@ func (s *server) runAudited(c *call, h handlerFunc) error {
 	}
 	err := h(c)
 	if err != nil {
-		public := errs.Public(err)
-		if auditErr := s.record(c, resultFailed, public.Code); auditErr != nil {
+		// A client that hung up is one way to get here, and the record is still owed.
+		ctx, cancel := afterwards(c)
+		defer cancel()
+		after := *c
+		after.ctx = ctx
+		if auditErr := s.record(&after, resultFailed, errs.Public(err).Code); auditErr != nil {
 			s.log.Error("audit.failure_not_recorded", "request_id", c.requestID, "route", c.route.Name, "error", auditErr)
 		}
 	}
 	return err
+}
+
+// afterwards is a context for bookkeeping once the handler has run: it keeps the
+// trace but not the client's cancellation.
+func afterwards(c *call) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(c.ctx), bookkeepingLimit)
 }

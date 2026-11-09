@@ -267,8 +267,10 @@ func (s *Service) AppendChunk(ctx context.Context, sc service.Scope, ref id.Ref,
 			With("offset", u.ReceivedBytes)
 	}
 
+	// O_CREATE because a power failure can lose a file whose directory entry was never
+	// synced; the size check below then sends the client back to the start.
 	path := s.path(sc.Tenant, u.ULID)
-	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, fileMode)
 	if err != nil {
 		return domain.Upload{}, errs.Wrap(errs.CodeUnavailable, err, "the spool file is not usable")
 	}

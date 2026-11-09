@@ -1,6 +1,7 @@
 package apiserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,10 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/api"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
+	"github.com/rafaelp/vidyom/internal/contract/id"
+	"github.com/rafaelp/vidyom/internal/contract/repo"
+	"github.com/rafaelp/vidyom/internal/contract/security"
+	"github.com/rafaelp/vidyom/internal/contract/service"
 )
 
 func clip(key string) request {
@@ -343,6 +348,95 @@ func TestReadsAndTenantFreeAudit(t *testing.T) {
 	if records := w.auditRecords(); len(records) != 0 {
 		t.Fatalf("pairing wrote the audit: %+v", records)
 	}
+}
+
+func TestClientHangingUpDoesNotLoseTheRecords(t *testing.T) {
+	// The handler's work is done or failed; the bookkeeping must survive the client.
+	w := newWorld(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	w.jobs = fakeJobs{w: w}
+	h := w.serve(func(d *Deps) {
+		d.Jobs = hangupJobs{Jobs: &w.jobs, cancel: cancel}
+		d.TenantStores = ctxCheckingStores{TenantStores: w.stores}
+		d.Auditor = ctxCheckingAuditor{auditor{w}}
+	})
+	r := httptest.NewRequest("POST", "/api/v1/jobs/JOB-001/cancel", nil).WithContext(ctx)
+	r.Header.Set("Authorization", "Bearer "+tokenEditor)
+	r.Header.Set(api.HeaderTenant, string(tenantA))
+	r.Header.Set(api.HeaderIdempotencyKey, "k")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	if n := w.stores.Store(tenantA).Records(); n != 1 {
+		t.Fatalf("%d idempotency records after the client left", n)
+	}
+}
+
+func TestClientHangingUpOnAFailureIsStillAudited(t *testing.T) {
+	w := newWorld(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	w.jobs = fakeJobs{w: w}
+	h := w.serve(func(d *Deps) {
+		d.Jobs = hangupJobs{Jobs: &w.jobs, cancel: cancel, err: errs.New(errs.CodeUnavailable, "x")}
+		d.Auditor = ctxCheckingAuditor{auditor{w}}
+	})
+	r := httptest.NewRequest("POST", "/api/v1/jobs/JOB-001/cancel", nil).WithContext(ctx)
+	r.Header.Set("Authorization", "Bearer "+tokenEditor)
+	r.Header.Set(api.HeaderTenant, string(tenantA))
+	r.Header.Set(api.HeaderIdempotencyKey, "k")
+	h.ServeHTTP(httptest.NewRecorder(), r)
+
+	records := w.auditRecords()
+	if len(records) != 2 || records[1].Result != resultFailed {
+		t.Fatalf("records = %+v", records)
+	}
+}
+
+// hangupJobs cancels the request while the handler runs, as a client hanging up does.
+type hangupJobs struct {
+	service.Jobs
+	cancel context.CancelFunc
+	err    error
+}
+
+func (j hangupJobs) Cancel(ctx context.Context, s service.Scope, ref id.Ref, r api.JobActionRequest) (domain.Job, error) {
+	j.cancel()
+	return domain.Job{}, j.err
+}
+
+// The fakes ignore contexts, so these two refuse a cancelled one, as a database does.
+type ctxCheckingAuditor struct{ auditor }
+
+func (a ctxCheckingAuditor) Record(ctx context.Context, e security.AuditEntry) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return a.auditor.Record(ctx, e)
+}
+
+type ctxCheckingStores struct{ repo.TenantStores }
+
+func (s ctxCheckingStores) ForTenant(ctx context.Context, t domain.TenantID) (repo.TenantStore, error) {
+	store, err := s.TenantStores.ForTenant(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return ctxCheckingStore{store}, nil
+}
+
+type ctxCheckingStore struct{ repo.TenantStore }
+
+func (s ctxCheckingStore) Idempotency() repo.IdempotencyRepo {
+	return ctxCheckingIdempotency{s.TenantStore.Idempotency()}
+}
+
+type ctxCheckingIdempotency struct{ repo.IdempotencyRepo }
+
+func (i ctxCheckingIdempotency) Put(ctx context.Context, r repo.IdempotentResponse) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return i.IdempotencyRepo.Put(ctx, r)
 }
 
 func TestDeniedMutationIsAuditedAndNotExecuted(t *testing.T) {

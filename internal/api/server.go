@@ -32,6 +32,8 @@ const (
 	writeLimit      = 30 * time.Minute
 	chunkIdleLimit  = 60 * time.Second
 	streamFrameWait = 30 * time.Second
+	// bookkeepingLimit bounds the records written after a handler ran.
+	bookkeepingLimit = 10 * time.Second
 )
 
 // Body limits (I125).

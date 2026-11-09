@@ -350,6 +350,26 @@ func TestShorterFileLowersTheOffset(t *testing.T) {
 	}
 }
 
+func TestLostFileSendsTheClientBackToTheStart(t *testing.T) {
+	f := newFixture(t)
+	data := []byte("0123456789")
+	u := f.create(t, data)
+	if _, err := f.chunk(u, 0, data[:6]); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(uploads.Path(f.spool, tenantA, u.ULID)); err != nil {
+		t.Fatal(err)
+	}
+	_, err := f.chunk(u, 6, data[6:])
+	wantCode(t, err, errs.CodeConflict)
+	if _, err := f.chunk(u, 0, data); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.svc.Complete(context.Background(), f.scope, id.Ref(u.ID)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestCompleteDetectsTamperedFile(t *testing.T) {
 	f := newFixture(t)
 	data := []byte("0123456789")
