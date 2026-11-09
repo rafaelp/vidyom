@@ -110,7 +110,6 @@ type probeStream struct {
 	PixFmt      string            `json:"pix_fmt"`
 	BitsPerRaw  string            `json:"bits_per_raw_sample"`
 	AvgRate     string            `json:"avg_frame_rate"`
-	RRate       string            `json:"r_frame_rate"`
 	Duration    string            `json:"duration"`
 	Channels    int               `json:"channels"`
 	SampleRate  string            `json:"sample_rate"`
@@ -153,19 +152,55 @@ func (t *Tool) Probe(ctx context.Context, path string) (Info, error) {
 		return Info{}, fmt.Errorf("parse ffprobe output: %w", err)
 	}
 	info := fromDoc(path, doc)
+	var scanned float64
 	if info.HasVideo {
 		scan, err := t.scanPackets(ctx, path, info.VideoIndex)
 		if err != nil {
 			return Info{}, err
 		}
 		info.VFR, info.Broken = scan.classify()
-		if info.ContainerDuration <= 0 || info.Broken {
-			if d := scan.duration(); d > 0 {
-				info.DurationSeconds = d
+		if !info.FrameRate.Valid() {
+			info.applyMeasuredRate(scan.fps())
+		}
+		scanned = scan.duration()
+	}
+	// The container's word is enough unless it has none or the timestamps cannot be
+	// trusted. Then the timeline is the longer of both streams: an output keeps the
+	// longer one, so a video-only figure would reject a healthy file (R10).
+	if info.ContainerDuration <= 0 || info.Broken {
+		if info.HasAudio {
+			audio, err := t.scanPackets(ctx, path, info.AudioIndex)
+			if err != nil {
+				return Info{}, err
 			}
+			scanned = math.Max(scanned, audio.duration())
+		}
+		if scanned > 0 {
+			info.DurationSeconds = scanned
 		}
 	}
 	return info, nil
+}
+
+// applyMeasuredRate fills the rate of a stream that declares no average, such as a
+// WebM without a default duration, from its timestamps. r_frame_rate is no substitute:
+// it names the stream's smallest tick, not how many frames it holds (I191). A constant
+// stream gets a rate it can keep, while an irregular one is left to TargetRate.
+func (i *Info) applyMeasuredRate(fps float64) {
+	if fps <= 0 {
+		return
+	}
+	i.FPS = fps
+	if i.VFR || i.Broken {
+		return
+	}
+	for _, r := range standardRates {
+		if math.Abs(r.Float()-fps) <= fps*0.001 {
+			i.FrameRate = r
+			return
+		}
+	}
+	i.FrameRate = Rational{int64(math.Round(fps * 1000)), 1000}
 }
 
 func fromDoc(path string, doc probeDoc) Info {
@@ -195,9 +230,6 @@ func fromDoc(path string, doc probeDoc) Info {
 				info.Width, info.Height = s.Height, s.Width
 			}
 			info.FrameRate = parseRational(s.AvgRate)
-			if !info.FrameRate.Valid() {
-				info.FrameRate = parseRational(s.RRate)
-			}
 			info.FPS = info.FrameRate.Float()
 			info.VideoDuration = parseSeconds(s.Duration)
 		case "audio":
@@ -291,12 +323,23 @@ func ExtensionFor(path, formatName, majorBrand, videoCodec string) string {
 	return "bin"
 }
 
-// packetScan is what the timestamps of a video stream say.
+// packetScan is what the timestamps of a stream say.
 type packetScan struct {
-	pts        []float64
-	missingPTS int
-	badDTS     int
-	total      int
+	pts         []float64
+	dts         []float64
+	missingPTS  int
+	missingBoth int
+	badDTS      int
+}
+
+// times returns the timeline to measure. A packet with only a DTS is normal with
+// B-frames in AVI and MPEG-PS, and the remaining PTS values would look irregular, so
+// a stream missing any PTS is measured by its DTS.
+func (s packetScan) times() []float64 {
+	if s.missingPTS > 0 && len(s.dts) > 0 {
+		return s.dts
+	}
+	return s.pts
 }
 
 func (t *Tool) scanPackets(ctx context.Context, path string, streamIndex int) (packetScan, error) {
@@ -347,17 +390,23 @@ func readPackets(r io.Reader) packetScan {
 		if pts == "" && dts == "" {
 			continue
 		}
-		scan.total++
-		if v, err := strconv.ParseFloat(pts, 64); err == nil {
-			scan.pts = append(scan.pts, v)
-		} else {
+		ptsValue, ptsErr := strconv.ParseFloat(pts, 64)
+		dtsValue, dtsErr := strconv.ParseFloat(dts, 64)
+		switch {
+		case ptsErr != nil && dtsErr != nil:
+			scan.missingBoth++
+		case ptsErr != nil:
 			scan.missingPTS++
 		}
-		if v, err := strconv.ParseFloat(dts, 64); err == nil {
-			if v <= lastDTS {
+		if ptsErr == nil {
+			scan.pts = append(scan.pts, ptsValue)
+		}
+		if dtsErr == nil {
+			if dtsValue <= lastDTS {
 				scan.badDTS++
 			}
-			lastDTS = v
+			lastDTS = dtsValue
+			scan.dts = append(scan.dts, dtsValue)
 		}
 	}
 	return scan
@@ -365,20 +414,20 @@ func readPackets(r io.Reader) packetScan {
 
 // classify applies the thresholds of I191.
 func (s packetScan) classify() (vfr, broken bool) {
-	if s.missingPTS > 0 || s.badDTS > 0 {
+	if s.missingBoth > 0 || s.badDTS > 0 {
 		broken = true
 	}
 	deltas := s.sortedDeltas()
 	if len(deltas) == 0 {
 		return false, broken
 	}
-	sorted := append([]float64(nil), deltas...)
-	sort.Float64s(sorted)
-	median := sorted[len(sorted)/2]
+	median := medianOf(deltas)
 	if median <= 0 {
 		return false, true
 	}
-	allowed := math.Max(0.10*median, 0.001)
+	// 1.5 ms, not 1: Matroska rounds timestamps to the millisecond, so a constant 120 fps
+	// stream alternates 8 and 9 ms and must not read as variable.
+	allowed := math.Max(0.10*median, 0.0015)
 	gap := math.Max(5, 100*median)
 	deviating := 0
 	for _, d := range deltas {
@@ -396,34 +445,57 @@ func (s packetScan) classify() (vfr, broken bool) {
 	return deviating >= threshold, broken
 }
 
+func medianOf(values []float64) float64 {
+	sorted := append([]float64(nil), values...)
+	sort.Float64s(sorted)
+	return sorted[len(sorted)/2]
+}
+
 func (s packetScan) sortedDeltas() []float64 {
-	if len(s.pts) < 2 {
+	times := s.times()
+	if len(times) < 2 {
 		return nil
 	}
-	pts := append([]float64(nil), s.pts...)
-	sort.Float64s(pts)
-	deltas := make([]float64, 0, len(pts)-1)
-	for i := 1; i < len(pts); i++ {
-		deltas = append(deltas, pts[i]-pts[i-1])
+	sorted := append([]float64(nil), times...)
+	sort.Float64s(sorted)
+	deltas := make([]float64, 0, len(sorted)-1)
+	for i := 1; i < len(sorted); i++ {
+		deltas = append(deltas, sorted[i]-sorted[i-1])
 	}
 	return deltas
 }
 
-// duration estimates the stream's length from its timestamps.
-func (s packetScan) duration() float64 {
-	if len(s.pts) == 0 {
-		return 0
+func (s packetScan) span() (lo, hi float64, ok bool) {
+	times := s.times()
+	if len(times) == 0 {
+		return 0, 0, false
 	}
-	lo, hi := s.pts[0], s.pts[0]
-	for _, v := range s.pts {
+	lo, hi = times[0], times[0]
+	for _, v := range times {
 		lo = math.Min(lo, v)
 		hi = math.Max(hi, v)
 	}
+	return lo, hi, true
+}
+
+// duration estimates the stream's length from its timestamps.
+func (s packetScan) duration() float64 {
+	lo, hi, ok := s.span()
+	if !ok {
+		return 0
+	}
 	last := 0.0
 	if deltas := s.sortedDeltas(); len(deltas) > 0 {
-		sorted := append([]float64(nil), deltas...)
-		sort.Float64s(sorted)
-		last = sorted[len(sorted)/2]
+		last = medianOf(deltas)
 	}
 	return hi - lo + last
+}
+
+// fps measures the frames per second, zero when there are too few packets.
+func (s packetScan) fps() float64 {
+	lo, hi, ok := s.span()
+	if !ok || hi <= lo {
+		return 0
+	}
+	return float64(len(s.times())-1) / (hi - lo)
 }

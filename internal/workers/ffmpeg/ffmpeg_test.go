@@ -121,6 +121,106 @@ func TestProbeRotationGivesDisplayDimensions(t *testing.T) {
 	}
 }
 
+// requireEncoders skips a test when this FFmpeg build lacks what its media needs.
+func requireEncoders(t *testing.T, tl *ffmpeg.Tool, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		if !tl.HasEncoder(context.Background(), name) {
+			t.Skipf("no %s in this FFmpeg", name)
+		}
+	}
+}
+
+// Healthy files whose containers omit a PTS on B-frames, or round timestamps to the
+// millisecond, must not read as irregular: that would change their rate (R17).
+func TestProbeDoesNotFlagHealthyConstantRateFiles(t *testing.T) {
+	tl := tool(t)
+	lavfi := func(rate string) []string {
+		return []string{"-f", "lavfi", "-i", "testsrc=d=4:r=" + rate + ":s=320x180"}
+	}
+	cases := []struct {
+		name     string
+		encoders []string
+		rate     string
+		want     ffmpeg.Rational
+		args     []string
+	}{
+		{"bframes.avi", []string{"mpeg4"}, "15", ffmpeg.Rational{Num: 15, Den: 1}, []string{"-c:v", "mpeg4", "-bf", "2"}},
+		{"bframes.mpg", []string{"mpeg2video"}, "25", ffmpeg.Rational{Num: 25, Den: 1}, []string{"-c:v", "mpeg2video", "-bf", "2"}},
+		{"fast.mkv", []string{"libx264"}, "120", ffmpeg.Rational{Num: 120, Den: 1}, []string{"-c:v", "libx264", "-preset", "ultrafast", "-bf", "2", "-pix_fmt", "yuv420p"}},
+		{"film.mkv", []string{"libx264"}, "24000/1001", ffmpeg.Rational{Num: 24000, Den: 1001}, []string{"-c:v", "libx264", "-preset", "ultrafast", "-bf", "2", "-pix_fmt", "yuv420p"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			requireEncoders(t, tl, c.encoders...)
+			path := fixture.Generate(t, t.TempDir(), c.name, append(lavfi(c.rate), c.args...)...)
+			info := probe(t, tl, path)
+			if info.VFR || info.Broken {
+				t.Errorf("vfr=%v broken=%v", info.VFR, info.Broken)
+			}
+			if got := ffmpeg.TargetRate(info); got != c.want {
+				t.Errorf("rate %v, want %v", got, c.want)
+			}
+			out := encode(t, tl, info, "proxy-720p")
+			within(t, "duration", out.DurationSeconds, info.DurationSeconds, ffmpeg.Tolerance(info.FPS))
+		})
+	}
+}
+
+// When audio outlasts video the timeline is the longer stream, whatever the container.
+func TestProbeTimelineCoversTheLongerStream(t *testing.T) {
+	tl := tool(t)
+	video := []string{"-f", "lavfi", "-i", "testsrc=d=6:r=25:s=320x180", "-f", "lavfi", "-i", "sine=d=7"}
+	cases := []struct {
+		name     string
+		encoders []string
+		args     []string
+	}{
+		{"long.avi", []string{"mpeg4", "libmp3lame"}, []string{"-c:v", "mpeg4", "-bf", "2", "-c:a", "libmp3lame"}},
+		{"long.mpg", []string{"mpeg2video", "mp2"}, []string{"-c:v", "mpeg2video", "-bf", "2", "-c:a", "mp2"}},
+		{"live.webm", []string{"libvpx", "libopus"}, []string{"-c:v", "libvpx", "-c:a", "libopus", "-f", "webm", "-live", "1"}},
+		{"plain.mp4", []string{"libx264", "aac"}, []string{"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			requireEncoders(t, tl, c.encoders...)
+			path := fixture.Generate(t, t.TempDir(), c.name, append(append([]string(nil), video...), c.args...)...)
+			info := probe(t, tl, path)
+			within(t, "probed", info.DurationSeconds, 7, 0.2)
+			out := encode(t, tl, info, "proxy-720p")
+			within(t, "encoded", out.DurationSeconds, info.DurationSeconds, ffmpeg.Tolerance(info.FPS))
+
+			p, _ := profiles.Lookup("speech-opus")
+			audioOut := filepath.Join(t.TempDir(), "speech.opus")
+			args, err := ffmpeg.AudioExtractArgs(info, audioOut, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := tl.Run(context.Background(), args, ffmpeg.RunOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			within(t, "extracted", probe(t, tl, audioOut).DurationSeconds, info.DurationSeconds, ffmpeg.Tolerance(info.FPS))
+		})
+	}
+}
+
+// A stream with no declared average gets a measured rate, not r_frame_rate.
+func TestProbeMeasuresARateThatIsNotDeclared(t *testing.T) {
+	tl := tool(t)
+	requireEncoders(t, tl, "libvpx")
+	path := fixture.Generate(t, t.TempDir(), "live.webm",
+		"-f", "lavfi", "-i", "testsrc=d=6:r=10:s=320x180", "-c:v", "libvpx", "-f", "webm", "-live", "1")
+	info := probe(t, tl, path)
+	if info.FPS < 9 || info.FPS > 11 {
+		t.Fatalf("fps %.3f, want about 10: %+v", info.FPS, info)
+	}
+	if !info.VFR && !info.Broken {
+		if got := ffmpeg.TargetRate(info).Float(); got < 9 || got > 11 {
+			t.Fatalf("rate %.3f", got)
+		}
+	}
+}
+
 func TestProbeRefusesAPlaylistInDisguise(t *testing.T) {
 	tl := tool(t)
 	if _, err := tl.Probe(context.Background(), fixture.Hostile(t, t.TempDir())); err == nil {

@@ -50,6 +50,16 @@ func run(t testing.TB, args ...string) {
 	}
 }
 
+// Generate runs ffmpeg with explicit arguments to produce dir/name, for formats the
+// other helpers do not cover, and returns its path.
+func Generate(t testing.TB, dir, name string, args ...string) string {
+	t.Helper()
+	Require(t)
+	path := filepath.Join(dir, name)
+	run(t, append(append([]string(nil), args...), path)...)
+	return path
+}
+
 // Video generates a clip in dir and returns its path.
 func Video(t testing.TB, dir string, s Spec) string {
 	t.Helper()
