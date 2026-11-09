@@ -9,7 +9,8 @@ const config: Config = {
   organizationName: 'rafaelp',
   projectName: 'vidyom',
   onBrokenLinks: 'throw',
-  onBrokenMarkdownLinks: 'warn',
+  markdown: {mermaid: true, hooks: {onBrokenMarkdownLinks: 'warn'}},
+  themes: ['@docusaurus/theme-mermaid'],
   i18n: {defaultLocale: 'en', locales: ['en']},
   presets: [['classic', {
     docs: {sidebarPath: './sidebars.ts', editUrl: 'https://github.com/rafaelp/vidyom/tree/main/website/', showLastUpdateTime: false},
@@ -34,6 +35,7 @@ const config: Config = {
     ], copyright: `© ${new Date().getFullYear()} Vidyom contributors. Documentation is a design specification.`},
     prism: {additionalLanguages: ['bash','json','yaml','go']},
     colorMode: {defaultMode:'dark', respectPrefersColorScheme:true},
+    mermaid: {theme: {light: 'neutral', dark: 'dark'}},
   } satisfies Preset.ThemeConfig,
 };
 export default config;
