@@ -69,3 +69,56 @@ Checked `docs/plans/integration.md` against master plan sections 1.1 and 10 and 
 - **Choice.** `tests/integration` runs in plain `go test ./...` against the real store and real services, in process: sensitive marks through a clip of a clip, the exporter reusing stored vectors with an embedder that fails when called, and `internal/jobs`' engine smoke on the real SQLite store (recreated from the engine's uncommitted smoke tests).
 - **Why.** Component tests were not allowed to import each other. The rules are gone, and these checks belong in the fast suite.
 - **Revisit if.** They get slow.
+
+## Found while assembling
+
+### I288. A person's `--retry-node` settles an outcome the destination cannot report
+
+- **Choice.** `job resolve --retry-node` on a `reconcilable` node whose connector cannot reconcile runs the node, instead of moving it back to `needs_attention`. The engine marks the attempt (`Lease.PersonRetry`, `node.Input.PersonRetry`) and only `capability_unsupported` is forgiven: a destination that can answer is still asked first, and an outage still stops. The attempt keeps its idempotency key, so a destination that honors keys makes no duplicate.
+- **Why.** §11.3 offers retry as a way out of `needs_attention`, and D11 says a person resolves it. Before this, a destination with no reconcile looped: retry, reconcile fails, `needs_attention`, forever, leaving only skip or fail. Found by the suite's `mock-unknown` destination.
+- **Revisit if.** Destinations need a stronger confirmation than a note on the resolve.
+
+### I289. The finish hook also runs when a `before` hook blocks a job
+
+- **Choice.** A job refused by `workflow.before` or `workflow.start` runs its `workflow.error` and `workflow.finish` hooks before the failed state is written. A `workflow.before` hook also receives the job's inputs as `{"inputs": {...}}`, the counterpart of `{"parameters": {...}}` at `node.before`.
+- **Why.** §8.1 lists `workflow.finish` as "terminal finalization, success/error/cancellation" and §15.7 asks for it on error. Without inputs, a job-level hook had nothing to judge, so the sample plugin's `check-source` blocked every job.
+- **Revisit if.** A hook wants to tell "never started" from "failed": the outcome is in the data, and the job's error code says `hook_blocked`.
+
+## Deployment
+
+### I290. How Compose is put together
+
+- **Choice.**
+  - **Master key:** the `file` provider through a Compose secret from `deploy/secrets/master.key` (ignored by Git), as I10 says. Docker Desktop maps ownership itself, a Linux host needs `chown 10001`. A missing file makes `docker compose up` refuse, which is the fail-closed outcome D13 wants.
+  - **Workers reach the daemon over the Unix socket** on a shared volume, all containers as UID 10001, so mode `0600` holds and no certificate pin has to be passed around. The CLI on the host uses HTTPS on loopback with the pin (D49, I133).
+  - **Worker token:** a shared volume written by `vidyomd init --worker-token-file`, read-only in the workers, because the data directory stays private to the daemon.
+  - **Logs:** `config/compose/daemon.json` adds a second `file` sink on `/dev/stderr`, so `docker compose logs daemon` shows what the JSONL holds, after redaction. Natively the daemon's stderr stays quiet except for failures: `<data-dir>/logs/vidyomd.jsonl` has the log.
+  - **Mock LLM:** a `demo` profile. It refuses non-loopback addresses unless started with `--any-interface`, and only Compose does that, on a private network. The endpoint is classified `local` and the driver's dial check accepts the private address (D8).
+  - **Library:** mounts the directory, read-only, never the file.
+  - **Observability profile:** Grafana, Loki and Tempo on loopback, with data sources provisioned. Vidyom's `loki` and `tempo` sinks are declared `enabled: false`, and `vidyom observability enable` turns them on, so a daemon without the profile does not log a failure a minute.
+  - **Litestream profile:** written per I31, replicating to a volume. **Not exercised**; `docs/status.md` says so.
+- **Why.** D10 and D41 make Compose the supported path on all three platforms, so everything host-specific had to be either an environment variable or absent.
+- **Revisit if.** Workers move to another host (I5's Future case): then HTTPS with a pinned fingerprint, which the worker already supports.
+
+### I291. Real models run once, by hand, and report instead of assert
+
+- **Choice.** `make real-model-proof` (`tests/e2e/realmodels_test.go`, tags `e2e realmodels`, not in CI) speaks three short stories with macOS `say`, ingests them through the real AI worker image, searches each with a paraphrase that shares no word with the script (the test refuses to start otherwise), and writes a JSON report: transcript, word error rate against the script, per-node timings, each query's rank, and the clip proposal with no LLM. It asserts only that real models ran. Quality is what the report states. Models live in the Docker volume `vidyom-dev-integration-models`, which survives the run.
+- **Why.** §15.2's "no literal match" is the claim the fake engine cannot test. A pass or fail threshold invented here would dress up one sample as a validation; §17.2 keeps accuracy open.
+- **Revisit if.** A labeled evaluation set exists: then thresholds mean something.
+
+## Testing, continued
+
+### I292. Reliability of the suite
+
+- **Choice.** Root causes fixed rather than retried:
+  - `internal/plugins`' "the plugin did not answer in time": the hook's timeout covered starting the process, and the first exec of a freshly copied binary can take seconds on a loaded macOS host (the kernel and `syspolicyd` check a new binary). Starting now has its own budget (`InitTimeout`), in production as well as in tests, while a dispatcher's deadline still bounds the whole call.
+  - `connectors/storage/local`'s conformance test failed under `-count=3` as "tenant globex sees acme's object". The driver was right: the test cached a removed root by name, so the third run saw the second run's files.
+  - `internal/workers`' earlier failures could not be reproduced: 8 parallel processes, 12 runs each under load, and repeated full `-count=3` runs. `docs/status.md` records the runs. They are not claimed fixed.
+- **Why.** A suite that fails under load teaches people to ignore it.
+- **Revisit if.** They recur, with the output kept this time.
+
+### I293. Engine suite on the real store
+
+- **Choice.** `VIDYOM_JOBS_REAL_STORE=1 go test ./internal/jobs` runs the engine's whole suite on `core`'s SQLite store rather than its in-memory fake, and CI does that too. One smoke runs on the real store in every plain `go test`. The engine's uncommitted smoke tests for media and publishing are not recreated, because `tests/e2e` covers them with real processes.
+- **Why.** `engine`'s plan named this as what proves the fake's fidelity. It passed unchanged.
+- **Revisit if.** It gets slow.
