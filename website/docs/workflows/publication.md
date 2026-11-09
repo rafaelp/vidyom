@@ -20,6 +20,8 @@ A new edited video or clip is a standalone canonical asset. Its creation, backup
 
 ## Approval
 
+**Decided:** Obtaining authorization from speakers and participants for their image and voice is the tenant's responsibility. Vidyom does not track or enforce these authorizations, and the publication approval screen states that the tenant is responsible.
+
 **Decided:** Approval has two levels. An `editor` approves the clip selection (kind `clip_selection`); a `publisher` or `admin` approves publication (kind `publication`). Changing the visibility or the public metadata of an already public video requires a new publisher approval. A workflow can tighten the rule through `approvers`, never loosen it.
 
 ## One asset, multiple destinations
@@ -40,7 +42,9 @@ Provider remote IDs are independent of canonical asset IDs. Uploads must be resu
 
 ## Public library
 
-A proposed Next.js site displays only approved public assets, searchable by theme, chapter, story, teacher and transcript. It can embed or link to YouTube and later the other destinations, with deep links to timecodes when supported. Private originals, unapproved clips, backing storage addresses and private transcripts must not leak through the public index.
+**Decided:** The public library is a Next.js site (server rendering for SEO, API routes for semantic search over `public.db`, deployable on Vercel). It displays only approved public assets, searchable by theme, chapter, story, teacher and transcript. It can embed or link to YouTube and later the other destinations, with deep links to timecodes when supported. Private originals, unapproved clips, backing storage addresses and private transcripts must not leak through the public index.
+
+**Decided:** Transcripts are private by default. A transcript or its captions reach the public library or a destination only together with an approved public video. Editors can mark sensitive segments (for example names, health or minors); marked segments are excluded from `public.db` and from public captions.
 
 **Decided:** Per tenant, the daemon exports a read-only `public.db` (SQLite) containing only approved public records and their embeddings, and ships it to the public site's host. The site queries it and computes query embeddings on CPU for semantic search. The daemon is never exposed publicly.
 

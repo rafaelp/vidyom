@@ -58,6 +58,8 @@ Decided design choices that are easy to get wrong (details in spec v1.2 §21):
 - Workflow data references use `${...}`; conditions use CEL. Plugins speak JSON-RPC 2.0 over stdio.
 - Remote clients use HTTPS with device pairing. Server secrets live in an encrypted per-tenant vault; client machines use the OS keyring.
 - Friendly clip IDs use the `CLIP-` prefix. MediaCMS is an optional connector, not the catalog.
+- Tenant-scoped API requests carry the `Vidyom-Tenant` header; paths stay tenant-free.
+- Go for the CLI, daemon and media worker; Python only for the AI worker. The public library is Next.js.
 
 ## Website styling
 
@@ -68,6 +70,6 @@ Decided design choices that are easy to get wrong (details in spec v1.2 §21):
 
 ## Git
 
-- The default branch is `main`; the GitHub repository is `rafaelp/vidyom`.
+- The default branch is `main`; the GitHub repository is `rafaelp/vidyom`. The documentation site is deployed on Vercel at https://www.vidyom.org.
 - Write commit messages in English, in the imperative mood.
 - Security issues are reported privately as described in `SECURITY.md`, never in public issues.

@@ -66,7 +66,7 @@ This is intentionally a **partial example**, not the full production ingest work
 
 ## Merge and branching
 
-**Proposed:** A node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any`: `all` waits for every non-skipped input, and `any` continues with the first completed input.
+**Decided:** A node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any`: `all` waits for every non-skipped input, and `any` continues with the first completed input.
 
 ## Subworkflows
 

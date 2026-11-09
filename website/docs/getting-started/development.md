@@ -24,7 +24,7 @@ npm run build
 npm run serve
 ```
 
-Set `DOCS_SITE_URL` and `DOCS_BASE_URL` when deploying to a custom domain or subpath. Docusaurus generates static HTML/CSS/JS in `build/`.
+Set `DOCS_SITE_URL` and `DOCS_BASE_URL` when deploying to a custom domain or subpath. The official site is deployed on Vercel at `https://www.vidyom.org`. Docusaurus generates static HTML/CSS/JS in `build/`.
 
 ## How to contribute content
 

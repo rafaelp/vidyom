@@ -3,7 +3,7 @@
 > **Open-source AI-powered video workflow engine**  
 > **Preserve · Discover · Transform · Share**  
 > **Foundation document for architecture, product, and implementation**  
-> Document version: **1.2 — 2026-11-08** (maintainer decisions on the pending items of v1.1; see **§21 Revision log v1.2**)  
+> Document version: **1.2 — 2026-11-08** (maintainer decisions D1–D34 on the pending items of v1.1; see **§21 Revision log v1.2**)  
 > Project origin: **MapaDeva — https://www.mapadeva.com.br/**  
 > Status: **specification for implementation; does not represent features already delivered**.
 
@@ -37,6 +37,8 @@ The command names, plugin contracts, and JSON formats in this document are **tar
 - **[PROPOSED]** Tagline: **Preserve · Discover · Transform · Share**.
 - **[DECIDED]** The executables will be named `vidyom` (CLI), `vidyomd` (daemon), and, per the proposed architecture, `vidyom-worker` (worker).
 - **[PROPOSED]** The README will state “Originally built for MapaDeva”, without creating a functional or brand dependency.
+- **(v1.2, D27) [DECIDED]** Official domain: **vidyom.org**; `https://www.vidyom.org` is canonical (the apex redirects to `www`). The documentation website is deployed there on Vercel.
+- **(v1.2, D28) [DECIDED]** The repository is `github.com/rafaelp/vidyom` (the `vidyom` name is taken on GitHub and Docker Hub); a later move to a GitHub organization remains possible (GitHub redirects). Package names are in §14.2. Open: trademark check (§17.2).
 - The name was inspired by **video**, **vidya** (knowledge), and **Om** (spiritual reference).
 
 ### 1.2 Problem to solve
@@ -363,11 +365,12 @@ Proposed states: `queued`, `running`, `waiting_approval`, `retrying`, `paused`, 
 - **(v1.1, R22)** `paused` needs commands to enter and leave the state: `vidyom job pause` and `vidyom job resume` (§11.3). Pausing does not interrupt an external effect that has already started; it finishes and the job pauses at the next checkpoint. `waiting_approval` is left via `approval approve|reject` or by policy timeout.
 - **(v1.1, R23)** `JOB-nnn` IDs follow the rule in R5 (a friendly alias over a ULID).
 
-### 5.6 Languages [PROPOSED]
+### 5.6 Languages [DECIDED] **(v1.2, D31)**
 
+- **(v1.2, D31)** **Go** for `vidyom` (CLI), `vidyomd` (daemon), and the media worker; **Python** only for the AI worker (faster-whisper, BGE-M3), which talks to the daemon over JSON-RPC. This confirms the earlier [PROPOSED] choice.
 - **Go** for the CLI, daemon, API, and worker coordination (simple binaries, concurrency, distribution).
 - FFmpeg/ffprobe as controlled external executables.
-- **Python** for transcription/AI when advantageous, run in a separate worker/process.
+- **Python** for transcription/AI, run in a separate worker/process **(v1.2, D31: the AI worker only)**.
 - Plugins in an isolated process; do not depend on native Go `.so` plugins. **(v1.2, D3) [DECIDED]** Out-of-process plugins talk to the daemon over **JSON-RPC 2.0 on stdin/stdout** (the same transport model as LSP and MCP): language-neutral and without code generation. Remote plugins and services use JSON-RPC over authenticated HTTPS. WASM remains possible for specific sandboxed cases [FUTURE].
 
 ---
@@ -392,7 +395,7 @@ Recommended fields: `id`, `name`, `version`, `description`, `inputs`, `trigger`,
 - `nodes[].typeVersion`: plugin/node contract.
 - `nodes[].parameters`: parameters validated by JSON Schema.
 - `connections`: dependency/control edges; a node runs only when all of its required inputs are ready.
-- **(v1.2, D2) [PROPOSED]** Merge and branching rules: a node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any` (`all` waits for every non-skipped input; `any` continues with the first completed input).
+- **(v1.2, D2, D33) [DECIDED]** Merge and branching rules: a node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any` (`all` waits for every non-skipped input; `any` continues with the first completed input).
 - `workflow.execute`: invokes a subworkflow with input and output isolation.
 - `flow.if`, `flow.foreach`, `flow.wait`, `flow.merge` **(v1.2, D2)**: explicit control.
 - `${inputs.foo}`, `${nodes.id.output.field}`, `${event.field}`: **restricted declarative** expression, with no arbitrary JavaScript or shell evaluation. **(v1.2, D2)** `${...}` is used **only for data references**.
@@ -819,7 +822,7 @@ Distinct interfaces:
 - **VideoVortex** integration for CLI/transcript indexing, search, and clip operations; confirm compatibility and exact features of the installed edition.
 - **Rewind** is **optional** for visual exploration/editing, not an MVP dependency. **(v1.2, D26)** The Rewind integration (visual transcript navigation and montage) is prioritized right after the MVP (after Phase 3) as an optional tool for editors.
 - **Arcadeia** was considered and **not chosen** as a component of the priority architecture.
-- Next.js is the proposed technology for the **public library**, consuming APIs/data published by Vidyom (see §13.2 on how this works with a daemon on a private network). **(v1.2, D18)** The daemon exports a read-only per-tenant `public.db` (SQLite) with approved public records and their embeddings; the site queries it and the daemon is never exposed publicly.
+- Next.js is the technology for the **public library** **(v1.2, D34)**, consuming APIs/data published by Vidyom (see §13.2 on how this works with a daemon on a private network). **(v1.2, D18)** The daemon exports a read-only per-tenant `public.db` (SQLite) with approved public records and their embeddings; the site queries it and the daemon is never exposed publicly.
 - **(v1.1, R33)** Status corrected: MediaCMS catalog = **DECIDED** (decision 17) **(v1.2, D24: MediaCMS is now an optional connector, no longer the first private catalog)**. VideoVortex = **PROPOSED AND PREFERRED** (decision 18; in §13.1 it appeared under a [DECIDED] heading). Rewind and Arcadeia = **PROPOSED** (decision 19). **[VALIDATE]** MediaCMS and VideoVortex licenses and their effect on the Vidyom license: integrating through API/CLI as a separate service tends not to contaminate Vidyom's code, but this must be confirmed together with item 1 of §17.
 
 ### 7.6 Plugin manifest [PROPOSED]
@@ -1028,6 +1031,8 @@ Workflow and node hooks, configurable through JSON, with no need to modify the e
 - **(v1.2, D17)** Withdrawal (unpublishing from every destination and from the public library) is immediate and done by a `publisher` or `admin`. Full deletion is done by an `admin`; the archive copy is purged when the archive's minimum storage duration ends (365 days on GCS Archive) and stays inaccessible until then. The audit keeps the fact of the deletion without the content. [VALIDATE] Legal review under the LGPD of deferring the archive purge.
 - **(v1.2, D3)** Plugins run out of process and talk to the daemon over JSON-RPC 2.0 (stdin/stdout, or authenticated HTTPS for remote plugins); native Go `.so` plugins are excluded.
 - Minimize exposure of private transcripts and sensitive content in AI logs and indexing.
+- **(v1.2, D29) [DECIDED]** Image and voice rights: obtaining authorization from speakers and participants is **the tenant's responsibility**. Vidyom does not track or enforce image or voice authorizations; the documentation and the publication approval screen state that the tenant is responsible.
+- **(v1.2, D30) [DECIDED]** Sensitive transcripts: transcripts are **private by default**; a transcript or captions reach the public library or a destination only together with an approved public video. Editors can mark **sensitive segments** (for example names, health, minors); marked segments are excluded from `public.db`, from public captions and from external AI processing, and are redacted in exports.
 - **(v1.1, R39)** Transcripts and audio of identifiable people are **personal data** under the LGPD (MapaDeva operates in Brazil) and equivalent regulations in other countries. Sending a transcript or audio to an external AI provider is processing by a third party and must be configurable **per asset or per collection** (`aiProcessing: local_only | external_allowed`). The **[PROPOSED]** default is `local_only` whenever a local engine is available. The topic is part of §17, item 6. **(v1.2, D8)** **[DECIDED]** The default is `aiProcessing: local_only`. An `admin` can mark a collection or an asset `external_allowed`; Vidyom records who authorized it and when (**consent record**, kept in the tenant database and the audit). This applies to transcription, embeddings and LLM calls; `local_only` content may only use endpoints classified `local` (D9).
 
 ---
@@ -1276,8 +1281,8 @@ Initial version `/api/v1` or versioned gRPC, covering:
 - `GET /health`, `GET /metrics` (controlled access).
 - **(v1.1, R41)** Endpoints were missing for operations the CLI already had: `GET /search` (lexical+semantic search, with optional per-asset filter), `GET /assets` (listing/filters), `GET /assets/{id}/versions`, `GET /approvals` and `GET /approvals/{id}`, `POST /jobs/{id}/pause` and `POST /jobs/{id}/resume`, `DELETE /publications/{id}` (withdrawal), `GET /events` and `GET /events/deliveries`, `GET|POST|DELETE /secrets` (metadata only; the value is never returned), `GET /clients` and `POST /clients/{id}/revoke`, `GET /audit`.
 
-- **(v1.2, D6, D12, D19, D11)** Tenant, pairing, budget, and resolution endpoints [PROPOSED]: `GET /tenants`, `GET|POST /tenants/{tenant}/users` (role per tenant), `POST /pairing-codes` (admin) and `POST /devices/pair` (unauthenticated, one-time code), `GET /devices`, `POST /devices/{id}/revoke|rotate`, `GET|PUT /budget` and `POST /budget/override`, `PUT /assets/{id}/ai-processing` (consent record), `POST /jobs/{id}/resolve` (from `needs_attention`), `GET /audit/verify`.
-- **(v1.2, D6)** **Tenant scoping:** every request other than tenant and pairing management is scoped to a tenant (path prefix `/api/v1/tenants/{tenant}/...` or a tenant header [PROPOSED]) and authorized by the caller's role in that tenant; cross-tenant access returns `404`.
+- **(v1.2, D6, D12, D19, D11)** Tenant, pairing, budget, and resolution endpoints [PROPOSED]: `GET /tenants`, `GET|POST /users` (tenant from the `Vidyom-Tenant` header, D32; role per tenant), `POST /pairing-codes` (admin) and `POST /devices/pair` (unauthenticated, one-time code), `GET /devices`, `POST /devices/{id}/revoke|rotate`, `GET|PUT /budget` and `POST /budget/override`, `PUT /assets/{id}/ai-processing` (consent record), `POST /jobs/{id}/resolve` (from `needs_attention`), `GET /audit/verify`.
+- **(v1.2, D6)** **Tenant scoping:** every request other than tenant and pairing management is scoped to a tenant (**(v1.2, D32) [DECIDED]** the `Vidyom-Tenant` header; paths stay tenant-free, for example `/v1/assets/ORI-001`) and authorized by the caller's role in that tenant; cross-tenant access returns `404`. **(v1.2, D32)** Tenant-scoped requests without the header are rejected, the header value is recorded in logs and audit, and the CLI sets it from the current tenant (`vidyom tenant use`).
 - **(v1.2, D12)** The remote API is served over HTTPS (TLS 1.3) with per-device credentials; the local Unix socket serves same-host clients.
 - **(v1.2, D5)** Persistence behind the API (replacing PostgreSQL + pgvector of v1.1): one SQLite database file per tenant (assets, jobs, checkpoints, transcripts, FTS5 and sqlite-vec indexes, audit, encrypted secrets, outbox) plus a global `system.db` (tenants, users, roles, device credentials, plugin registry, wrapped tenant data keys). Only the daemon opens database files; workers use this API or the job queue, never the files. A repository layer keeps PostgreSQL possible later.
 
@@ -1453,13 +1458,13 @@ ORI-001/
 
 ### 13.2 Public [DECIDED]
 
-- Separate public library (proposed technology: **Next.js**).
+- Separate public library built with **Next.js** **(v1.2, D34) [DECIDED]**: server rendering for SEO and API routes for semantic search over `public.db`, deployable on Vercel.
 - Brings together only **published and approved** assets, mainly edited videos and clips.
 - Embedded player or link to YouTube, Vimeo, or other destinations.
 - Search by topic, instructor, chapter, story, and spoken content.
 - Timestamps and video position links when supported by the platform.
 - May display relationships between clips and the source recording without exposing the private original.
-- Full transcripts or excerpts only if reviewed and explicitly authorized for publication.
+- Full transcripts or excerpts only if reviewed and explicitly authorized for publication. **(v1.2, D30)** Transcripts and captions are published only together with an approved public video, and segments marked sensitive are excluded from `public.db` and from public captions.
 - No automatic public synchronization for assets without an approved/published state.
 
 **(v1.1, R44) [PROPOSED] How the public library obtains its data.** v1.0 said that the Next.js library "consumes Vidyom APIs" and, at the same time, that the daemon may be restricted to a private network (§9.3), with no access from the internet. The two are incompatible if the library calls the daemon directly. Resolution:
@@ -1468,7 +1473,7 @@ ORI-001/
 - This dataset contains only released fields (title, description, chapters, tags, links/embeds, authorized transcript excerpts) and **no** storage path, internal technical ID, bucket key, or data from the private original.
 - Public semantic search uses embeddings exported in this same dataset (only for published content) or the library's own index. It never queries the private index.
 - Withdrawals (R15) remove the item from this dataset idempotently.
-- **(v1.2, D18, D6, D9) Format of the public dataset [DECIDED].** Per tenant, the daemon exports a read-only **`public.db`** (SQLite) containing only approved public records and their embeddings (BGE-M3), and ships it to the public site's host. The Next.js site queries it and computes query embeddings on CPU for semantic search. The daemon is never exposed publicly.
+- **(v1.2, D18, D6, D9) Format of the public dataset [DECIDED].** Per tenant, the daemon exports a read-only **`public.db`** (SQLite) containing only approved public records and their embeddings (BGE-M3), and ships it to the public site's host. The Next.js site queries it and computes query embeddings on CPU for semantic search. The daemon is never exposed publicly. **(v1.2, D30)** `public.db` carries transcripts and captions only for approved public videos and never includes sensitive segments.
 
 ---
 
@@ -1522,6 +1527,8 @@ Only the daemon opens these files; workers use the daemon API or Redis.
 **(v1.1, R4, R6, R28, R42) Corrections relative to v1.0:** the v1.0 layout put the proxy in `videos-standard/originals/…`, without the `proxies/` prefix that the §7.2 configuration itself defined; keys had no version (a new render would overwrite the previous file); the clip backup was named `original.mp4`; there was no place for `edited` assets; and the published file was duplicated even when identical to the master. Keys inside a role (`originals/…`) are relative to the role's prefix.
 
 ### 14.2 Code structure [PROPOSED]
+
+**(v1.2, D28) [DECIDED]** Names: Go module `github.com/rafaelp/vidyom`; container images `ghcr.io/rafaelp/vidyom`; CLI distribution through the Homebrew tap `rafaelp/vidyom`; the `vidyom` name is reserved on PyPI for the Python AI worker. Open: trademark check (INPI, USPTO, WIPO), see §17.2.
 
 ```text
 vidyom/
@@ -1738,7 +1745,7 @@ vidyom/
 
 - YouTube connector; OAuth stored in the tenant vault on the server **(v1.2, D13)**; resumable upload, status, thumbnails, captions.
 - Persistent approval with two levels (editor: selection; publisher or admin: publication) **(v1.2, D7)**; idempotent publishing; published files in the operational storage.
-- Next.js library with search and access only to approved assets.
+- Next.js library with search and access only to approved assets **(v1.2, D34)**; transcripts and captions only with approved public videos, sensitive segments excluded **(v1.2, D30)**.
 - **(v1.1)** Public dataset sent by push (R44) and `unpublish-video.json` with removal from the library (R15). **(v1.2, D18)** The dataset is the per-tenant read-only `public.db`.
 
 ### Phase 3.1 — Rewind integration (v1.2, D26)
@@ -1757,7 +1764,7 @@ vidyom/
 
 ## 17. Pending decisions and mandatory validations
 
-The definition conversation set out the architecture and the high-level interfaces. **(v1.2)** The maintainer decisions of 2026-11-08 (D1–D26, §21) resolved most of the items that were pending in v1.1. Items still open **have not yet been explicitly decided** and must not be silently filled in by the team.
+The definition conversation set out the architecture and the high-level interfaces. **(v1.2)** The maintainer decisions of 2026-11-08 (D1–D34, §21) resolved most of the items that were pending in v1.1. Items still open **have not yet been explicitly decided** and must not be silently filled in by the team.
 
 ### 17.1 Resolved in v1.2
 
@@ -1768,17 +1775,17 @@ Numbering follows the v1.1 list.
 3. Working master policy: `master-1080p` / `master-2160p-hevc`, AAC 192 kbps **(v1.2, D14)**; retention and archive of masters **(v1.2, D16)**.
 4. Embeddings, LLM and ASR: faster-whisper large-v3, BGE-M3, and an OpenAI-compatible LLM driver classified `local` or `external` **(v1.2, D9)**; transcription accuracy on the target content remains a validation (§17.2).
 5. Approval policy: two levels, `editor` for selection and `publisher`/`admin` for publication **(v1.2, D7)**.
-6. Copyright and privacy: resolved in part, with external AI processing in D8 and withdrawal in D17; the rest remains open (§17.2).
+6. Copyright and privacy: external AI processing in D8, withdrawal in D17, image and voice rights as the tenant's responsibility **(v1.2, D29)**, and private-by-default transcripts with sensitive segments **(v1.2, D30)**.
 7. Retry, cancellation and checkpoint: side-effect classes and `needs_attention` **(v1.2, D11)**.
 8. Plugin protocol: JSON-RPC 2.0 over stdin/stdout, HTTPS for remote **(v1.2, D3)**.
-9. Workflow expressions: `${...}` for data, CEL for conditions **(v1.2, D2)**; merge and branching rules remain [PROPOSED].
+9. Workflow expressions: `${...}` for data, CEL for conditions **(v1.2, D2)**; merge and branching rules **(v1.2, D33)**.
 10. Multi-tenancy: from the MVP **(v1.2, D6)**.
 11. Secrets on the server: per-tenant encrypted vault, master key unsealed via TPM/systemd-creds or KMS **(v1.2, D13)**; unsealing on the target hosts remains a validation (§17.2).
 12. Local cache: per tenant, LRU, encrypted at rest **(v1.2, D22)**.
 13. Synchronization model: the tenant database is canonical and MediaCMS is an optional connector **(v1.2, D24)**; the VideoVortex validation remains open (§17.2).
 14. Cost limits: monthly budget per tenant, alert at 80%, block at 100% **(v1.2, D19)**.
 15. Publishing destinations: YouTube first, then Vimeo, PeerTube and Instagram Reels **(v1.2, D25)**; API validation remains open (§17.2).
-16. Repository: single repository `github.com/rafaelp/vidyom`, decided before v1.2; domain, package names and trademark remain open (§17.2).
+16. Repository: single repository `github.com/rafaelp/vidyom`, decided before v1.2; domain **(v1.2, D27)** and package/registry names **(v1.2, D28)** are decided; only the trademark check remains open (§17.2).
 17. Embedding segmentation and reindexing: **(v1.2, D15)**.
 18. Archive version policy: **(v1.2, D16)**.
 19. Deletion and withdrawal: **(v1.2, D17)**; the LGPD review is [VALIDATE] (§17.2).
@@ -1788,7 +1795,7 @@ Numbering follows the v1.1 list.
 23. Timeline alignment: max(100 ms, 1 frame), constant frame rate normalization **(v1.2, D21)**.
 24. ID prefixes: `CLIP-` replaces `COR-`; other prefixes unchanged **(v1.2, D1)**.
 
-Also decided in v1.2: job queue (D4), database (D5), release process (D20), audit (D23), private catalog (D24), and Rewind priority (D26).
+Also decided in v1.2: languages (D31), tenant header in the API (D32), public library framework (D34), job queue (D4), database (D5), release process (D20), audit (D23), private catalog (D24), and Rewind priority (D26).
 
 ### 17.2 Still open
 
@@ -1796,8 +1803,7 @@ None of these should be decided silently.
 
 **Decisions**
 
-- Copyright and privacy: permissions for speakers and participants, publication authorizations, handling of sensitive transcripts.
-- Domain, package/registry names and trademark check.
+- Trademark check (INPI, USPTO, WIPO) for the name `Vidyom` **(v1.2, D28)**.
 
 **Validations (proofs of concept)**
 
@@ -1838,12 +1844,12 @@ This section is a verification index so the team does not lose decisions.
 | 17 | Private catalog: **MediaCMS** as the main interface | SUPERSEDED by #72 (v1.2) |
 | 18 | **VideoVortex** as a supporting tool for search/CLI/clips | PROPOSED AND PREFERRED |
 | 19 | **Rewind** optional and **Arcadeia** not a priority | PROPOSED |
-| 20 | Public library initially via **Next.js**, using approved/published content | PROPOSED AND PREFERRED |
+| 20 | Public library initially via **Next.js**, using approved/published content | CONFIRMED by #82 (v1.2) |
 | 21 | CLI with per-stage commands | DECIDED |
 | 22 | Workflows in JSON, inspired by n8n, without writing code to compose existing nodes | DECIDED |
 | 23 | Configurable and reusable subworkflows | DECIDED |
 | 24 | `vidyom` client CLI + persistent `vidyomd` daemon | DECIDED |
-| 25 | Separate `vidyom-worker` worker, initially co-located | PROPOSED |
+| 25 | Separate `vidyom-worker` worker, initially co-located | CONFIRMED by #79 (v1.2) |
 | 26 | Persistent session architecture similar to Herdr | DECIDED |
 | 27 | Encrypted and authenticated local/remote communication | DECIDED |
 | 28 | Credentials in the OS keyring, client **or** server (v1.2, D13: the server part is replaced; client machines keep the OS keyring) | SUPERSEDED by #61 (v1.2) |
@@ -1857,18 +1863,18 @@ This section is a verification index so the team does not lose decisions.
 | 36 | Plugins with permissions and persistent asynchronous events | DECIDED |
 | 37 | Extensible architecture for catalog, ASR, and AI providers | DECIDED |
 | 38 | Metadata portability/export and import in open formats | DECIDED |
-| 39 | Go in the core and Python/FFmpeg in the workers as needed | PROPOSED |
+| 39 | Go in the core and Python/FFmpeg in the workers as needed | CONFIRMED by #79 (v1.2) |
 | 40 | PostgreSQL + pgvector as the canonical catalog, jobs, and search | SUPERSEDED by #53 (v1.2) |
 | 41 | (v1.1) Verified backup is part of `ready_for_clipping`; synchronization with MediaCMS does not block (R11) | PROPOSED (resolves inconsistency) |
 | 42 | (v1.1) Published file kept in the `master` role (R4) | PROPOSED (resolves inconsistency) |
 | 43 | (v1.1) Canonical `publish-video` publishing workflow with `destinations` (R14) | PROPOSED (resolves inconsistency) |
-| 44 | (v1.1) Two approval gates: selection and publication (R13, R25) | PROPOSED |
+| 44 | (v1.1) Two approval gates: selection and publication (R13, R25) | CONFIRMED by #55 (v1.2) |
 | 45 | (v1.1) Immutable asset versions; storage keys with version (R6) | PROPOSED |
-| 46 | (v1.1) Public library receives data by push and never accesses the daemon (R44) | PROPOSED |
+| 46 | (v1.1) Public library receives data by push and never accesses the daemon (R44) | CONFIRMED by #66 (v1.2) |
 | 47 | (v1.1) Storage roles with disjoint namespaces (R28) | PROPOSED |
-| 48 | (v1.1) Publication withdrawal (`unpublish-video`) and controlled deletion (R15, R16) | PROPOSED |
+| 48 | (v1.1) Publication withdrawal (`unpublish-video`) and controlled deletion (R15, R16) | CONFIRMED by #65 (v1.2) |
 | 49 | (v1.2, D1) Friendly clip IDs use `CLIP-` instead of `COR-`; other prefixes unchanged; ULID remains the technical key | DECIDED |
-| 50 | (v1.2, D2) `${...}` only for data references; conditions in CEL (cel-go) | DECIDED (merge and branching rules: PROPOSED) |
+| 50 | (v1.2, D2) `${...}` only for data references; conditions in CEL (cel-go) | DECIDED (merge and branching rules: CONFIRMED by #81, v1.2) |
 | 51 | (v1.2, D3) Plugin protocol: JSON-RPC 2.0 over stdin/stdout; HTTPS for remote; Go `.so` excluded | DECIDED (WASM: FUTURE) |
 | 52 | (v1.2, D4) Redis as the job dispatch queue (AOF); tenant database is the source of truth; startup reconciliation | DECIDED |
 | 53 | (v1.2, D5) SQLite per tenant plus global `system.db`; FTS5, sqlite-vec, WAL, Litestream; only the daemon opens the files | DECIDED (sqlite-vec: VALIDATE) |
@@ -1893,8 +1899,16 @@ This section is a verification index so the team does not lose decisions.
 | 72 | (v1.2, D24) Tenant database is the canonical catalog; CLI review in the MVP; MediaCMS is an optional connector | DECIDED |
 | 73 | (v1.2, D25) YouTube first; then Vimeo, PeerTube and Instagram Reels; Spotify not planned | DECIDED |
 | 74 | (v1.2, D26) Rewind prioritized right after Phase 3 as an optional tool for editors | DECIDED |
+| 75 | (v1.2, D27) Official domain `vidyom.org`; `https://www.vidyom.org` canonical, apex redirects; docs site on Vercel | DECIDED |
+| 76 | (v1.2, D28) Repository `github.com/rafaelp/vidyom`; Go module of the same path; images `ghcr.io/rafaelp/vidyom`; Homebrew tap `rafaelp/vidyom`; PyPI name reserved | DECIDED (trademark check: open) |
+| 77 | (v1.2, D29) Image and voice authorizations are the tenant's responsibility; Vidyom does not track them | DECIDED |
+| 78 | (v1.2, D30) Transcripts private by default; public only with an approved public video; sensitive segments excluded from `public.db`, public captions and external AI, redacted in exports | DECIDED |
+| 79 | (v1.2, D31) Go for CLI, daemon and media worker; Python only for the AI worker (JSON-RPC to the daemon) | DECIDED |
+| 80 | (v1.2, D32) Tenant identified by the `Vidyom-Tenant` header; tenant-free paths; requests without it are rejected | DECIDED |
+| 81 | (v1.2, D33) Workflow merge and branching rules (D2) are final | DECIDED |
+| 82 | (v1.2, D34) Public library built with Next.js (SSR, API routes for semantic search over `public.db`), deployable on Vercel | DECIDED |
 
-**(v1.2)** Rows 49–74 record decisions D1–D26 of 2026-11-08 (§21). Rows 17, 28 and 40 are kept for history and marked as superseded.
+**(v1.2)** Rows 49–82 record decisions D1–D34 of 2026-11-08 (§21). Rows 17, 28 and 40 are kept for history and marked as superseded.
 
 ---
 
@@ -1965,12 +1979,12 @@ Consistency and gap review performed on v1.0 (`spec/vidyom-specification-v1.0.md
 
 ## 21. Revision log v1.2
 
-Maintainer decisions of 2026-11-08 on the items that were pending in v1.1 (§17). Each decision is identified by its ID (D1–D26) and marked **(v1.2, Dn)** in the text; v1.1 passages and §20 are preserved as history.
+Maintainer decisions of 2026-11-08 on the items that were pending in v1.1 (§17). Each decision is identified by its ID (D1–D34) and marked **(v1.2, Dn)** in the text; v1.1 passages and §20 are preserved as history.
 
 | # | Topic | Sections | Before (v1.1) | Decision (v1.2) |
 |---|---|---|---|---|
 | D1 | Clip ID prefix | §2.1, §14.1, §15, §18 | `COR-` (Portuguese prefix, R5) | `CLIP-` (for example `CLIP-001`); other prefixes unchanged; storage paths follow |
-| D2 | Workflow expressions | §6.2 | Final format open; `${...}` for everything | `${...}` only for data; conditions in CEL; merge and branching rules [PROPOSED] |
+| D2 | Workflow expressions | §6.2 | Final format open; `${...}` for everything | `${...}` only for data; conditions in CEL; merge and branching rules [PROPOSED]; **(D33)** now decided |
 | D3 | Plugin protocol | §5, §7.5, §16 | gRPC, JSON-RPC, HTTP or a mix, undecided | JSON-RPC 2.0 over stdin/stdout; HTTPS for remote; WASM [FUTURE]; no Go `.so` |
 | D4 | Job queue | §5, §15.5 | Not defined; database-backed jobs | Redis (AOF) dispatch queue; tenant database is the source of truth; startup reconciliation |
 | D5 | Database | §5, §12, §13.1, §14.1, §16 | PostgreSQL + pgvector [PROPOSED] | SQLite per tenant plus `system.db`, FTS5, sqlite-vec [VALIDATE], Litestream; only the daemon opens the files |
@@ -1995,5 +2009,13 @@ Maintainer decisions of 2026-11-08 on the items that were pending in v1.1 (§17)
 | D24 | Private catalog | §7.5, §13.1, §15.1, §16 | MediaCMS as the first private catalog | Tenant database is canonical; CLI review in the MVP; MediaCMS optional connector per tenant |
 | D25 | Publishing destinations | §7, §14.2, §16 | YouTube, Vimeo and others, unordered | YouTube first, then Vimeo, PeerTube, Instagram Reels; Spotify not planned |
 | D26 | Rewind | §7.5, §13.1, §16 | Rewind [PROPOSED: optional] | Prioritized right after Phase 3 as an optional tool for editors |
+| D27 | Domain | §1.1, §17 | Domain open | `vidyom.org`; `https://www.vidyom.org` canonical (apex redirects); docs site on Vercel |
+| D28 | Repository and package names | §1.1, §14.2, §17, §18 | Package/registry names open | `github.com/rafaelp/vidyom`; Go module of the same path; `ghcr.io/rafaelp/vidyom`; Homebrew tap `rafaelp/vidyom`; PyPI name reserved; trademark check still open |
+| D29 | Image and voice rights | §9, §17 | Copyright and privacy open | The tenant is responsible for authorizations; Vidyom does not track or enforce them |
+| D30 | Sensitive transcripts | §9, §13.2, §16, §17 | Handling of sensitive transcripts open | Private by default; public only with an approved public video; sensitive segments excluded from `public.db`, public captions and external AI, redacted in exports |
+| D31 | Languages | §5.6, §18 | Go core, Python when advantageous [PROPOSED] | Go for CLI, daemon and media worker; Python only for the AI worker (JSON-RPC) |
+| D32 | Tenant in the API | §12.1 | Path prefix or header [PROPOSED] | `Vidyom-Tenant` header; tenant-free paths; rejected without it; logged and audited |
+| D33 | Merge and branching rules | §6.2, §17 | [PROPOSED] (D2) | Decided |
+| D34 | Public library framework | §7.5, §13.2, §16 | Next.js [PROPOSED] | Next.js decided (SSR, API routes for search over `public.db`), deployable on Vercel |
 
-**New sections:** §17.1 and §17.2 (split of the pending items), rows 49–74 of §18, and this §21. Still open: see §17.2.
+**New sections:** §17.1 and §17.2 (split of the pending items), rows 49–82 of §18, and this §21. Still open: the trademark check and the validations in §17.2.

@@ -25,6 +25,8 @@ Contracts should include language, time-alignment format, model/version, confide
 
 **Decided:** The default is `aiProcessing: local_only`, covering transcription, embeddings and LLM calls. An admin can mark a collection or an asset as `external_allowed`; Vidyom records who authorized it and when (consent record). `local_only` collections may only use a `local` LLM endpoint, for example Ollama or vLLM on the host. Without one, story detection is unavailable for them and clip selection falls back to manual review.
 
+**Decided:** Transcripts are private by default. Editors can mark sensitive segments (for example names, health or minors); marked segments are excluded from external AI processing, from `public.db` and from public captions, and are redacted in exports. A transcript or captions reach the public library or a destination only together with an approved public video.
+
 ## Search
 
 **Decided:** Full-text search uses SQLite FTS5 and vector search uses sqlite-vec, both inside the tenant database. **Validate:** sqlite-vec performance and maturity; it has no approximate index yet, so asset-scoped search is the main path and tenant-wide semantic search must be load-tested.
@@ -33,4 +35,4 @@ Contracts should include language, time-alignment format, model/version, confide
 
 **Decided:** Per tenant, the daemon exports a read-only **`public.db`** (SQLite) containing only approved public records and their embeddings, and ships it to the public site's host. The daemon is never exposed publicly.
 
-A proposed **Next.js** public library queries `public.db`, computes query embeddings on CPU for semantic search, and consumes only approved records. It offers natural-language and keyword search over public transcripts, chapters, topics and teacher names; links to platform-native playback; and links each approved clip to its parent original where appropriate. Public access is never granted simply because a source exists in the private catalog.
+The **Next.js** public library (**Decided**) queries `public.db`, computes query embeddings on CPU for semantic search, and consumes only approved records. It offers natural-language and keyword search over public transcripts, chapters, topics and teacher names; links to platform-native playback; and links each approved clip to its parent original where appropriate. Public access is never granted simply because a source exists in the private catalog.

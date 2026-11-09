@@ -29,7 +29,7 @@ npm run serve
 
 ## Deployment
 
-This is a static site. Configure `DOCS_SITE_URL` and `DOCS_BASE_URL` for your deployment domain and path, then run `npm run build`. Deploy `build/` to any static host (Vercel, Netlify, Cloudflare Pages, GitHub Pages, object storage with CDN, etc.).
+The official site is deployed on Vercel at https://www.vidyom.org, which is the default `url` in `docusaurus.config.ts`. To deploy elsewhere, set `DOCS_SITE_URL` and `DOCS_BASE_URL` for your domain and path, run `npm run build` and serve `build/` from any static host. Pages are emitted as `path/index.html`, so `/docs/intro` works without server rewrites.
 
 ## Content conventions
 

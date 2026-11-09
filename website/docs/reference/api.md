@@ -35,7 +35,7 @@ These paths are **design suggestions**, not published live endpoints. API versio
 
 ## Tenant scoping
 
-**Decided:** Vidyom is multi-tenant, so every resource request runs in one tenant. The client selects it with a tenant identifier (for example an `X-Vidyom-Tenant` header, **Proposed**), and the daemon checks that the caller's role in that tenant allows the operation. IDs such as `ORI-001` and `JOB-002` are only unique within a tenant, and a request can never read or write another tenant's data.
+**Decided:** Vidyom is multi-tenant, so every resource request runs in one tenant. The client sends the tenant in the `Vidyom-Tenant` header on every tenant-scoped request, and paths stay tenant-free (for example `/v1/assets/ORI-001`). The daemon rejects a tenant-scoped request without the header, records the header value in logs and audit, and checks that the caller's role in that tenant allows the operation. IDs such as `ORI-001` and `JOB-002` are only unique within a tenant, and a request can never read or write another tenant's data.
 
 ## Pairing
 

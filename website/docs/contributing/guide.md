@@ -33,6 +33,7 @@ Pull requests should explain whether they change a **Decided** requirement or on
 
 The source code and documentation live at [github.com/rafaelp/vidyom](https://github.com/rafaelp/vidyom).
 
+- **Names and distribution:** the documentation site is at `https://www.vidyom.org`. **Decided:** Go module `github.com/rafaelp/vidyom`, container images at `ghcr.io/rafaelp/vidyom`, CLI distribution through the Homebrew tap `rafaelp/vidyom`, and the `vidyom` name reserved on PyPI for the Python AI worker. A trademark check is still pending.
 - **License:** [Apache License 2.0](https://github.com/rafaelp/vidyom/blob/main/LICENSE). Do not assume that every referenced third-party dependency is compatible with it; audit each one before adoption.
 - **Code of conduct:** [Contributor Covenant 2.1](https://github.com/rafaelp/vidyom/blob/main/CODE_OF_CONDUCT.md).
 - **Contributor guidelines:** [CONTRIBUTING.md](https://github.com/rafaelp/vidyom/blob/main/CONTRIBUTING.md).

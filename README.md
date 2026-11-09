@@ -35,7 +35,7 @@ A single recording can be 10 GB or larger and contain many distinct stories. Vid
 
 ## Documentation
 
-The specification is published as a [Docusaurus](https://docusaurus.io/) site in [`website/`](website/). To run it locally (Node.js 20+, Node 22 LTS recommended):
+The specification is published at **[www.vidyom.org](https://www.vidyom.org)**, a [Docusaurus](https://docusaurus.io/) site built from [`website/`](website/). To run it locally (Node.js 20+, Node 22 LTS recommended):
 
 ```bash
 cd website

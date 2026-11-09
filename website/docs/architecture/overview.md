@@ -34,7 +34,7 @@ flowchart TB
 
 ## Deployment
 
-Initial proposal: daemon on Linux, client on macOS/Linux/Windows, Go for daemon/client, FFmpeg, and a Python AI worker (faster-whisper). These are **proposed implementation choices**, not hard requirements for the platform specification.
+**Decided:** Go for `vidyom` (CLI), `vidyomd` (daemon) and the media worker; Python only for the AI worker (faster-whisper, BGE-M3), which talks to the daemon over JSON-RPC. **Proposed:** daemon on Linux and client on macOS/Linux/Windows, with FFmpeg for media processing.
 
 **Decided:** Docker Compose is the supported MVP deployment: the daemon, the workers (with FFmpeg and the Python AI worker packaged) and Redis. The Go binaries can also run natively under systemd, but that is not the primary path. Kubernetes is **Future**.
 

@@ -80,7 +80,7 @@ vidyom budget status
 vidyom budget set --monthly 500 --currency USD
 ```
 
-Roles apply per tenant, and budget commands require the `admin` role. Vidyom alerts at 80% of the budget and blocks new paid operations at 100% unless an admin overrides it.
+The CLI sets the `Vidyom-Tenant` header on API requests from the current tenant (`vidyom tenant use`). Roles apply per tenant, and budget commands require the `admin` role. Vidyom alerts at 80% of the budget and blocks new paid operations at 100% unless an admin overrides it.
 
 ## Storage and publishing
 

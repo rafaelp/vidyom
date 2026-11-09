@@ -21,7 +21,7 @@ Workflows and plugins represent executable instructions and must be treated as u
 - Verify plugin provenance and integrity, and keep versioned manifests.
 - Separate publication, deletion, storage migration and credential management permissions.
 - Require an approval gate for public publication unless an administrator explicitly changes trusted policy.
-- Process media with local AI by default. **Decided:** `aiProcessing` is `local_only` unless an admin marks a collection or asset as `external_allowed`; Vidyom records who authorized it and when. This applies to transcription, embeddings and LLM calls, and plugins must not send content to external AI services otherwise.
+- Process media with local AI by default. **Decided:** `aiProcessing` is `local_only` unless an admin marks a collection or asset as `external_allowed`; Vidyom records who authorized it and when. This applies to transcription, embeddings and LLM calls, and plugins must not send content to external AI services otherwise. Transcripts are private by default, and segments that editors mark as sensitive are never sent to external AI, are excluded from public outputs and are redacted in exports.
 - Record security-relevant action, identity, resource, decision and timestamp in durable audit history.
 
 ## Defense in depth
