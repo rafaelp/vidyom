@@ -18,6 +18,13 @@ from vidyom.engines.fake import EMBEDDING_DIMENSIONS, FakeEngine
 from vidyom.server import Connection, Worker, open_tcp_listener, open_unix_listener
 
 
+def shutdown_quietly(sock):
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass  # the other side is already gone
+
+
 def close_process(process):
     process.kill()
     process.wait()
@@ -52,10 +59,7 @@ class ConnectionTestCase(unittest.TestCase):
 
         def serve():
             connection.serve()
-            try:
-                server_side.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass  # the client side is already gone
+            shutdown_quietly(server_side)
             reader.close()
             writer.close()
             server_side.close()
@@ -67,7 +71,7 @@ class ConnectionTestCase(unittest.TestCase):
         self.addCleanup(client_side.close)
         self.addCleanup(writer_side.close)
         self.addCleanup(reader_side.close)
-        self.addCleanup(client_side.shutdown, socket.SHUT_RDWR)
+        self.addCleanup(shutdown_quietly, client_side)
         return client
 
     def transcribe_params(self, **extra):
