@@ -5,26 +5,24 @@ sidebar_position: 1
 
 # Open questions and validations
 
-The architecture is settled at a high level, but these detailed choices should be validated before implementation:
+The architecture is settled at a high level. These items are still open: the first two are decisions, the rest are validations (proofs of concept) to complete before implementation.
 
-1. **License compatibility:** Vidyom is licensed under Apache-2.0; audit external component licenses separately for compatibility.
-2. **Deployment:** service topology and supported OS versions. The runtime and the documentation website share one repository.
-3. **Workflow schema:** stable JSON Schema, expression restrictions, branching and loops, compensation/rollback and schema migration policy.
-4. **Job queue:** PostgreSQL-based queue vs dedicated broker; concurrency and long-running task lease semantics.
-5. **Headless keyring:** unattended secure unlock, service user provisioning and credential rotation policy.
-6. **TLS/private networking:** mTLS vs SSH default; Tailscale Serve/NetBird interface binding; device identity and RBAC.
-7. **MediaCMS:** exact API paths, how to register externally stored proxies, whether double transcoding can be disabled safely.
-8. **VideoVortex:** verify indexing APIs/CLI, licensing, local index sync, moment retrieval, clip export and return formats.
-9. **Rewind:** decide if optional visual review integration contributes enough value to prioritize.
-10. **Audio transcription:** exact provider formats, upload limits, word timestamp accuracy, diarization and pricing policies.
-11. **Master quality:** precise profiles for 1080p/4K, audio, aspect-ratio variants, and vertical crops.
-12. **Archival retention:** raw originals, final edited masters, legal retention, immutability/versioning and cost policy.
-13. **Publishing:** YouTube OAuth and upload quotas, video privacy, captions and retry reconciliation; Vimeo permissions and features.
-14. **Public site:** auth boundaries between public search and private asset database, indexing pipeline, captions privacy and caching.
-15. **Plugins:** process protocol, signing, lifecycle, sandboxing and compatibility guarantees.
-16. **Audit retention:** storage backend, tamper evidence and compliance requirements.
-17. **Domain:** a project domain has not been established. The source repository is [github.com/rafaelp/vidyom](https://github.com/rafaelp/vidyom).
-18. **Cost optimization:** co-locate compute with GCS Standard where beneficial; account for egress and operation fees.
+**Decisions:**
+
+1. **Copyright and privacy:** permissions for speakers and participants, publication authorizations and handling of sensitive transcripts.
+2. **Domain and names:** a project domain has not been established; package/registry names and a trademark check are pending. The source repository is [github.com/rafaelp/vidyom](https://github.com/rafaelp/vidyom).
+
+**Validations:**
+
+3. **Search and backup:** **Validate:** sqlite-vec performance at tenant scale (no approximate index yet); Litestream with GCS.
+4. **Redis:** **Validate:** AOF durability and reconciliation under crash tests.
+5. **Master key unsealing:** **Validate:** TPM/systemd-creds and KMS unsealing on the target hosts.
+6. **MediaCMS:** **Validate:** API paths, externally stored proxies, double transcoding, one instance per tenant.
+7. **VideoVortex:** **Validate:** real APIs/CLI, license, synchronization with the tenant database.
+8. **Transcription:** **Validate:** accuracy, word timestamps and diarization of faster-whisper large-v3 on the target content.
+9. **Publishing APIs:** **Validate:** YouTube, Vimeo, PeerTube and Instagram (OAuth, quotas, captions, retry reconciliation).
+10. **License compatibility:** **Validate:** every dependency against Apache-2.0.
+11. **Archive purge:** **Validate:** LGPD legal review of deferring the archive purge until the minimum storage duration ends.
 
 ## Non-goals of the documentation site
 

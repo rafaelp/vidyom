@@ -43,6 +43,8 @@ A plugin may provide all three interfaces. Multiple destinations may be active s
 
 Export asynchronously through bounded per-connector queues with batching, timeouts, retries, backoff and disk buffering when configured. One unavailable sink must not interrupt media processing or another sink. The daemon should expose exporter health, drops and backlogs. Never silently discard required audit records: audit persistence is distinct from best-effort telemetry exports.
 
+**Decided:** The audit is an append-only table in each tenant database with **hash chaining** (each record includes the previous record's hash). The chain is exported daily to archive storage, and minimum retention is 1 year, configurable.
+
 ## Security
 
 Apply secret redaction *before fan-out*. Avoid logging raw captions, private transcripts, signed media URLs, tokens, or personal data unless explicitly needed and authorized. High-cardinality asset/job IDs belong in structured logs and traces, not unbounded metric labels.

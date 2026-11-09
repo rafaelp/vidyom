@@ -19,7 +19,7 @@ sidebar_position: 1
 
 ## Naming and credentials
 
-Workflows reference logical aliases such as `archive`, `master`, `proxy`, `youtube-main`, and `loki-primary`. Provider config (outside workflow JSON) resolves aliases to driver, endpoint, bucket/folder and `credentialsRef`. Credentials are stored in OS keyrings and are resolved only by trusted authorized execution paths.
+Workflows reference logical aliases such as `archive`, `master`, `proxy`, `youtube-main`, and `loki-primary`. Provider config (outside workflow JSON) resolves aliases to driver, endpoint, bucket/folder and `credentialsRef`. **Decided:** On the server, credentials are stored in an encrypted vault inside each tenant database (envelope encryption with one data key per tenant); client machines keep using the OS keyring. Credentials are resolved only by trusted authorized execution paths and never appear in workflow JSON, logs or job payloads.
 
 ## Connector contracts
 
@@ -34,11 +34,12 @@ Changing a logical role's driver must not require editing workflow JSON. Actual 
 | Domain | Initial | Future-compatible examples |
 | --- | --- | --- |
 | Storage | GCS Standard/Archive | AWS S3, Dropbox, SFTP, local/NAS, Azure Blob |
-| Publishing | YouTube | Vimeo, PeerTube, Dailymotion |
-| Catalog | MediaCMS | Other catalogs or custom adapters |
-| Search/video indexing | VideoVortex and PostgreSQL | Other indexers |
-| Transcription | faster-whisper | Remote audio transcription APIs |
-| AI | Local or hosted model | Provider adapters |
+| Publishing | YouTube | Roadmap after YouTube: Vimeo, PeerTube, Instagram Reels. Spotify is not planned; other destinations (for example Dailymotion) may come as community connectors |
+| Catalog | Vidyom's tenant database (canonical); MediaCMS as an optional connector | Other catalogs or custom adapters |
+| Search/video indexing | SQLite FTS5 and sqlite-vec in the tenant database; VideoVortex as a proposed complement | Other indexers, PostgreSQL via the repository layer |
+| Transcription | faster-whisper large-v3 (local) | Remote audio transcription APIs |
+| Embeddings | BGE-M3 (local, multilingual) | Other embedding models |
+| AI (LLM) | A single OpenAI-compatible API driver (OpenAI, OpenRouter, vLLM, Ollama, ...); each endpoint is classified `local` or `external` | Provider adapters |
 | Logs | JSONL, Loki | Datadog, Cloud Logging, Syslog |
 | Metrics | Prometheus/OpenTelemetry | Datadog |
 | Traces | OTLP/OpenTelemetry | Datadog APM and other OTLP consumers |

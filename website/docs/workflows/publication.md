@@ -11,12 +11,16 @@ A new edited video or clip is a standalone canonical asset. Its creation, backup
 
 1. Locate approved asset and the source master from logical `master` storage.
 2. Prepare title, description, tags, captions, thumbnail and requested output profile.
-3. Request editorial approval and **persist** `waiting_approval`; the CLI may disconnect.
+3. Request publication approval (kind `publication`) and **persist** `waiting_approval`; the CLI may disconnect.
 4. Render and verify the final publishable file. Retain a copy in operational storage.
 5. Call the selected publishing connector (`youtube-main`, `vimeo-main`, etc.).
 6. Poll or reconcile remote processing and visibility as supported.
 7. Store per-provider remote ID, URL, state, published version and metadata.
 8. Publish only approved metadata and public URLs into the public catalog.
+
+## Approval
+
+**Decided:** Approval has two levels. An `editor` approves the clip selection (kind `clip_selection`); a `publisher` or `admin` approves publication (kind `publication`). Changing the visibility or the public metadata of an already public video requires a new publisher approval. A workflow can tighten the rule through `approvers`, never loosen it.
 
 ## One asset, multiple destinations
 
@@ -30,8 +34,16 @@ A new edited video or clip is a standalone canonical asset. Its creation, backup
 }
 ```
 
+**Decided:** YouTube is the first destination. **Future:** Vimeo, PeerTube and Instagram Reels (vertical clips reframed from the 4K master) follow on the roadmap; Spotify is not planned. Other destinations, such as Dailymotion, remain possible community connectors but are not on the roadmap.
+
 Provider remote IDs are independent of canonical asset IDs. Uploads must be resumable when the destination supports it, reconciled before retrying, and not duplicated when jobs restart. Supported thumbnail, captions, scheduling and privacy settings vary by platform and must be feature-detected.
 
 ## Public library
 
-A proposed Next.js site displays only approved public assets, searchable by theme, chapter, story, teacher and transcript. It can embed or link to YouTube and later Vimeo/other platforms, with deep links to timecodes when supported. Private originals, unapproved clips, backing storage addresses and private transcripts must not leak through the public index.
+A proposed Next.js site displays only approved public assets, searchable by theme, chapter, story, teacher and transcript. It can embed or link to YouTube and later the other destinations, with deep links to timecodes when supported. Private originals, unapproved clips, backing storage addresses and private transcripts must not leak through the public index.
+
+**Decided:** Per tenant, the daemon exports a read-only `public.db` (SQLite) containing only approved public records and their embeddings, and ships it to the public site's host. The site queries it and computes query embeddings on CPU for semantic search. The daemon is never exposed publicly.
+
+## Withdrawal and deletion
+
+**Decided:** Withdrawal, which unpublishes from every destination and from the public library, is immediate and can be done by a publisher or admin. Full deletion is done by an admin; the archive copy is purged when the archive's minimum storage duration ends (365 days on GCS Archive) and stays inaccessible until then. The audit keeps the fact of the deletion without the content. **Validate:** legal review under the LGPD of deferring the archive purge.

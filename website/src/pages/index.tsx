@@ -9,7 +9,7 @@ const features = [
  ['✧','AI-assisted clipping','Find complete stories from natural-language prompts and render independent derivative assets.'],
  ['▦','Portable media archive','Keep canonical assets, metadata, captions, and lineage independent of platforms.'],
  ['⇄','Connector ecosystem','Use pluggable storage, publishing, AI, catalog, and observability providers.'],
- ['◇','Secure by design','Keyring-backed secrets, private networking, policy-aware plugins, and auditable jobs.'],
+ ['◇','Secure by design','Isolated tenants, encrypted secrets, private networking, policy-aware plugins, and auditable jobs.'],
 ];
 export default function Home(){return <Layout title="Open-source AI video workflows" description="Documentation and architecture for the Vidyom video workflow engine"><main>
 <section className="heroV"><div className="container"><div className="row"><div className="col col--7"><div className="heroEyebrow">OPEN SOURCE · VIDEO AUTOMATION · KNOWLEDGE</div><h1>Meet <span>Vidyom.</span></h1><p>Preserve originals. Find meaningful moments. Create new videos. Publish everywhere — with a programmable, extensible workflow engine.</p><div className="heroActions"><Link className="buttonPrimaryV" to="/docs/intro">Explore the documentation →</Link><Link className="buttonSecondaryV" to="/docs/architecture/overview">View architecture</Link></div><div className="statusNote">Architecture and implementation specification · Not yet a production release</div></div><div className="col col--5 heroGraphic"><div className="orbit"><img className="orbitMark" src={useBaseUrl('/img/vidyom-mark.png')} alt="" /></div></div></div></div></section>

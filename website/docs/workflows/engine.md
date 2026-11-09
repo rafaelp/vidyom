@@ -15,7 +15,8 @@ sidebar_position: 1
 - `connections`: explicit DAG edges and branches.
 - `settings`: retries, timeouts, progress, concurrency, error handling.
 - `hooks` and optional event trigger configuration.
-- Expression references such as `${inputs.title}` and `${nodes.transcribe.output.file}` resolved by a **restricted expression system**, not arbitrary JavaScript or shell evaluation.
+- Data references such as `${inputs.title}`, `${nodes.transcribe.output.file}` and `${event.field}` resolved by a **restricted expression system**, not arbitrary JavaScript or shell evaluation. `${...}` is used only for data references.
+- Conditions (`flow.if`, event trigger filters, approval rules) written in **CEL** (Common Expression Language).
 
 ## Example: minimal ingest graph
 
@@ -54,6 +55,19 @@ sidebar_position: 1
 
 This is intentionally a **partial example**, not the full production ingest workflow. The complete workflow additionally includes proxy creation, stories/chapters, catalog synchronization, checksums and readiness gating.
 
+## Conditions
+
+**Decided:** Conditions are written in CEL (Common Expression Language): side-effect free, not Turing-complete and subject to evaluation cost limits. The Go daemon evaluates them with cel-go. Data references stay in `${...}` form, while conditions read the same values as plain CEL variables.
+
+```json
+{"id": "publishIfApproved", "type": "flow.if",
+ "parameters": {"condition": "nodes.review.output.decision == 'approved' && inputs.visibility == 'public'"}}
+```
+
+## Merge and branching
+
+**Proposed:** A node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any`: `all` waits for every non-skipped input, and `any` continues with the first completed input.
+
 ## Subworkflows
 
 `workflow.execute` can call a separately versioned workflow such as `ingest-derived` or `publish-video`. The engine must validate parent-child invocation, authorization, input mapping, idempotency and recursion limits. Workflow versions are immutable for submitted jobs, so an edit does not silently alter running jobs.
@@ -61,3 +75,16 @@ This is intentionally a **partial example**, not the full production ingest work
 ## Scheduling and errors
 
 Execution is dependency driven: independent nodes may run in parallel, while joins wait for all required predecessors. Built-in node retry must be bounded with backoff and idempotency. `--dry-run` validates the graph, parameters, permissions and connector capabilities without performing external side effects.
+
+### Side-effect classes
+
+**Decided:** Every node type declares a side-effect class that controls retry:
+
+| Class | Retry behavior |
+| --- | --- |
+| `none` | Pure; retried freely. |
+| `idempotent` | Retried with its idempotency key. |
+| `reconcilable` | Must query the remote state before any retry. |
+| `unsafe` | Never retried automatically; the job moves to the `needs_attention` state until a person resolves it. |
+
+A checkpoint is persisted after each completed node. Cancellation is cooperative between nodes: the running node finishes, or aborts if it supports aborting.

@@ -31,7 +31,7 @@ A single recording can be 10 GB or larger and contain many distinct stories. Vid
 - **AI-assisted clipping.** Find complete stories from natural-language prompts and render them as independent derivative assets.
 - **Portable media archive.** Canonical assets, metadata, captions and lineage stay independent of any platform.
 - **Connector ecosystem.** Pluggable storage, publishing, AI, catalog, transcription and observability providers.
-- **Secure by design.** Keyring-backed secrets, private networking, policy-aware plugins and auditable jobs.
+- **Multi-tenant and secure by design.** Isolated tenants, encrypted secrets, private networking, policy-aware plugins and auditable jobs.
 
 ## Documentation
 
@@ -56,7 +56,7 @@ Then open http://localhost:3000. Good starting points:
 ```text
 vidyom/
 ├── .github/          # CI, issue and pull request templates
-├── spec/             # Complete product specification (v1.1 current, v1.0 for history)
+├── spec/             # Complete product specification (v1.2 current; v1.1 and v1.0 for history)
 └── website/          # Docusaurus documentation site
     ├── docs/         # Specification content
     ├── examples/     # Illustrative workflows, provider bindings and media profiles

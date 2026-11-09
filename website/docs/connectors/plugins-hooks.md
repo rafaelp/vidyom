@@ -54,13 +54,15 @@ Global policy hooks apply to all workflows and must not be disabled by untrusted
 
 Events such as `original.indexed`, `asset.created`, `clip.created`, `publication.completed`, `workflow.failed`, or `storage.backup.verified` may trigger plugins, webhooks and other JSON workflows. Use a transactional outbox, durable subscriptions, delivery state, retry/backoff, recursion limits and consumer idempotency keys. Model delivery as **at least once**, not exactly once.
 
+**Decided:** Event trigger filters are written in CEL (Common Expression Language), as are conditions in `flow.if` and approval rules. CEL is side-effect free, not Turing-complete and bound by evaluation cost limits; the Go daemon evaluates it with cel-go. The `${...}` syntax is reserved for data references such as `${event.asset_id}`.
+
 ```json
 {
   "id": "update-public-library",
   "trigger": {
     "type": "event",
     "event": "publication.completed",
-    "filter": {"visibility": "public"}
+    "filter": "event.payload.visibility == 'public'"
   },
   "nodes": [
     {"id": "sync", "type": "catalog.public.sync", "typeVersion": 1,
@@ -71,6 +73,8 @@ Events such as `original.indexed`, `asset.created`, `clip.created`, `publication
 
 ## Plugin execution and packaging
 
-Prefer out-of-process language-neutral plugins over native Go `.so` plugins. Candidate runtimes: separate Go/Python executables, authenticated HTTP services, and sandboxed WASM. Each manifest describes protocol version, actions, input/output schemas, hook subscriptions, capabilities, resource quotas, permissions and compatible daemon versions. Installing a plugin never grants unrestricted keyring, filesystem, network or shell access.
+**Decided:** Out-of-process plugins talk to the daemon over **JSON-RPC 2.0 on stdin/stdout** (the same transport model as LSP and MCP), which is language-neutral and needs no code generation. Remote plugins and services use JSON-RPC over authenticated HTTPS. Native Go `.so` plugins remain excluded. **Future:** WASM for specific sandboxed cases.
+
+Plugins may be separate Go or Python executables or remote services. Each manifest describes protocol version, actions, input/output schemas, hook subscriptions, capabilities, resource quotas, permissions and compatible daemon versions. Installing a plugin never grants unrestricted keyring, filesystem, network or shell access.
 
 Creating a new **workflow** requires JSON when node types exist; creating a new **node or connector** generally requires writing and distributing an implementation plugin.

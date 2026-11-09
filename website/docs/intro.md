@@ -31,9 +31,10 @@ A recording may be 10 GB or larger and contain many distinct stories. Vidyom pre
 5. **CLI and daemon.** The lightweight client controls persistent background work running on a server.
 6. **Pluggable integrations.** Storage, publishing, catalog, transcription, AI, and observability are replaceable connectors.
 7. **Extensible lifecycle.** Nodes, plugins, hooks, events, and subworkflows add behavior.
-8. **Secure by default.** OS keyrings, encrypted connections, private networking, least privilege, audit logs.
+8. **Secure by default.** An encrypted per-tenant vault on the server and OS keyrings on clients, HTTPS with client pairing, private networking, least privilege, hash-chained audit logs.
 9. **Portable knowledge.** Retain metadata and transcripts in open formats independent of SaaS systems.
 10. **Private by default.** Only approved derived or edited material is published to the public library.
+11. **Multi-tenant.** Each organization (tenant) has its own SQLite database, storage prefix, secrets, users, budget and worker cache.
 
 ## Read next
 

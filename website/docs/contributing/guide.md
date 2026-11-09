@@ -37,4 +37,4 @@ The source code and documentation live at [github.com/rafaelp/vidyom](https://gi
 - **Code of conduct:** [Contributor Covenant 2.1](https://github.com/rafaelp/vidyom/blob/main/CODE_OF_CONDUCT.md).
 - **Contributor guidelines:** [CONTRIBUTING.md](https://github.com/rafaelp/vidyom/blob/main/CONTRIBUTING.md).
 - **Security reporting:** [SECURITY.md](https://github.com/rafaelp/vidyom/blob/main/SECURITY.md), through GitHub private vulnerability reporting.
-- **Release process:** to be decided before the first runtime release.
+- **Release process:** **Decided:** Semantic Versioning, staying on `0.x` until stable. Releases are tagged `vX.Y.Z`, published as GitHub Releases with CLI binaries, with Docker images on GitHub Container Registry (GHCR) and a `CHANGELOG.md`.

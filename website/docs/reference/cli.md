@@ -14,10 +14,12 @@ The following commands describe the planned `vidyom` client. They are **not impl
 ```bash
 vidyom daemon status
 vidyom daemon health
-vidyom server add production --ssh operator@media.example.internal
+vidyom server add production --url https://media.example.internal
 vidyom server use production
 vidyom asset upload ./class.mp4 --server production --workflow ingest-original
 ```
+
+Remote servers use HTTPS by default. `vidyom server add production --ssh operator@media.example.internal` remains available for host operators.
 
 The daemon process is `vidyomd`. A proposed local launch is `vidyomd start --detach`; production should use a service supervisor.
 
@@ -56,6 +58,29 @@ vidyom job cancel JOB-001
 ```
 
 `attach` and `logs --follow` stream updates; disconnecting the CLI must **not cancel** the running job.
+
+A job in the `needs_attention` state stopped before an unsafe node and is never retried automatically. Proposed commands to resolve it:
+
+```bash
+vidyom job list --status needs_attention
+vidyom job resolve JOB-001 --action retry
+vidyom job resolve JOB-001 --action skip
+```
+
+## Device pairing, tenants and budgets
+
+```bash
+vidyom device pair-code                       # admin: generate a one-time code
+vidyom device pair --server production --code <one-time-code>
+vidyom device list
+vidyom device revoke laptop-01
+vidyom tenant list
+vidyom tenant use example-org
+vidyom budget status
+vidyom budget set --monthly 500 --currency USD
+```
+
+Roles apply per tenant, and budget commands require the `admin` role. Vidyom alerts at 80% of the budget and blocks new paid operations at 100% unless an admin overrides it.
 
 ## Storage and publishing
 

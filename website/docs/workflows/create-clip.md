@@ -18,12 +18,12 @@ flowchart TD
  A[Indexed original ID + prompt] --> B[Scoped semantic search]
  B --> C[Recover transcript context and timestamps]
  C --> D[Infer complete narrative boundaries]
- D --> E[Proxy preview and approval]
+ D --> E[Proxy preview and clip selection approval]
  E --> F[Fetch working master from direct-access storage]
  F --> G[Render new clip master]
  G --> H[Ingest derived asset]
- H --> I[Archive + master + proxy + catalog]
- I --> J[Editorial review and approval]
+ H --> I[Archive on approval + master + proxy + catalog]
+ I --> J[Publication approval]
  J --> K[Publish through destination connector]
  K --> L[Update public library]
 ```
@@ -32,11 +32,19 @@ flowchart TD
 
 Use transcript chunks and embeddings **scoped to the selected asset**. Recover surrounding transcript context so the model can identify introduction, narrative development, conclusion and natural word/sentence boundaries. Preserve correct video offsets if voice activity detection removes silence from an audio processing copy. If the story is told in multiple distant passages, distinguish a multi-segment montage from a continuous excerpt.
 
+**Decided:** Story and chapter detection uses an LLM through the single OpenAI-compatible driver. Each configured endpoint is classified as `local` or `external`, and the default `aiProcessing: local_only` allows only a local endpoint (for example Ollama or vLLM on the host). When no local endpoint is available, story detection is unavailable for that collection and clip selection falls back to manual review.
+
 A scoring step should report candidate segments, time ranges, supporting transcript evidence and confidence. Avoid pretending an uncertain segment was found exactly; allow user review and adjustment.
 
 ## Rendering
 
 Before render, verify source state `ready_for_clipping` and working master availability. Fetch the required master or byte ranges from logical storage `master` to a local worker cache; **never fall back to `archive`**. Render with FFmpeg from the production master, not from the heavily compressed preview proxy. Preserve source time ranges, codec settings, transformation parameters and checksum.
+
+## Approval and retention
+
+**Decided:** Approval has two levels. An `editor` approves the clip selection (`approval.request` of kind `clip_selection`); a `publisher` or `admin` approves publication later (kind `publication`, see [publication](./publication.md)). A workflow can tighten this rule through `approvers`, never loosen it.
+
+**Decided:** The master of a clip is archived when its selection is approved. Rejected or never-approved renders stay only in the `master` role and expire after 30 days (configurable per tenant).
 
 ## A new original for every clip
 
@@ -44,7 +52,7 @@ Each accepted clip receives its own immutable asset ID (`CLIP-*`), independently
 
 ## Publish safely
 
-The default is **human approval before publication**. Editorial steps may create subtitles, title, description, thumbnail and platform variants. Publish to YouTube first, with Vimeo and others supported via provider connectors. The public library only receives approved public records and never private master URLs or unreviewed transcripts.
+The default is **human approval before publication**. Editorial steps may create subtitles, title, description, thumbnail and platform variants. Publish to YouTube first; Vimeo, PeerTube and Instagram Reels are on the roadmap after it, through provider connectors. The public library only receives approved public records and never private master URLs or unreviewed transcripts.
 
 ## Repeatability
 

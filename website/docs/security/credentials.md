@@ -1,27 +1,36 @@
 ---
-title: "Credentials and OS keyrings"
+title: "Credentials and secrets vault"
 sidebar_position: 1
 ---
 
-# Credentials and OS keyrings
+# Credentials, keyrings and the secrets vault
 
-**Decided:** Credentials are stored in the operating system keyring, on either the client or the server. Workflow files, command-line arguments, logs and repository configuration must **never contain raw secret values**.
+**Decided:** Client machines keep credentials in the operating system keyring. On the server, secrets live in an encrypted vault inside each tenant database. Workflow files, command-line arguments, logs, job payloads and repository configuration must **never contain raw secret values**.
 
-## Supported backends
+## Client keyrings
 
 | Host | Backend |
 | --- | --- |
 | macOS | Keychain |
 | Windows | Credential Manager |
 | Linux desktop | Secret Service (e.g. GNOME Keyring / KWallet) |
-| Linux headless | Provisioned Secret Service and secure unattended unlock strategy |
 
-Headless Linux often has no usable unlocked keyring out of the box. The daemon must fail securely, not store plain-text secrets as fallback. An adapter may later integrate system-managed or external secure secret stores, but that is a separate architectural decision.
+The CLI uses the keyring for its own credentials, such as the per-device credential issued by [client pairing](./networking.md), and for secrets with `client` location.
+
+## Server vault
+
+**Decided:** The daemon does not depend on a server-side OS keyring, which removes the headless Linux keyring problem. Each tenant has its own encrypted vault in its tenant database, using envelope encryption:
+
+- One data key per tenant encrypts that tenant's secrets.
+- The data key is stored wrapped by a master key; wrapped tenant data keys live in the global system database.
+- The master key is unsealed at boot through TPM/systemd-creds or a cloud KMS, with no manual passphrase.
+
+The daemon must **fail closed**: if the master key is missing or sealed, it refuses to start or to serve secrets, and it never stores plain-text secrets as a fallback. **Validate:** TPM/systemd-creds and KMS unsealing on the target hosts.
 
 ## Location modes
 
 - `client`: secret remains in the CLI machine keyring. This supports local operations or online interaction while the client stays connected.
-- `server`: secret is held in the daemon host keyring; **preferred for autonomous background jobs**.
+- `server`: secret is held in the tenant vault on the daemon host; **preferred for autonomous background jobs**.
 - `delegated`: explicitly scoped, time-limited credentials delegated over an authenticated secure channel, with expiration, revocation, and auditing.
 
 A disconnected client cannot supply a secret that exists *only* in its local keyring. Long-lived jobs should use server-side service identities or bounded delegated tokens. Never implicitly forward the full client keyring or reusable root credentials.
@@ -46,4 +55,4 @@ vidyom secret test gcs-backup
 vidyom secret delete gcs-backup
 ```
 
-Input secret values through safe interactive prompts; remote secret provisioning requires explicit permission and end-to-end encrypted transport. List commands must show metadata, not secret values. Rotation should support testing a replacement credential before disabling the former.
+Secrets are scoped to the active tenant, and one tenant can never read another tenant's vault. Input secret values through safe interactive prompts; remote secret provisioning requires explicit permission and end-to-end encrypted transport. List commands must show metadata, not secret values. Rotation should support testing a replacement credential before disabling the former.

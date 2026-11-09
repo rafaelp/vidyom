@@ -35,6 +35,8 @@ Every trace and operational event should carry the relevant `job_id`, `workflow_
 - CPU, GPU, memory and temporary storage availability.
 - Storage transfer bytes and request failures.
 - Transcription duration, processing model, API usage/cost estimates.
+- Per-tenant monthly spend against budget, recorded per operation.
+- Jobs in `needs_attention`.
 - Assets missing verified archive backup or direct-access master.
 - Clips waiting for editorial approval.
 - Authentication failures and suspicious operation rates.
@@ -50,6 +52,14 @@ Instrumentation with OpenTelemetry; local JSONL logs by default; Prometheus for 
 | --- | --- |
 | Operational logs | 30 days |
 | Workflow execution details | 90 days |
-| Security audit | At least 1 year, policy dependent |
+| Security audit | At least 1 year (configurable) |
 
 An unavailable external log destination must never block FFmpeg processing, but audit events must use a durable store, not an unbounded volatile queue. Redact secrets, private signed URLs and sensitive transcript text before export.
+
+## Audit
+
+**Decided:** Each tenant database holds an append-only audit table with hash chaining: each record includes the previous record's hash. The chain is exported daily to archive storage. Minimum retention is 1 year, configurable. A deletion keeps the fact of the deletion in the audit, without the content.
+
+## Cost budgets and alerts
+
+**Decided:** Each tenant has a monthly estimated budget covering storage operations and egress, external AI, transcription and publishing. Vidyom alerts at 80% and blocks new paid operations at 100%, with an admin override. Usage is recorded per operation.
