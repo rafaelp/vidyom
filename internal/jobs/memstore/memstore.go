@@ -1666,3 +1666,13 @@ func RawJSON(v any) json.RawMessage {
 	}
 	return data
 }
+
+// SetCreatedAt backdates an asset, for retention tests.
+func SetCreatedAt(store repo.TenantStore, asset id.ULID, at time.Time) {
+	s := store.(*Store)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a := s.st.assets[asset]
+	a.CreatedAt = at
+	s.st.assets[asset] = a
+}

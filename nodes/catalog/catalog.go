@@ -975,6 +975,9 @@ func getTranscript(ctx context.Context, env node.DaemonEnv, in node.Input) (node
 	if err != nil {
 		return node.Result{}, err
 	}
+	if t.Segments == nil {
+		t.Segments = []domain.TranscriptSegment{}
+	}
 	out := map[string]any{"asset_id": a.ID, "version": version, "transcript": t}
 	if an, err := store.Transcripts().Analysis(ctx, id.Ref(a.ID), version); err == nil {
 		out["analysis"] = an
