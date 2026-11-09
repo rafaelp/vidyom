@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -351,6 +352,195 @@ func TestVerifyReadsNoContent(t *testing.T) {
 	}
 }
 
+// An outage must surface as an error the node can classify as transient, not hang.
+func TestOutageBecomesAnError(t *testing.T) {
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/storage/v1/", freePort(t))
+	parameters, _ := json.Marshal(map[string]any{"endpoint": endpoint, "retryAttempts": 2, "stallTimeoutSeconds": 3})
+	opened, err := gcs.Open(context.Background(), connector.StorageParams{
+		Tenant: "acme", Role: domain.RoleMaster,
+		Instance: config.StorageInstance{Driver: gcs.Driver, Bucket: "b", Parameters: parameters},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := opened.(*gcs.Storage)
+	defer func() { _ = s.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	wantUnavailable := func(what string, err error) {
+		t.Helper()
+		if !errs.IsCode(err, errs.CodeUnavailable) {
+			t.Errorf("%s: %v", what, err)
+		}
+		if ctx.Err() != nil {
+			t.Fatalf("%s only ended when the test's deadline did", what)
+		}
+	}
+	_, err = s.Stat(ctx, "k")
+	wantUnavailable("stat", err)
+	wantUnavailable("delete", s.Delete(ctx, "k"))
+	_, err = s.Put(ctx, "k", strings.NewReader("x"), connector.PutOptions{})
+	wantUnavailable("put", err)
+	_, _, err = s.Get(ctx, "k")
+	wantUnavailable("get", err)
+	_, err = s.List(ctx, connector.ListOptions{})
+	wantUnavailable("list", err)
+}
+
+// A transfer that stops mid-way fails by itself: nobody's context would end it, while
+// its heartbeat kept the node looking alive.
+func TestStalledDownloadFails(t *testing.T) {
+	srv := inProcessServer(t)
+	srv.createBucket(t, "videos-standard")
+	release := make(chan struct{})
+	defer close(release)
+	through := proxied(t, srv, func(w http.ResponseWriter, r *http.Request, _ []byte) bool {
+		if r.Method == http.MethodGet && r.URL.Query().Get("alt") == "media" {
+			w.Header().Set("Content-Length", "100")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("partial"))
+			w.(http.Flusher).Flush()
+			select {
+			case <-release:
+			case <-r.Context().Done():
+			}
+			return true
+		}
+		return false
+	})
+	s := openGCS(t, through, "acme", domain.RoleMaster, config.StorageInstance{
+		Prefix: "stall/", Parameters: params(t, through, map[string]any{"stallTimeoutSeconds": 1, "retryAttempts": 1}),
+	})
+	ctx := context.Background()
+	if _, err := s.Put(ctx, "k", strings.NewReader(strings.Repeat("x", 100)), connector.PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	rc, _, err := s.Get(ctx, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rc.Close() }()
+	result := make(chan error, 1)
+	go func() {
+		_, err := io.ReadAll(rc)
+		result <- err
+	}()
+	select {
+	case err := <-result:
+		if !errs.IsCode(err, errs.CodeUnavailable) {
+			t.Fatalf("%v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("a stalled download hung")
+	}
+}
+
+// A task's own cancellation must still read as a cancellation.
+func TestCancellationPassesThrough(t *testing.T) {
+	srv := inProcessServer(t)
+	srv.createBucket(t, "videos-standard")
+	s := openGCS(t, srv, "acme", domain.RoleMaster, config.StorageInstance{Prefix: "cancel/"})
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.Stat(ctx, "k"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("%v", err)
+	}
+}
+
+// proxied puts a recording proxy in front of a server.
+func proxied(t *testing.T, srv *server, intercept func(w http.ResponseWriter, r *http.Request, body []byte) bool) *server {
+	t.Helper()
+	backend, err := url.Parse(srv.endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forward := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: backend.Scheme, Host: backend.Host})
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = r.Body.Close()
+		if intercept(w, r, body) {
+			return
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		forward.ServeHTTP(w, r)
+	}))
+	t.Cleanup(proxy.Close)
+	return &server{endpoint: proxy.URL + "/storage/v1/", client: srv.client}
+}
+
+// A rewrite must name the source's metadata itself: with a storage class in the body,
+// the service may not carry it over, and the recorded checksum would be lost. The
+// fake merges either way, so this checks what is sent.
+func TestRewriteSendsTheSourcesMetadata(t *testing.T) {
+	srv := inProcessServer(t)
+	srv.createBucket(t, "videos-standard")
+	var rewrites atomic.Int64
+	var sent atomic.Pointer[map[string]any]
+	through := proxied(t, srv, func(_ http.ResponseWriter, r *http.Request, body []byte) bool {
+		if strings.Contains(r.URL.Path, "/rewriteTo/") {
+			rewrites.Add(1)
+			var doc map[string]any
+			if json.Unmarshal(body, &doc) == nil {
+				sent.Store(&doc)
+			}
+		}
+		return false
+	})
+	s := openGCS(t, through, "acme", domain.RoleArchive, config.StorageInstance{Prefix: "rewrite/", StorageClass: "ARCHIVE"})
+	ctx := context.Background()
+	content := []byte("a backup")
+	put, err := s.Put(ctx, "src", bytes.NewReader(content), connector.PutOptions{ContentType: "video/mp4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied, err := s.Copy(ctx, "src", "dst")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rewrites.Load() == 0 {
+		t.Fatal("no rewrite passed through the proxy")
+	}
+	doc := *sent.Load()
+	metadata, _ := doc["metadata"].(map[string]any)
+	if metadata["vidyom-sha256"] != put.SHA256 || metadata["vidyom-crc32c"] == nil {
+		t.Fatalf("the rewrite did not send the checksum: %+v", doc)
+	}
+	if doc["contentType"] != "video/mp4" || doc["storageClass"] != "ARCHIVE" {
+		t.Fatalf("%+v", doc)
+	}
+	if copied.SHA256 != put.SHA256 || copied.ContentType != "video/mp4" {
+		t.Fatalf("%+v", copied)
+	}
+}
+
+// An object whose checksum could not be recorded could not be verified, so a failed
+// write leaves none.
+func TestFailedRecordLeavesNoObject(t *testing.T) {
+	srv := inProcessServer(t)
+	srv.createBucket(t, "videos-standard")
+	var refused atomic.Int64
+	through := proxied(t, srv, func(w http.ResponseWriter, r *http.Request, _ []byte) bool {
+		if r.Method == http.MethodPatch {
+			refused.Add(1)
+			w.WriteHeader(http.StatusForbidden)
+			return true
+		}
+		return false
+	})
+	s := openGCS(t, through, "acme", domain.RoleMaster, config.StorageInstance{Prefix: "record/"})
+	ctx := context.Background()
+	if _, err := s.Put(ctx, "k", strings.NewReader("content"), connector.PutOptions{}); !errs.IsCode(err, errs.CodeForbidden) {
+		t.Fatalf("%v", err)
+	}
+	if refused.Load() == 0 {
+		t.Fatal("the record's update was never attempted")
+	}
+	if ok, err := s.Exists(ctx, "k"); err != nil || ok {
+		t.Fatalf("an object with no record stayed: %v %v", ok, err)
+	}
+}
+
 // fakeStorage is a source from another driver.
 type fakeStorage struct{ connector.Storage }
 
@@ -363,6 +553,8 @@ func TestOpenFailsClosed(t *testing.T) {
 		"typo in parameters":            {Tenant: "acme", Role: domain.RoleMaster, Instance: config.StorageInstance{Bucket: "b", Parameters: json.RawMessage(`{"endpont":"x"}`)}},
 		"plain http off loopback":       {Tenant: "acme", Role: domain.RoleMaster, Instance: config.StorageInstance{Bucket: "b", Parameters: json.RawMessage(`{"endpoint":"http://media.example.internal/"}`)}},
 		"tiny chunk":                    {Tenant: "acme", Role: domain.RoleMaster, Instance: config.StorageInstance{Bucket: "b", Parameters: json.RawMessage(`{"endpoint":"http://127.0.0.1:1","chunkSizeBytes":1}`)}},
+		"negative stall":                {Tenant: "acme", Role: domain.RoleMaster, Instance: config.StorageInstance{Bucket: "b", Parameters: json.RawMessage(`{"endpoint":"http://127.0.0.1:1","stallTimeoutSeconds":-1}`)}},
+		"negative attempts":             {Tenant: "acme", Role: domain.RoleMaster, Instance: config.StorageInstance{Bucket: "b", Parameters: json.RawMessage(`{"endpoint":"http://127.0.0.1:1","retryAttempts":-1}`)}},
 		"bad tenant":                    {Tenant: "../x", Role: domain.RoleMaster, Instance: config.StorageInstance{Bucket: "b", Parameters: json.RawMessage(`{"endpoint":"http://127.0.0.1:1"}`)}},
 	}
 	for name, p := range cases {

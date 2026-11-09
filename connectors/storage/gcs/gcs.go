@@ -39,12 +39,25 @@ const (
 	minChunkSize     = 256 << 10
 	copyBuffer       = 1 << 20
 	maxObjectBytes   = 5 << 40 // GCS's documented object limit
+	// defaultAttempts bounds retries, so an outage reaches the node as an error it can
+	// classify, not as a call that hangs while its heartbeat stays alive.
+	defaultAttempts = 4
+	// metadataTimeout bounds one call that moves no media.
+	metadataTimeout = 2 * time.Minute
+	// cleanupTimeout bounds removing a failed write after its context ended.
+	cleanupTimeout = 30 * time.Second
+	// defaultStallTimeout is how long a transfer may make no progress. Media transfers
+	// can last hours, so they get no overall deadline, and the client's retries do not
+	// bound starting an upload on a dead endpoint.
+	defaultStallTimeout = 5 * time.Minute
 )
 
 type parameters struct {
 	Endpoint       string `json:"endpoint"`
 	Versioning     bool   `json:"versioning"`
 	ChunkSizeBytes int    `json:"chunkSizeBytes"`
+	RetryAttempts  int    `json:"retryAttempts"`
+	StallSeconds   int    `json:"stallTimeoutSeconds"`
 }
 
 // Info describes the driver for the registry and GET /connectors.
@@ -87,6 +100,8 @@ type Storage struct {
 	base       string
 	class      string
 	chunkSize  int
+	attempts   int
+	stall      time.Duration
 	caps       connector.StorageCapabilities
 	signer     *signer
 }
@@ -130,6 +145,22 @@ func Open(ctx context.Context, p connector.StorageParams) (connector.Storage, er
 		return nil, errs.Newf(errs.CodeInvalidArgument, "gcs chunkSizeBytes must be at least %d", minChunkSize)
 	}
 
+	attempts := params.RetryAttempts
+	if attempts == 0 {
+		attempts = defaultAttempts
+	}
+	if attempts < 1 {
+		return nil, errs.New(errs.CodeInvalidArgument, "gcs retryAttempts must be positive")
+	}
+
+	stall := defaultStallTimeout
+	switch {
+	case params.StallSeconds < 0:
+		return nil, errs.New(errs.CodeInvalidArgument, "gcs stallTimeoutSeconds must be positive")
+	case params.StallSeconds > 0:
+		stall = time.Duration(params.StallSeconds) * time.Second
+	}
+
 	var credentials []byte
 	if inst.CredentialsRef != "" {
 		if p.Secrets == nil {
@@ -160,12 +191,14 @@ func Open(ctx context.Context, p connector.StorageParams) (connector.Storage, er
 	return &Storage{
 		client:     client,
 		bucketName: inst.Bucket,
-		bucket:     client.Bucket(inst.Bucket),
+		bucket:     client.Bucket(inst.Bucket).Retryer(storage.WithMaxAttempts(attempts)),
 		role:       p.Role,
 		tenant:     p.Tenant,
 		base:       base,
 		class:      inst.StorageClass,
 		chunkSize:  chunk,
+		attempts:   attempts,
+		stall:      stall,
 		caps:       capabilities(params.Versioning, storageutil.DirectAccess(inst.Usage)),
 		signer:     parseSigner(credentials),
 	}, nil
@@ -226,18 +259,23 @@ func validKey(key string) error {
 }
 
 func (s *Storage) object(key string) *storage.ObjectHandle {
-	return s.bucket.Object(s.base + key).Retryer(storage.WithPolicy(storage.RetryAlways))
+	return s.bucket.Object(s.base+key).Retryer(storage.WithPolicy(storage.RetryAlways), storage.WithMaxAttempts(s.attempts))
 }
 
-func mapError(err error, what string) error {
+// mapError codes an error. The context decides what a cancellation means: the task's
+// own context ending passes through, so the runner sees it, while a call's timeout is
+// an outage worth a retry.
+func mapError(ctx context.Context, err error, what string) error {
 	var coded *errs.Error
 	switch {
 	case err == nil:
 		return nil
 	case errors.As(err, &coded):
 		return err
+	case ctx.Err() != nil:
+		return ctx.Err()
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
-		return err
+		return errs.Wrap(errs.CodeUnavailable, err, what+" timed out on gcs")
 	case errors.Is(err, storage.ErrObjectNotExist), errors.Is(err, storage.ErrBucketNotExist):
 		return errs.NotFound("object")
 	}
@@ -275,14 +313,21 @@ func (s *Storage) info(key string, attrs *storage.ObjectAttrs) connector.ObjectI
 	}
 }
 
+// attrs fetches an object's attributes under a deadline.
+func (s *Storage) attrs(ctx context.Context, key string) (*storage.ObjectAttrs, error) {
+	callCtx, cancel := context.WithTimeout(ctx, metadataTimeout)
+	defer cancel()
+	return s.object(key).Attrs(callCtx)
+}
+
 // Stat describes an object without reading it.
 func (s *Storage) Stat(ctx context.Context, key string) (connector.ObjectInfo, error) {
 	if err := validKey(key); err != nil {
 		return connector.ObjectInfo{}, err
 	}
-	attrs, err := s.object(key).Attrs(ctx)
+	attrs, err := s.attrs(ctx, key)
 	if err != nil {
-		return connector.ObjectInfo{}, mapError(err, "stat")
+		return connector.ObjectInfo{}, mapError(ctx, err, "stat")
 	}
 	return s.info(key, attrs), nil
 }
@@ -301,15 +346,17 @@ func (s *Storage) Get(ctx context.Context, key string) (io.ReadCloser, connector
 	if err := validKey(key); err != nil {
 		return nil, connector.ObjectInfo{}, err
 	}
-	attrs, err := s.object(key).Attrs(ctx)
+	attrs, err := s.attrs(ctx, key)
 	if err != nil {
-		return nil, connector.ObjectInfo{}, mapError(err, "get")
+		return nil, connector.ObjectInfo{}, mapError(ctx, err, "get")
 	}
-	r, err := s.object(key).Generation(attrs.Generation).NewReader(ctx)
+	readCtx, cancel := context.WithCancel(ctx)
+	r, err := s.object(key).Generation(attrs.Generation).NewReader(readCtx)
 	if err != nil {
-		return nil, connector.ObjectInfo{}, mapError(err, "get")
+		cancel()
+		return nil, connector.ObjectInfo{}, mapError(ctx, err, "get")
 	}
-	return r, s.info(key, attrs), nil
+	return &guardedReader{ctx: ctx, r: r, cancel: cancel, stall: s.stall}, s.info(key, attrs), nil
 }
 
 // DownloadRange reads length bytes from offset; a negative length reads to the end.
@@ -317,9 +364,9 @@ func (s *Storage) DownloadRange(ctx context.Context, key string, offset, length 
 	if err := validKey(key); err != nil {
 		return nil, err
 	}
-	attrs, err := s.object(key).Attrs(ctx)
+	attrs, err := s.attrs(ctx, key)
 	if err != nil {
-		return nil, mapError(err, "range read")
+		return nil, mapError(ctx, err, "range read")
 	}
 	if offset < 0 || offset > attrs.Size {
 		return nil, errs.Newf(errs.CodeInvalidArgument, "range offset %d is outside the object", offset)
@@ -327,11 +374,51 @@ func (s *Storage) DownloadRange(ctx context.Context, key string, offset, length 
 	if offset == attrs.Size {
 		return io.NopCloser(bytes.NewReader(nil)), nil
 	}
-	r, err := s.object(key).Generation(attrs.Generation).NewRangeReader(ctx, offset, length)
+	readCtx, cancel := context.WithCancel(ctx)
+	r, err := s.object(key).Generation(attrs.Generation).NewRangeReader(readCtx, offset, length)
 	if err != nil {
-		return nil, mapError(err, "range read")
+		cancel()
+		return nil, mapError(ctx, err, "range read")
 	}
-	return r, nil
+	return &guardedReader{ctx: ctx, r: r, cancel: cancel, stall: s.stall}, nil
+}
+
+// guardedReader fails a read that makes no progress for the stall timeout, and maps
+// what the client returns, so an outage mid-transfer reads as unavailable.
+type guardedReader struct {
+	ctx    context.Context
+	r      io.ReadCloser
+	cancel context.CancelFunc
+	stall  time.Duration
+}
+
+func (g *guardedReader) Read(p []byte) (int, error) {
+	watchdog := time.AfterFunc(g.stall, g.cancel)
+	n, err := g.r.Read(p)
+	watchdog.Stop()
+	if err != nil && !errors.Is(err, io.EOF) {
+		return n, mapError(g.ctx, err, "read")
+	}
+	return n, err
+}
+
+func (g *guardedReader) Close() error {
+	defer g.cancel()
+	return g.r.Close()
+}
+
+// guardedWriter aborts an upload that makes no progress for the stall timeout, which
+// also bounds starting a session on a dead endpoint and the final flush.
+type guardedWriter struct {
+	w        io.Writer
+	watchdog *time.Timer
+	stall    time.Duration
+}
+
+func (g *guardedWriter) Write(p []byte) (int, error) {
+	n, err := g.w.Write(p)
+	g.watchdog.Reset(g.stall)
+	return n, err
 }
 
 // Put writes an object. The upload commits only at Close, so a checksum or size
@@ -360,11 +447,14 @@ func (s *Storage) Put(ctx context.Context, key string, r io.Reader, opts connect
 	shaHash := sha256.New()
 	crcHash := crc32.New(crc32.MakeTable(crc32.Castagnoli))
 	source := &storageutil.ProgressReader{R: storageutil.ContextReader{Ctx: ctx, R: r}, Progress: opts.Progress}
-	written, err := io.CopyBuffer(io.MultiWriter(w, shaHash, crcHash), source, make([]byte, copyBuffer))
+	watchdog := time.AfterFunc(s.stall, abort)
+	defer watchdog.Stop()
+	guarded := &guardedWriter{w: w, watchdog: watchdog, stall: s.stall}
+	written, err := io.CopyBuffer(io.MultiWriter(guarded, shaHash, crcHash), source, make([]byte, copyBuffer))
 	if err != nil {
 		abort()
 		_ = w.Close()
-		return connector.ObjectInfo{}, mapError(err, "put")
+		return connector.ObjectInfo{}, mapError(ctx, err, "put")
 	}
 	sum := hex.EncodeToString(shaHash.Sum(nil))
 	if opts.SizeBytes > 0 && opts.SizeBytes != written {
@@ -377,23 +467,37 @@ func (s *Storage) Put(ctx context.Context, key string, r io.Reader, opts connect
 		_ = w.Close()
 		return connector.ObjectInfo{}, errs.New(errs.CodeValidationFailed, "checksum mismatch writing an object")
 	}
+	watchdog.Reset(s.stall)
 	if err := w.Close(); err != nil {
-		return connector.ObjectInfo{}, mapError(err, "put")
+		return connector.ObjectInfo{}, mapError(ctx, err, "put")
 	}
+	watchdog.Stop()
 	attrs := w.Attrs()
 	pinned := obj.Generation(attrs.Generation)
 	if attrs.CRC32C != crcHash.Sum32() {
-		_ = pinned.Delete(ctx)
+		s.removeFailedWrite(ctx, pinned)
 		return connector.ObjectInfo{}, errs.New(errs.CodeValidationFailed, "gcs stored different bytes than were sent")
 	}
-	updated, err := pinned.Update(ctx, storage.ObjectAttrsToUpdate{Metadata: map[string]string{
+	callCtx, cancel := context.WithTimeout(ctx, metadataTimeout)
+	defer cancel()
+	updated, err := pinned.Update(callCtx, storage.ObjectAttrsToUpdate{Metadata: map[string]string{
 		metaSHA256: sum,
 		metaCRC32C: strconv.FormatUint(uint64(crcHash.Sum32()), 10),
 	}})
 	if err != nil {
-		return connector.ObjectInfo{}, mapError(err, "put")
+		// An object with no record could not be verified, so a failed write leaves none.
+		s.removeFailedWrite(ctx, pinned)
+		return connector.ObjectInfo{}, mapError(ctx, err, "put")
 	}
 	return s.info(key, updated), nil
+}
+
+// removeFailedWrite deletes the generation a failed Put created. It runs after the
+// task's context may have ended, so it has its own deadline.
+func (s *Storage) removeFailedWrite(ctx context.Context, pinned *storage.ObjectHandle) {
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
+	defer cancel()
+	_ = pinned.Delete(cleanupCtx)
 }
 
 // List pages objects in key order under a key prefix. The cursor is the last key of
@@ -408,7 +512,9 @@ func (s *Storage) List(ctx context.Context, opts connector.ListOptions) (connect
 		// A NUL sorts just after the cursor's own name.
 		query.StartOffset = s.base + opts.Cursor + "\x00"
 	}
-	it := s.bucket.Objects(ctx, query)
+	callCtx, cancel := context.WithTimeout(ctx, metadataTimeout)
+	defer cancel()
+	it := s.bucket.Objects(callCtx, query)
 	it.PageInfo().MaxSize = limit + 1
 	var page connector.ListPage
 	for {
@@ -417,7 +523,7 @@ func (s *Storage) List(ctx context.Context, opts connector.ListOptions) (connect
 			return page, nil
 		}
 		if err != nil {
-			return connector.ListPage{}, mapError(err, "list")
+			return connector.ListPage{}, mapError(ctx, err, "list")
 		}
 		if attrs.Name == "" {
 			continue
@@ -435,7 +541,9 @@ func (s *Storage) Delete(ctx context.Context, key string) error {
 	if err := validKey(key); err != nil {
 		return err
 	}
-	return mapError(s.object(key).Delete(ctx), "delete")
+	callCtx, cancel := context.WithTimeout(ctx, metadataTimeout)
+	defer cancel()
+	return mapError(ctx, s.object(key).Delete(callCtx), "delete")
 }
 
 // Copy duplicates an object inside this instance, server side.
@@ -449,16 +557,29 @@ func (s *Storage) Copy(ctx context.Context, srcKey, dstKey string) (connector.Ob
 	return s.rewrite(ctx, s.object(srcKey), dstKey)
 }
 
+// rewrite copies server side. It names the source's metadata and content type itself:
+// a rewrite that also sets a storage class has a non-empty body, and the service may
+// then not carry them over, which would lose the object's recorded checksum.
+// fake-gcs-server merges either way, so a test can only check what is sent. The source
+// is pinned to the generation those attributes describe.
 func (s *Storage) rewrite(ctx context.Context, src *storage.ObjectHandle, dstKey string) (connector.ObjectInfo, error) {
-	copier := s.object(dstKey).CopierFrom(src)
+	callCtx, cancel := context.WithTimeout(ctx, metadataTimeout)
+	defer cancel()
+	attrs, err := src.Attrs(callCtx)
+	if err != nil {
+		return connector.ObjectInfo{}, mapError(ctx, err, "copy")
+	}
+	copier := s.object(dstKey).CopierFrom(src.Generation(attrs.Generation))
+	copier.ContentType = attrs.ContentType
+	copier.Metadata = attrs.Metadata
 	if s.class != "" {
 		copier.StorageClass = s.class
 	}
-	attrs, err := copier.Run(ctx)
+	copied, err := copier.Run(ctx)
 	if err != nil {
-		return connector.ObjectInfo{}, mapError(err, "copy")
+		return connector.ObjectInfo{}, mapError(ctx, err, "copy")
 	}
-	return s.info(dstKey, attrs), nil
+	return s.info(dstKey, copied), nil
 }
 
 // CopyFrom rewrites an object from another gcs instance, so no bytes pass through
@@ -511,14 +632,17 @@ func recordedSum(attrs *storage.ObjectAttrs) (string, bool) {
 }
 
 func (s *Storage) streamSum(ctx context.Context, key string, generation int64) (string, error) {
-	r, err := s.object(key).Generation(generation).NewReader(ctx)
+	readCtx, cancel := context.WithCancel(ctx)
+	r, err := s.object(key).Generation(generation).NewReader(readCtx)
 	if err != nil {
-		return "", mapError(err, "checksum")
+		cancel()
+		return "", mapError(ctx, err, "checksum")
 	}
-	defer func() { _ = r.Close() }()
+	guarded := &guardedReader{ctx: ctx, r: r, cancel: cancel, stall: s.stall}
+	defer func() { _ = guarded.Close() }()
 	h := sha256.New()
-	if _, err := io.CopyBuffer(h, r, make([]byte, copyBuffer)); err != nil {
-		return "", mapError(err, "checksum")
+	if _, err := io.CopyBuffer(h, guarded, make([]byte, copyBuffer)); err != nil {
+		return "", mapError(ctx, err, "checksum")
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
@@ -527,9 +651,9 @@ func (s *Storage) sumOf(ctx context.Context, key string) (string, *storage.Objec
 	if err := validKey(key); err != nil {
 		return "", nil, err
 	}
-	attrs, err := s.object(key).Attrs(ctx)
+	attrs, err := s.attrs(ctx, key)
 	if err != nil {
-		return "", nil, mapError(err, "checksum")
+		return "", nil, mapError(ctx, err, "checksum")
 	}
 	if sum, ok := recordedSum(attrs); ok {
 		return sum, attrs, nil

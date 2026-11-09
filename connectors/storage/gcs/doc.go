@@ -12,6 +12,8 @@
 //	                This is the only way to run without a credential
 //	versioning      declares that the bucket has object versioning on
 //	chunkSizeBytes  resumable upload chunk size, default 16 MiB
+//	retryAttempts   attempts per call before an outage becomes an error, default 4
+//	stallTimeoutSeconds  how long a transfer may make no progress, default 300
 //
 // GCS has no SHA-256, so the driver computes it with CRC32C while streaming and
 // keeps both as object metadata (I186). That lets Verify check an object against
