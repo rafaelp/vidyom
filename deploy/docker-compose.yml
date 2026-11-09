@@ -65,6 +65,9 @@ services:
       - mock:/var/lib/vidyom/mock
       - run:/run/vidyom
       - worker-token:/var/lib/vidyom/worker-token
+      # Only so a new volume takes this image's ownership: Litestream's image has no such
+      # directory, and it runs as this user.
+      - litestream:/var/lib/vidyom/replica
 
   ai-engine:
     build:

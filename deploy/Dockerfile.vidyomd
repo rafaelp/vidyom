@@ -19,7 +19,7 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-cert
     groupadd --gid 10001 vidyom && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin vidyom && \
     install -d -o vidyom -g vidyom -m 0700 /var/lib/vidyom/data && \
     install -d -o vidyom -g vidyom -m 0750 /run/vidyom /var/lib/vidyom/work /var/lib/vidyom/storage /var/lib/vidyom/ingest \
-        /var/lib/vidyom/plugins /var/lib/vidyom/mock /var/lib/vidyom/worker-token && \
+        /var/lib/vidyom/plugins /var/lib/vidyom/mock /var/lib/vidyom/worker-token /var/lib/vidyom/replica && \
     install -d -o vidyom -g vidyom -m 0755 /var/lib/vidyom/public
 COPY --from=build /out/vidyomd /usr/local/bin/vidyomd
 USER vidyom

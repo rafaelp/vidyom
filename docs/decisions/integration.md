@@ -96,7 +96,7 @@ Checked `docs/plans/integration.md` against master plan sections 1.1 and 10 and 
   - **Mock LLM:** a `demo` profile. It refuses non-loopback addresses unless started with `--any-interface`, and only Compose does that, on a private network. The endpoint is classified `local` and the driver's dial check accepts the private address (D8).
   - **Library:** mounts the directory, read-only, never the file.
   - **Observability profile:** Grafana, Loki and Tempo on loopback, with data sources provisioned. Vidyom's `loki` and `tempo` sinks are declared `enabled: false`, and `vidyom observability enable` turns them on, so a daemon without the profile does not log a failure a minute.
-  - **Litestream profile:** written per I31, replicating to a volume. **Not exercised**; `docs/status.md` says so.
+  - **Litestream profile:** per I31, replicating to a volume. Run once, by hand: it writes snapshots and WAL segments. Restoring and GCS are **Validate**. Its image has no directory for the volume to take ownership from, so the daemon's image provides it, and the daemon mounts the volume for that reason alone.
 - **Why.** D10 and D41 make Compose the supported path on all three platforms, so everything host-specific had to be either an environment variable or absent.
 - **Revisit if.** Workers move to another host (I5's Future case): then HTTPS with a pinned fingerprint, which the worker already supports.
 
