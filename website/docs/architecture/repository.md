@@ -12,7 +12,7 @@ The [repository](https://github.com/rafaelp/vidyom) currently holds the specific
 ```text
 vidyom/
 ├── .github/                    # CI, Dependabot, issue and pull request templates
-├── spec/                       # Original product specification (Portuguese, v1.0 and v1.1)
+├── spec/                       # Complete product specification (v1.1 current, v1.0 for history)
 ├── website/                    # This Docusaurus documentation site
 │   ├── docs/                   # Specification pages
 │   └── examples/               # Illustrative workflows, provider bindings and media profiles

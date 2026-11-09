@@ -6,7 +6,7 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Ground rules
 
-- **English only.** Code, documentation, comments, schema descriptions, UI copy and commit messages are written in English. The only exception is the original Portuguese specification kept in `spec/` as a historical source.
+- **English only.** Code, documentation, comments, schema descriptions, UI copy and commit messages are written in English.
 - **Do not describe planned behavior as implemented.** CLI commands, API endpoints, workflow nodes and plugin contracts are target interfaces until an integration test proves them.
 - **Mark the status of requirements** with **Decided**, **Proposed**, **Future** or **Validate**.
 - **Never include credentials**, real tokens or private customer data in examples.

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Documentation development
 
-The [Vidyom repository](https://github.com/rafaelp/vidyom) currently contains the specification: this Docusaurus website in `website/` and the original Portuguese product specification in `spec/`. The Vidyom runtime has **not** been implemented yet.
+The [Vidyom repository](https://github.com/rafaelp/vidyom) currently contains the specification: this Docusaurus website in `website/` and the complete product specification in `spec/`. The Vidyom runtime has **not** been implemented yet.
 
 ## Prerequisites
 

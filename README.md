@@ -56,7 +56,7 @@ Then open http://localhost:3000. Good starting points:
 ```text
 vidyom/
 ├── .github/          # CI, issue and pull request templates
-├── spec/             # Original product specification (Portuguese, v1.0 and v1.1)
+├── spec/             # Complete product specification (v1.1 current, v1.0 for history)
 └── website/          # Docusaurus documentation site
     ├── docs/         # Specification content
     ├── examples/     # Illustrative workflows, provider bindings and media profiles
@@ -68,7 +68,7 @@ The runtime code will live alongside `website/`, following the [proposed reposit
 
 ## Contributing
 
-Contributions to the specification are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request. Everything in this project (code, documentation, comments and commit messages) is written in English, except the original Portuguese specification in [`spec/`](spec/).
+Contributions to the specification are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request. Everything in this project (code, documentation, comments and commit messages) is written in English.
 
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
