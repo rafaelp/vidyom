@@ -1,0 +1,8 @@
+{
+  "catalogs": {
+    "publicLibrary": {
+      "driver": "local-file",
+      "parameters": { "directory": "@ROOT@/public" }
+    }
+  }
+}

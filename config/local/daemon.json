@@ -1,0 +1,23 @@
+{
+  "dataDir": "@ROOT@/data",
+  "scratchDir": "@ROOT@/work/scratch",
+  "cacheDir": "@ROOT@/work/cache",
+  "spoolDir": "@ROOT@/work/spool",
+  "listeners": {
+    "unix": { "path": "@ROOT@/run/vidyomd.sock" },
+    "https": { "bind": "127.0.0.1", "port": @HTTPS_PORT@, "tls": { "mode": "auto" } }
+  },
+  "redis": { "url": "redis://127.0.0.1:@REDIS_PORT@/0" },
+  "vault": {
+    "unseal": {
+      "provider": "file",
+      "path": "@ROOT@/secrets/master.key",
+      "acknowledgeFileSealed": true
+    }
+  },
+  "ingestRoots": ["@ROOT@/ingest"],
+  "aiWorker": { "endpoint": "unix://@ROOT@/run/ai.sock", "engine": "fake" },
+  "plugins": {
+    "installRoots": ["@ROOT@/plugins"]
+  }
+}

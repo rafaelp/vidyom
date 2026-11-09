@@ -18,7 +18,7 @@ FORBIDDEN_DEPS := rqlite|sqlite-vec|internal/persistence
 
 CROSS_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: help all build vidyom vidyomd vidyom-worker sample-plugin test test-race test-python vet fmt-check check-static cross check clean
+.PHONY: help all build vidyom vidyomd vidyom-worker sample-plugin test test-race test-python vet fmt-check check-static cross check clean library e2e e2e-compose demo
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
@@ -47,6 +47,19 @@ test-race: ## Run all Go tests with the race detector
 
 test-python: ## Run the Python AI worker's tests (standard library only)
 	cd aiworker && python3 -m unittest discover -s tests -t .
+
+library: ## Install and build the public library
+	cd library && npm ci --no-audit --no-fund && NEXT_TELEMETRY_DISABLED=1 npm run build
+
+e2e: library ## Run the §1.1 scenario with the real binaries, Redis, FFmpeg, Python and Next.js
+	@command -v redis-server >/dev/null 2>&1 || { echo "e2e needs redis-server on PATH (mise exec redis@8.8.0 -- make e2e, or install Redis)"; exit 1; }
+	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(GO) test -tags e2e -count=1 -timeout 40m -v ./tests/e2e
+
+e2e-compose: ## Run the same scenario against Docker Compose on this host
+	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' VIDYOM_E2E_TARGET=compose $(GO) test -tags e2e -count=1 -timeout 60m -v ./tests/e2e
+
+demo: ## Run the lifecycle visibly on this machine, and clean up
+	./scripts/demo.sh
 
 vet: ## Run go vet
 	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(GO) vet ./...

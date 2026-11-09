@@ -1,0 +1,23 @@
+{
+  "storages": {
+    "archive": {
+      "driver": "local",
+      "root": "@ROOT@/storage/archive",
+      "usage": "backup_only",
+      "parameters": { "accessLog": "@ROOT@/storage/access.log" }
+    },
+    "master": {
+      "driver": "local",
+      "root": "@ROOT@/storage/master",
+      "usage": "operational",
+      "parameters": { "accessLog": "@ROOT@/storage/access.log" }
+    },
+    "proxy": {
+      "driver": "local",
+      "root": "@ROOT@/storage/proxy",
+      "usage": "operational",
+      "parameters": { "accessLog": "@ROOT@/storage/access.log" }
+    }
+  },
+  "archivePolicy": "approved_versions"
+}
