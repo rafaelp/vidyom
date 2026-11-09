@@ -77,7 +77,9 @@ func (c *closeOrder) run() {
 
 // lateMetrics breaks a construction cycle: the tenant service records budget gauges,
 // and the observability manager reads per-tenant sinks from that service.
-type lateMetrics struct{ next atomic.Pointer[telemetry.Metrics] }
+type lateMetrics struct {
+	next atomic.Pointer[telemetry.Metrics]
+}
 
 func (l *lateMetrics) use() telemetry.Metrics {
 	if m := l.next.Load(); m != nil {
