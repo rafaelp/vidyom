@@ -44,13 +44,13 @@ All additive, each as its own `contract:` commit.
 | File | Addition | Why |
 |---|---|---|
 | `internal/contract/connector/publishing.go` | `OutcomeUnknown(err)`, `IsOutcomeUnknown(err)` | A connector cannot import `node`, but the node must know that an effect may have reached the destination (D11) |
-| `internal/contract/connector/publishing.go` | Optional interface `EmbedDescriber` | `destinations.embed_url` and `supports_timestamps` differ per platform, and `public.db` must not hard-code them |
-| `internal/contract/repo/repo.go` | Optional interface `EmbeddingLister` | `SearchRepo` can store vectors but not read them back, and `public.db` must carry them (D18) |
+| `internal/contract/connector/publishing.go` | `PublicLinks`, optional interface `PublicLinker` | `embed_url`, `thumbnail_url` and `supports_timestamps` differ per platform, and `public.db` must not hard-code them (I233) |
+| `internal/contract/repo/repo.go` | Optional interface `EmbeddingLister` | `SearchRepo` can store vectors but not read them back, and `public.db` must carry them (D18, I232) |
 | `schemas/node-catalog.v1.json` | `publish.finalize` optional `approvalId`, `scheduledAt`; documented `captions` properties | The private-first flow of D37 needs the later approval to reach the node that flips visibility; `scheduled` (D52) needs a date |
 
 ## 4. Publication state machine
 
-D52 lists the states. Transitions, enforced by one helper in `nodes/publishing`:
+D52 lists the states. Transitions (I220), enforced by one helper in `nodes/publishing`:
 
 ```mermaid
 stateDiagram-v2
@@ -62,6 +62,9 @@ stateDiagram-v2
   failed --> uploading: retry, no remote ID
   failed --> processing: reconcile found it
   processing --> published: URL returned (R43)
+  processing --> pending_approval: private-first, uploaded and waiting
+  pending_approval --> published: approved, URL returned
+  pending_approval --> scheduled
   processing --> scheduled
   processing --> rejected_by_destination
   processing --> failed
@@ -90,8 +93,8 @@ All run in pool `daemon` (I7) and use `node.RequireDaemon`. Every state change c
 2. Asset must not be deleted, and its status must allow publishing (`approved`, `published`, `withdrawn`; `editorial_review` and `ready_for_clipping` only with a private-first flow or a valid approval).
 3. Picks the version: parameter or `CurrentVersion`.
 4. Picks the file (R4): the version's `working_master` in role `master`. A `published_file` named for this destination is used only when its SHA-256 differs from the master's; when identical it is ignored and `PublishedFile` stays nil. Refuses role `archive`.
-5. Approval timing (D37): an `approvalId` must be approved, of kind `publication`, on this asset and version. With none, `allowPrivateUploadBeforeApproval` (destination, else defaults) permits a private upload; otherwise the node fails with `failed_precondition`.
-6. In one transaction: returns the record with this idempotency key if it exists; otherwise adopts an active record of the same asset, version and destination; otherwise allocates `PUB-nnn` and emits `publication.created`. Status `pending_approval`.
+5. Approval timing (D37, I221): an `approvalId` must be approved, of kind `publication`, on this asset and version. With none, `allowPrivateUploadBeforeApproval` (destination, else defaults) permits a private upload; otherwise the node fails with `failed_precondition`. `requireApproval: false` does not lift the gate.
+6. In one transaction: returns the record with this idempotency key if it exists; otherwise adopts an active record of the same asset, version and destination (I222); otherwise allocates `PUB-nnn` and emits `publication.created`. Status `pending_approval`. Requested `tags` merge into the asset with a history entry, since a publication has no tags field (I222).
 
 Output: `publication_id`, `source_uri`, `sha256`, `asset_version`, `already_published`.
 
@@ -111,7 +114,7 @@ A per-publication lock stops two jobs uploading the same record at once in this 
 
 ### `publish.await_processing` (none)
 
-Polls `GetStatus` with backoff until the destination finishes or `timeoutSeconds` passes. Terminal answers are returned as output (`status`, `ready`, `url`) rather than as errors, so a workflow can route them with `flow.if`, and `rejected_by_destination` stays distinct from `failed` (D52). A timeout is a transient `timeout` error and leaves the record `processing`.
+Polls `GetStatus` with backoff until the destination finishes or `timeoutSeconds` passes (I229). Terminal answers are returned as output (`status`, `ready`, `url`) rather than as errors, so a workflow can route them with `flow.if`, and `rejected_by_destination` stays distinct from `failed` (D52). `publish.finalize` refuses those states, so a workflow without a branch still stops. A private-first upload that finished with no approval yet moves to `pending_approval`. A timeout is a transient `timeout` error and leaves the record `processing`.
 
 ### `publish.finalize` (idempotent)
 
@@ -121,14 +124,14 @@ Order, so a video is never public before its metadata is in place:
 2. Target visibility: parameter, else the record's. Anything other than `private` needs an approved publication approval (D37). Changing an already public video needs a new one (D7).
 3. `GetStatus`. Still processing is a transient error.
 4. Thumbnail, when the destination supports it: parameter, else the asset's.
-5. Captions, only for an approved public target (D30), rendered here from the stored transcript with sensitive segments removed. The daemon never reads scratch (I5), and this way the guarantee does not depend on a workflow having filtered a file.
+5. Captions, only for an approved public target (D30), rendered here from the stored transcript with sensitive segments removed (I228). The daemon never reads scratch (I5), and this way the guarantee does not depend on a workflow having filtered a file.
 6. `SetVisibility`, or a scheduled date.
 7. Reads status again. Writes `published` only with a remote ID and a URL returned now (R43). No URL means the state stays `processing` and the node retries.
 8. In one transaction: record, version immutable (D35), asset status and visibility, audit of the visibility change (D37), `publication.completed` with visibility in the payload. Re-running on a `published` record changes nothing and emits nothing.
 
 ### `publish.withdraw` (idempotent)
 
-Selects by `destinations` or `all`, one of them required. `mode` defaults to `private`, and falls back to delete when the destination has no private state. "Not found" at the destination counts as done. Each withdrawn record commits with `publication.withdrawn`. A destination failure does not stop the others and ends in a retryable error. A record already withdrawn goes to `already` with no event, so a repeat is a no-op (§15.8). With nothing active left, the asset moves to `withdrawn` and `private`. No approval is needed (D17).
+Selects by `destinations` or `all`, one of them required (I236). `mode` defaults to `private`, and falls back to delete when the destination has no private state. "Not found" at the destination counts as done. Each withdrawn record commits with `publication.withdrawn`. A destination failure does not stop the others and ends in a retryable error. A record already withdrawn goes to `already` with no event, so a repeat is a no-op (§15.8). With nothing active left, the asset moves to `withdrawn` and `private`. No approval is needed (D17).
 
 ### `publish.refresh` (none)
 
@@ -161,7 +164,7 @@ Hand-written REST over `net/http` and `golang.org/x/oauth2`.
 - **Classification:** a request carrying the last byte whose response is lost and whose session cannot confirm is `OutcomeUnknown`. Anything earlier is `unavailable`, since a session cannot create a video until it is finalized.
 - **Session state:** in memory by default. With `stateDir`, sessions persist AES-256-GCM encrypted under a key derived from the credential, so a restart resumes and reconciles exactly.
 - **Reconcile:** session state first (finalized → the video; open → nothing yet; no record with `stateDir` → never reached the destination). Otherwise scans the channel's uploads playlist for the tag `vidyom-<key prefix>`, within a limit; hitting the limit without finding it is an error, never a silent "not there".
-- **URLs:** `https://www.youtube.com/watch?v=<id>`, composed only when `videos.list` confirmed the video processed, because the API has no URL field (R43, D45).
+- **URLs:** `https://www.youtube.com/watch?v=<id>`, composed only when `videos.list` confirmed the video processed, because the API has no URL field (R43, D45, I225).
 - **Other operations:** read-modify-write on `videos.update`, because omitted `status` fields reset. `thumbnails.set`. Captions update an existing track for the language instead of creating a duplicate. `404` on delete is success.
 - **Status map:** `uploadStatus` `uploaded` → processing, `processed` → ready or scheduled, `rejected` → rejected with `rejectionReason`, `failed` → failed with `failureReason`, `deleted` or missing → removed.
 - **Base URLs** are parameters for tests, HTTPS unless loopback.
@@ -175,13 +178,13 @@ Secrets and session URIs must not appear in errors, including `*url.Error` text.
 1. `Keys.PublicIDKey`; a missing key fails the export (fail closed).
 2. Selection: `ListPublic`, then for each record an approved approval and a live asset. Derivatives must be `published`, any kind must have asset visibility `public`.
 3. One `videos` row per asset. Version: newest among public publications. Title and description from the newest publication, else the asset.
-4. Sensitive marks: the asset version's own, plus the sources' marks mapped through lineage. A lookup failure withholds that video's transcript, chapters and embeddings. Overlapping transcript segments, chapters and vectors are dropped whole.
-5. `destinations`: driver name (never the logical destination name), URL, and embed data from `EmbedDescriber`.
+4. Sensitive marks (I231): the asset version's own, plus the sources' marks mapped through lineage, so a mark added after a clip was derived still counts (the limit stated in I207). A lookup failure withholds that video's transcript, chapters and embeddings. Overlapping transcript segments, chapters and vectors are dropped whole.
+5. `destinations`: driver name (never the logical destination name), URL, and `PublicLinks` from the connector when it offers them.
 6. Embeddings: stored vectors through `repo.EmbeddingLister` when the store has it; otherwise embedded now from the released text through `connector.Embedder`; otherwise none, with `embedding_model` empty, so the site reports lexical mode.
 7. `search_fts`: title, description, chapters, released transcript.
 8. Writes `<data-dir>/tenants/<tenant>/public.db.tmp-*` from `schemas.PublicDBSchema()`, checkpoints, switches to `journal_mode=DELETE`, runs `integrity_check`, closes, scans the raw bytes for exported assets' ULIDs, friendly IDs and storage keys, `fsync`s, hashes, renames and `fsync`s the directory.
 
-`public_id`: HMAC-SHA256 over the asset ULID, lowercase base32, 26 characters is avoided so it can never look like a ULID. `source_group`: HMAC with a separate label over the root asset. Same tenant key, so IDs are stable across rebuilds and unlinkable between tenants.
+`public_id`: HMAC-SHA256 over the asset ULID, lowercase base32, 24 characters, so it can never look like a ULID (I233). `source_group`: HMAC with a separate label over the root asset. Same tenant key, so IDs are stable across rebuilds and unlinkable between tenants.
 
 ## 9. `local-file` public catalog
 
@@ -213,7 +216,7 @@ pubs := publishingnodes.NewService(publishingnodes.ServiceDeps{...})
 ## 12. Tests
 
 - **Connectors:** `mock` persistence across instances, every injection, resume, reconcile. `youtube` against an `httptest` server: chunking, `5xx` and connection loss mid-upload, lost final response, session expiry, restart with persisted session, reconcile by session and by tag, token refresh, quota, status mapping, read-modify-write, caption update, no secret or session URI in errors, HTTP refused for non-loopback.
-- **Nodes:** full lifecycle on `mock` with the fake store. Descriptors against the catalog, outputs against the catalog's schemas. R43 with a processing delay. R4 with identical and different published files. D37 in both modes, including upload refusing a bypass. D35 immutable after publication only. D52 rejection distinct from failure. D11 reconcile with found, not found and unknown. Idempotent repeats of every node with no duplicate event. Withdrawal twice. Sensitive text absent from captions at the destination. `mediacms.register` with a failing connector.
+- **Nodes:** full lifecycle on `mock` with the fake store. Descriptors against the catalog, outputs against the catalog's schemas. R43 with a processing delay. R4 with identical and different published files. D37 in both modes, including upload refusing a bypass. D35 immutable after publication only. D52 rejection distinct from failure. D11 reconcile with found, not found and unknown. Idempotent repeats of every node with no duplicate event. Withdrawal twice, including a failure at one destination. Sensitive text absent from captions at the destination. `mediacms.register` with a failing connector.
 - **Export:** schema applied, opaque IDs, atomic replace with a failed build leaving the old file, single file with no side files, opens read-only and `immutable=1`. Raw-byte scan for ULIDs, friendly IDs, storage keys, buckets, private original data, sensitive text, unapproved and withdrawn records. Tenant isolation of IDs. Scan guard refuses a poisoned title. Lexical-only and embedder paths.
 - **Local file:** ship, replace, clear twice, checksum mismatch leaves the old file.
 - **Skeletons:** `Available: false`, reason stated, every method returns `not_implemented`.
