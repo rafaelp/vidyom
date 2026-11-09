@@ -528,7 +528,7 @@ func (a *app) tenantCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			list, listErr := invoke[api.List[api.TenantInfo]](cmd.Context(), a, apiclient.Call{Route: api.RouteTenantsList})
+			list, listErr := fetchList[api.TenantInfo](cmd.Context(), a, apiclient.Call{Route: api.RouteTenantsList}, nil)
 			switch {
 			case listErr == nil:
 				member := false

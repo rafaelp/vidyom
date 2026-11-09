@@ -272,6 +272,9 @@ func (c *Client) Do(ctx context.Context, call Call, out any) error {
 	if len(raw) > maxResponseBody {
 		return errs.New(errs.CodeOutputTooLarge, "the server's answer is too large")
 	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
 	if err := json.Unmarshal(raw, out); err != nil {
 		return errs.Wrap(errs.CodeInternal, err, "the server's answer is not valid JSON for "+call.Route)
 	}

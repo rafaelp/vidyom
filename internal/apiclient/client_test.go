@@ -177,6 +177,25 @@ func TestNonAPIErrorBodyIsNotEchoed(t *testing.T) {
 	}
 }
 
+func TestEmptyAnswerIsNotAnError(t *testing.T) {
+	srv := apitest.New(t)
+	srv.Handle(api.RouteSecretsDelete, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	c := newUnixClient(t, srv, "acme")
+	if _, err := apiclient.Invoke[struct{}](context.Background(), c, apiclient.Call{Route: api.RouteSecretsDelete, Path: apiclient.PathParam("name", "x")}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInvalidJSONAnswerIsReported(t *testing.T) {
+	srv := apitest.New(t)
+	srv.Handle(api.RouteHealth, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("<html>")) })
+	c := newUnixClient(t, srv, "")
+	_, err := apiclient.Invoke[api.HealthResponse](context.Background(), c, apiclient.Call{Route: api.RouteHealth})
+	if !errs.IsCode(err, errs.CodeInternal) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestItemsAcceptsBothListForms(t *testing.T) {
 	srv := apitest.New(t)
 	c := newUnixClient(t, srv, "acme")
