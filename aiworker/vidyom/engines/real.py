@@ -16,11 +16,14 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import logging
 import threading
 from typing import Any
 
 from vidyom.engines.base import Description, RequestContext
 from vidyom.protocol import CODE_INVALID_PARAMS, CODE_UNAVAILABLE, Cancelled, RpcError
+
+_LOG = logging.getLogger("vidyom.aiworker")
 
 DEFAULT_TRANSCRIPTION_MODEL = "large-v3"
 DEFAULT_EMBEDDING_REPO = "BAAI/bge-m3"
@@ -88,6 +91,7 @@ class RealEngine:
                     local_files_only=self._offline,
                 )
             except Exception as err:
+                _LOG.exception("faster-whisper did not load")
                 raise RpcError(
                     CODE_UNAVAILABLE,
                     f"faster-whisper {self._transcription_model} is not usable: {type(err).__name__}",
@@ -105,6 +109,7 @@ class RealEngine:
                     local_files_only=self._offline,
                 )
             except Exception as err:
+                _LOG.exception("BGE-M3 did not load")
                 raise RpcError(CODE_UNAVAILABLE, f"BGE-M3 is not usable: {type(err).__name__}") from err
         return self._embedder
 
@@ -137,6 +142,8 @@ class RealEngine:
             except (RpcError, Cancelled):
                 raise
             except Exception as err:
+                # The client gets the type only; the cause stays in this worker's log.
+                _LOG.exception("transcription failed")
                 raise RpcError(CODE_UNAVAILABLE, f"transcription failed: {type(err).__name__}") from err
         ctx.progress(100.0, "transcribed")
         return {
@@ -161,6 +168,7 @@ class RealEngine:
                     show_progress_bar=False,
                 )
             except Exception as err:
+                _LOG.exception("embedding failed")
                 raise RpcError(CODE_UNAVAILABLE, f"embedding failed: {type(err).__name__}") from err
         out = [[float(value) for value in vector] for vector in vectors]
         if out and len(out[0]) != EMBEDDING_DIMENSIONS:

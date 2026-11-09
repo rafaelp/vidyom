@@ -12,7 +12,8 @@ version = "0.0.0.dev0"
 dependencies = []
 
 [project.optional-dependencies]
-asr = ["faster-whisper>=1.1,<2"]
+# faster-whisper 1.2 calls av.open(metadata_errors=...), which PyAV 16 and later refuse.
+asr = ["faster-whisper>=1.1,<2", "av>=13,<16"]
 embeddings = ["sentence-transformers>=3,<6"]
 all = ["vidyom[asr,embeddings]"]
 
