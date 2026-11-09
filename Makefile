@@ -18,7 +18,7 @@ FORBIDDEN_DEPS := rqlite|sqlite-vec|internal/persistence
 
 CROSS_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: help all build vidyom vidyomd vidyom-worker test test-race test-python vet fmt-check check-static cross check clean
+.PHONY: help all build vidyom vidyomd vidyom-worker sample-plugin test test-race test-python vet fmt-check check-static cross check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-16s %s\n", $$1, $$2}'
@@ -35,6 +35,9 @@ vidyom-worker: ## Build the static worker
 
 vidyomd: ## Build the daemon (needs a C compiler)
 	CGO_ENABLED=1 CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(GO) build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN)/vidyomd ./cmd/vidyomd
+
+sample-plugin: ## Build the sample plugin into its own directory, ready for plugin install
+	CGO_ENABLED=0 $(GO) build -trimpath -o plugins/sample-notifier/bin/sample-notifier ./plugins/sample-notifier
 
 test: ## Run all Go tests
 	CGO_CFLAGS='$(DAEMON_CGO_CFLAGS)' $(GO) test ./...

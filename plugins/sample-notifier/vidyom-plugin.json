@@ -1,0 +1,17 @@
+{
+  "id": "sample-notifier",
+  "version": "1.0.0",
+  "runtime": "process",
+  "entrypoint": { "command": "bin/sample-notifier" },
+  "provides": {
+    "hookActions": ["check-source", "record-finish", "notify", "stats"],
+    "eventSubscriptions": ["publication.completed"]
+  },
+  "permissions": {
+    "network": ["notify.example.internal"],
+    "secrets": ["notifier-token"],
+    "filesystem": ["job-temp"],
+    "events": ["publication.completed"]
+  },
+  "contracts": { "plugin": "1.x", "hook": "1.x", "event": "1.x" }
+}
