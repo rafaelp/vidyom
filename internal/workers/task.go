@@ -139,6 +139,7 @@ func (t *taskRun) execute() {
 		Attempt:        t.lease.Attempt,
 		IdempotencyKey: t.lease.IdempotencyKey,
 		LeaseID:        t.lease.LeaseID,
+		PersonRetry:    t.lease.PersonRetry,
 	})
 	observability.EndSpan(span, execErr)
 	stopHeartbeat()

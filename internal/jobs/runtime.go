@@ -734,7 +734,9 @@ func (r *jobRun) dispatch(nodeID string, desc node.Descriptor, params json.RawMe
 	n.Parameters = params
 	n.IdempotencyKey = node.IdempotencyKey(r.store.Tenant(), r.job.ULID, nodeID)
 	n.Output = nil
-	n.Error = nil
+	if n.Error == nil || n.Error.Code != CodeResolvedRetry {
+		n.Error = nil
+	}
 	n.LeaseID, n.WorkerID = "", ""
 	n.LeaseExpiresAt = nil
 	n.FinishedAt = nil

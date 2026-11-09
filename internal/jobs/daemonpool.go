@@ -116,7 +116,7 @@ func (e *Engine) runDaemonTask(ctx context.Context, d jobqueue.Delivery) {
 	}
 	desc := impl.Descriptor()
 	env := &nodeEnv{e: e, store: store, job: job, nodeID: lease.NodeID, taskID: taskID, leaseID: lease.LeaseID, ancestor: lease.ScratchJobs}
-	in := node.Input{Parameters: lease.Parameters, Attempt: lease.Attempt, IdempotencyKey: lease.IdempotencyKey, LeaseID: lease.LeaseID}
+	in := node.Input{Parameters: lease.Parameters, Attempt: lease.Attempt, IdempotencyKey: lease.IdempotencyKey, LeaseID: lease.LeaseID, PersonRetry: lease.PersonRetry}
 
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -166,6 +166,8 @@ func (e *Engine) executeDaemon(ctx context.Context, impl node.Node, desc node.De
 		}
 		outcome, res, err := rec.Reconcile(ctx, env, in)
 		switch {
+		case in.PersonRetry && errs.IsCode(err, errs.CodeCapabilityUnsupported):
+			// The destination cannot answer, and a person who looked says to run it (I288).
 		case err != nil:
 			return node.Result{}, attentionError("reconciling failed: " + errs.Public(err).Message)
 		case outcome == node.ReconcileDone:

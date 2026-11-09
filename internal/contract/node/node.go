@@ -82,6 +82,9 @@ type Input struct {
 	Attempt        int // 1 on the first run
 	IdempotencyKey string
 	LeaseID        string
+	// PersonRetry means a person looked at an unknown outcome and asked for this attempt
+	// (§11.3, I288). A connector that cannot say what happened no longer blocks it.
+	PersonRetry bool
 }
 
 // Bind decodes Parameters into v, as invalid_argument on failure.

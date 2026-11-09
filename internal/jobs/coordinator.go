@@ -158,6 +158,7 @@ func (e *Engine) leaseOf(ctx context.Context, store repo.TenantStore, job domain
 		TraceID:        job.TraceID,
 		Permissions:    job.Permissions,
 		ScratchJobs:    e.ancestors(ctx, store, job),
+		PersonRetry:    n.Error != nil && n.Error.Code == CodeResolvedRetry,
 	}
 	if desc, ok := e.descriptor(n.NodeType, n.TypeVersion); ok && desc.Pool == node.PoolAI && e.d.Config != nil {
 		// Model names, not secrets (I197).

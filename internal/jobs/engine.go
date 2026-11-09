@@ -55,11 +55,14 @@ const (
 // Error codes the engine writes on nodes and jobs.
 const (
 	CodeNeedsAttention = "needs_attention"
-	CodeHookBlocked    = "hook_blocked"
-	CodeInterrupted    = "interrupted"
-	CodeCancelled      = "cancelled"
-	CodeTimeout        = "timeout"
-	CodeReference      = "invalid_reference"
+	// CodeResolvedRetry marks a node a person chose to run again from needs_attention,
+	// until that attempt is leased with Lease.PersonRetry (I288).
+	CodeResolvedRetry = "resolved_retry"
+	CodeHookBlocked   = "hook_blocked"
+	CodeInterrupted   = "interrupted"
+	CodeCancelled     = "cancelled"
+	CodeTimeout       = "timeout"
+	CodeReference     = "invalid_reference"
 )
 
 // Prefixes of Job.StatusReason (I146).

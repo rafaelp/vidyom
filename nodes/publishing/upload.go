@@ -91,6 +91,8 @@ func (n *uploadNode) Execute(ctx context.Context, env node.Env, in node.Input) (
 	if record.Status == domain.PubUploading || in.Attempt > 1 {
 		remote, err := conn.Reconcile(ctx, record.IdempotencyKey)
 		switch {
+		case in.PersonRetry && errs.IsCode(err, errs.CodeCapabilityUnsupported):
+			// A person who looked says to run it: the destination cannot answer (I288).
 		case err != nil:
 			return node.Result{}, node.Unknown(err)
 		case remote != nil:

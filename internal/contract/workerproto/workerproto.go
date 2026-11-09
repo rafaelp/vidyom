@@ -75,6 +75,9 @@ type Lease struct {
 	// AI carries the tenant's AI settings for pool ai tasks (I197). No secrets. When
 	// nil, connectors apply their defaults.
 	AI *config.AI `json:"ai,omitempty"`
+	// PersonRetry means a person chose to run this node again from needs_attention
+	// (I288), which settles an outcome the destination cannot report.
+	PersonRetry bool `json:"person_retry,omitempty"`
 }
 
 // TaskHeartbeatRequest extends a lease and reports progress.

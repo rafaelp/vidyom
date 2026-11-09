@@ -1055,11 +1055,12 @@ func (j jobsService) Resolve(ctx context.Context, s service.Scope, ref id.Ref, r
 	}
 	if req.Action == domain.ResolveRetryNode {
 		n.Status = domain.NodeReady
+		n.Error = &domain.JobError{Code: CodeResolvedRetry, Message: "a person asked to run this node again", NodeID: nodeID}
 	} else {
 		n.Status = domain.NodeSkipped
 		n.FinishedAt = &now
+		n.Error = nil
 	}
-	n.Error = nil
 	n.LeaseExpiresAt = nil
 	job.Status = domain.JobRunning
 	job.Attention = nil
