@@ -49,7 +49,7 @@ No real call to YouTube, GCS, an LLM vendor or any paid service is made by tests
 | 2 Semantic clips | `ai`, `engine`, `media`, `core` | Hybrid retrieval, story detection, preview, approvals, render, `create-clip`, `ingest-derived`, versions, disjoint namespaces | Real semantic quality needs real models (Validate) |
 | 3 Publishing and public catalog | `publishing`, `library`, `engine` | Mock destination end to end, YouTube connector against an HTTP mock, `publish-video`, `unpublish-video`, `public.db`, Next.js library | Browser OAuth flow for YouTube (I12) |
 | 3.1 Rewind | `publishing` | Connector skeleton that declares itself unavailable | Everything else; Rewind's real interface is unvalidated (I11) |
-| 4 Plugins, hooks, observability | `extensibility`, `engine`, `publishing` | Plugin runtime, manifest, registry, hooks at three levels, OTel, JSONL, Prometheus, Loki and OTLP exporters against mocks, optional Compose profile | Vimeo, PeerTube, Instagram Reels skeletons; S3, Dropbox, SFTP, Datadog stay Future (I11) |
+| 4 Plugins, hooks, observability | `extensibility`, `engine`, `publishing` | Stdio plugin runtime, manifest, registry, hooks at three levels, OTel, JSONL, Prometheus, Loki and OTLP exporters against mocks, optional Compose profile | Remote plugins over HTTPS refused at validation (I42); Vimeo, PeerTube, Instagram Reels skeletons; S3, Dropbox, SFTP, Datadog stay Future (I11) |
 | 5 (D57, order chosen in I8) | `core` (audit, budgets), `engine` (Event Bus) | 1. append-only hash-chained audit with export; 2. outbox Event Bus with subscriptions and loop limit; 3. monthly budgets with 80%/100% enforcement | Automatic cost discovery; costs are estimates from a configured table |
 
 ---
@@ -114,16 +114,16 @@ Every path has exactly one owner. Only the owner creates or edits files under it
 | `docs/plans/00-master-plan.md`, `docs/decisions.md` | foundation | Read-only in the parallel stage |
 | `docs/decisions/<component>.md` | that component | Each component's own `I` numbers, section 8 |
 | `internal/persistence/**`, `internal/tenants/**`, `internal/catalog/**`, `internal/security/**` | `core` | `internal/persistence/sqlitedriver` is importable by `publishing` (section 8 exception). `internal/security/keyring` is importable by `cli` |
-| `cmd/vidyomd/**`, `internal/daemon/**`, `internal/api/**` | `api` | `cmd/vidyomd/wire.go` is created by `integration` |
+| `cmd/vidyomd/**`, `internal/daemon/**`, `internal/api/**` | `api` | `cmd/vidyomd/wire.go` belongs to `integration` (section 9) |
 | `internal/workflow/**`, `internal/jobs/**`, `internal/scheduler/**`, `internal/queue/**`, `internal/hooks/**`, `internal/events/**`, `nodes/control/**`, `nodes/approval/**`, `nodes/catalog/**`, `workflows/**` | `engine` | |
 | `cmd/vidyom/**`, `internal/cli/**`, `internal/apiclient/**` | `cli` | Must stay `CGO_ENABLED=0` and free of database packages |
-| `cmd/vidyom-worker/**`, `internal/workers/**`, `nodes/storage/**`, `nodes/video/**`, `nodes/audio/**`, `connectors/storage/**`, `profiles/**` | `media` | Must stay `CGO_ENABLED=0` |
+| `cmd/vidyom-worker/**`, `internal/workers/**`, `nodes/storage/**`, `nodes/video/**`, `nodes/audio/**`, `connectors/storage/**`, `profiles/**` | `media` | Must stay `CGO_ENABLED=0`. `cmd/vidyom-worker/wire.go` belongs to `integration` (section 9) |
 | `aiworker/**`, `nodes/ai/**`, `connectors/transcription/**`, `connectors/ai/**`, `internal/retrieval/**` | `ai` | `aiworker/` is the Python package, PyPI name `vidyom` (D28) |
 | `connectors/publishing/**`, `connectors/catalog/**`, `nodes/publishing/**`, `internal/publicexport/**` | `publishing` | |
 | `library/**` | `library` | Next.js, the only web interface |
 | `internal/plugins/**`, `plugins/**`, `internal/observability/**`, `connectors/observability/**` | `extensibility` | |
 | `deploy/**`, `tests/**`, `config/**`, `.github/workflows/**` (except `docs.yml`), `scripts/demo.sh`, `CHANGELOG.md`, `README.md`, `AGENTS.md` | `integration` | Nobody else edits these |
-| `website/**`, `spec/**` | not touched in the parallel stage | `website/src/css/custom.css` and `website/src/pages/index.tsx` carry another session's uncommitted changes: never touch, stage or revert them. `integration` updates status text elsewhere in `website/` later |
+| `website/**`, `spec/**` | not touched in the parallel stage | Another session is editing `website/`, `AGENTS.md`, `README.md`, `CONTRIBUTING.md` and `.github/` templates, with uncommitted changes in the shared tree: never touch, stage or revert them. Check `git status` before any edit near them. `integration` coordinates its own status updates with what it finds there |
 
 Package-name convention: node packages use `package storagenodes`, `videonodes`, `audionodes`, `ainodes`, `catalognodes`, `controlnodes`, `approvalnodes`, `publishingnodes` to avoid clashing with contract package names. Paths from §14.2 that have no owner here (`internal/auth`, `nodes/integrations`) are deliberately not created (see I24).
 
@@ -146,16 +146,18 @@ All are DB-free, cgo-free and importable by the CLI. Import direction is one way
 | `internal/contract/repo` | Repository interfaces for `system.db` and tenant databases, transactions |
 | `internal/contract/security` | Vault, master key provider, authenticator, authorizer, auditor, client keyring, cache keys |
 | `internal/contract/jobqueue` | Queue interface, task pointer, stream names |
-| `internal/contract/workerproto` | Worker-to-daemon request and response types |
-| `internal/contract/aiworker` | AI worker JSON-RPC methods and types; JSON-RPC 2.0 framing types |
-| `internal/contract/plugin` | Plugin manifest §7.6 and JSON-RPC method set |
+| `internal/contract/workerproto` | Worker-to-daemon request and response types, `Coordinator` |
+| `internal/contract/jsonrpc` | JSON-RPC 2.0 NDJSON codec shared by plugins and the AI worker |
+| `internal/contract/aiworker` | AI worker methods and types; `fake-hash-embed@1` |
+| `internal/contract/plugin` | Plugin manifest §7.6 and method set |
 | `internal/contract/api` | Route table under `/api/v1`, request and response types, SSE frames, header names |
 | `internal/contract/service` | What API handlers and nodes call on each component |
 | `internal/contract/config` | Daemon and tenant configuration, namespace-disjointness validator |
 | `internal/contract/telemetry` | Metric names and a small metrics facade |
+| `internal/contract/version` | Build version, API version |
 | `schemas/` (embedded, `package schemas`) | `workflow.v1.json`, `plugin-manifest.v1.json`, `connector-config.v1.json`, `media-profile.v1.json`, `node-catalog.v1.json`, `ai-worker-rpc.v1.json`, `public-db/v1.sql` |
 
-**`schemas/node-catalog.v1.json` is the contract between workflows and node implementations.** It lists every node type with owner, pool, side-effect class, parameter schema and output schema. `workflows/*.json` (engine) may reference only what it declares. Each implementation's `Descriptor()` must match its entry, which `schemas.CheckDescriptor` verifies in the owner's tests.
+**`schemas/node-catalog.v1.json` is the contract between workflows and node implementations.** It lists every node type with owner, pool, side-effect class, parameter schema and output schema. `workflows/*.json` (engine) may reference only what it declares. An implementation's `Descriptor()` should return `schemas.DescriptorFor(type, version)`, and the owner's tests call `schemas.CheckDescriptor` on every node it registers.
 
 `schemas/public-db/v1.sql` is the contract between `publishing` (writer) and `library` (reader).
 
@@ -202,24 +204,26 @@ If you need a breaking change, do not make it. Add a parallel additive form, kee
 
 `integration` will assemble the binaries from exactly these entry points, so keep these names and shapes. Signatures use contract types. Constructors may take an additional options struct.
 
+Composition stays out of the parallel stage through one seam per binary. `cmd/vidyomd/main.go` (owner `api`) declares `var wireDeps func(ctx context.Context, cfg config.Daemon) (daemon.Deps, func(), error)` and `cmd/vidyom-worker/main.go` (owner `media`) declares `var wireRegistries func(node.Registrar, connector.Registrar) error`. Each exits with a clear "not wired" error while the variable is nil. `integration` adds `wire.go` beside each, setting the variable in `init()`.
+
 | Owner | Entry point | Provides |
 |---|---|---|
 | `core` | `persistence.Open(ctx, persistence.Options) (*persistence.Stores, error)` | `repo.SystemStore`, `repo.TenantStores` |
 | `core` | `sqlitedriver.Open(path, sqlitedriver.Options) (*sql.DB, error)` | Durable connection settings; present from foundation |
-| `core` | `vault.New(system repo.SystemStore, tenants repo.TenantStores, key security.MasterKeyProvider)` | `security.Vault`, `security.CacheKeys`, `service.Secrets` |
-| `core` | `audit.New(...)`, `authentication.New(...)`, `authorization.New(...)`, `tenants.New(...)`, `catalog.New(...)` | `security.Auditor`, `security.Authenticator`, `security.Authorizer`, `service.Tenants`, `service.Users`, `service.Devices`, `service.Budgets`, `service.Audit`, `service.Assets` |
+| `core` | `vault.New(system repo.SystemStore, tenants repo.TenantStores, key security.MasterKeyProvider)`, `vault.ProviderFor(config.Unseal) (security.MasterKeyProvider, error)` | `security.Vault`, `security.DerivedKeys`, `service.Secrets`, `connector.SecretResolver` per tenant |
+| `core` | `audit.New(...)`, `authentication.New(...)`, `authorization.New(...)`, `tenants.New(...)`, `catalog.New(...)` | `security.Auditor`, `security.Authenticator`, `security.Authorizer`, `security.Pairing`, `config.TenantSource`, `service.Tenants`, `service.Users`, `service.Devices`, `service.Budgets`, `service.Audit`, `service.Assets` |
 | `core` | `keyring.New() security.Keyring` | Client OS keyring; no silent plaintext |
-| `api` | `api.NewHandler(api.Deps) http.Handler`, `daemon.Run(ctx, config.Daemon, daemon.Deps) error` | HTTP surface, listeners, SSE, `service.Uploads` |
+| `api` | `apiserver.NewHandler(apiserver.Deps) http.Handler`, `daemon.Run(ctx, config.Daemon, daemon.Deps) error` | HTTP surface, listeners, SSE, `service.Uploads`, `service.Doctor` |
 | `engine` | `workflow.NewValidator(reg node.Registry)`, `jobs.New(jobs.Deps) *jobs.Engine` | `service.Workflows`, `service.Jobs`, `service.Approvals`, `service.Introspection` (nodes), `workerproto.Coordinator` |
 | `engine` | `queue.NewRedis(redis.UniversalClient) jobqueue.Queue`, `events.New(...)`, `hooks.New(...)`, `scheduler.New(...)` | `service.Events`, `hook.Dispatcher` |
 | `engine` | `controlnodes.Register(node.Registrar)`, `approvalnodes.Register(...)`, `catalognodes.Register(...)` | Node registration |
 | `media` | `workers.Run(ctx, workers.Config, node.Registry) error`, `storagenodes/videonodes/audionodes.Register(node.Registrar)`, `gcs.Register(connector.Registrar)`, `local.Register(connector.Registrar)`, `resolver.New(...)` | Worker loop, `connector.StorageResolver`, `service.Storages` |
-| `ai` | `ainodes.Register(node.Registrar)`, `fasterwhisper.Register(connector.Registrar)`, `openai.Register(connector.Registrar)`, `retrieval.New(...)` | `connector.Transcriber`, `connector.Embedder`, `connector.LLM`, `service.Search` |
-| `publishing` | `youtube/mock/vimeo/peertube/reels.Register(connector.Registrar)`, `publishingnodes.Register(node.Registrar)`, `public.Register`, `mediacms/videovortex/rewind.Register`, `publicexport.New(...)` | `service.Publications`, connector families |
+| `ai` | `ainodes.Register(node.Registrar)`, `fasterwhisper.Register(connector.Registrar)`, `bgem3.Register(connector.Registrar)`, `openai.Register(connector.Registrar)`, `retrieval.New(...)` | `connector.Transcriber`, `connector.Embedder`, `connector.LLM`, `service.Search` |
+| `publishing` | `youtube/mock/vimeo/peertube/instagramreels.Register(connector.Registrar)`, `publishingnodes.Register(node.Registrar)`, `public.Register`, `mediacms/videovortex/rewind.Register`, `publicexport.New(...)` | `service.Publications`, `connector.PublishingResolver`, connector families |
 | `extensibility` | `plugins.New(plugins.Options)`, `observability.New(config.Observability)` | `service.Plugins`, `hook.ActionRunner`, `service.Observability`, `telemetry.Metrics`, `http.Handler` for metrics |
 | `cli` | `cli.Execute(ctx, args) int` | `cmd/vidyom` |
 
-`nodes/ai` registers worker-pool nodes and daemon-pool nodes from one package. The `ai` component must keep daemon-only dependencies behind `node.DaemonEnv` so `cmd/vidyom-worker` stays cgo-free. Publishing nodes are daemon-pool (I7).
+`nodes/ai` registers worker-pool nodes and daemon-pool nodes from one package. The `ai` component must keep daemon-only dependencies behind `node.DaemonEnv`, and pool `ai` nodes reach the Python worker through `node.AIEnv`, so `cmd/vidyom-worker` stays cgo-free. Publishing nodes are daemon-pool (I7). Which environment a node receives is fixed by its catalog pool: the engine builds `node.DaemonEnv` for `engine` and `daemon`; `internal/workers` builds `node.Env` for `media` and `node.AIEnv` for `ai`.
 
 ---
 
@@ -231,9 +235,9 @@ Common to all: own paths build, `go vet` is clean, own tests pass with `-race` w
 
 **`api`.** Every route in `api.Routes` is served. `Vidyom-Tenant` rule, idempotency keys, permission checks from the route table, cross-tenant `404`, error model. Unix socket with restricted mode and peer identity; HTTPS TLS 1.3; no listener when sealed or when the configured interface is missing, never `0.0.0.0` fallback (§9.3). SSE with `Last-Event-ID` resume, CTRL+C disconnect does not touch a job. Resumable uploads with checksum, `server:` root enforcement. Handler tests with fake services.
 
-**`engine`.** Workflow validation: schema, cycles, ancestors for `${nodes.X}` (R24), `$${` escape, CEL with cost limits, capability and permission checks, `--dry-run`, `client` credential warning (R37). Immutable snapshots with hash. Merge and branching (D33). Checkpoint per node, retry by class, `needs_attention`, resolve, pause, resume, cooperative cancel. Redis Streams queue with startup reconciliation (D4) tested on real Redis with data loss. Scheduler matching declared resources (D40). Three-level hooks with order, timeouts, failure policies (§8.1). Outbox, subscriptions, event triggers, delivery tracking, depth limit (§8.2). All catalog-listed `catalog.*`, `flow.*`, `approval.request`, `event.emit`, `workflow.execute` nodes. All workflow files in §3.1–§3.3 valid against the catalog: `ingest-original`, `ingest-derived`, `create-clip`, `publish-video`, `publish-one`, `unpublish-video`, `update-public-library`, `delete-asset`, `restore-archived`, `reindex-asset`, `refresh-publication`, `verify-storage`, `bulk-create-clips`.
+**`engine`.** All of `node.DaemonEnv`, including `config.AllowedEndpoints` for `LLM` (D8). Workflow validation: schema, cycles, ancestors for `${nodes.X}` (R24), `$${` escape, CEL with cost limits, capability and permission checks, `--dry-run`, `client` credential warning (R37). `create-clip` always carries the `clip_selection` gate, with no option to skip it (D53). Immutable snapshots with hash. Merge and branching (D33). Checkpoint per node, retry by class, `needs_attention`, resolve, pause, resume, cooperative cancel. Redis Streams queue with startup reconciliation (D4) tested on real Redis with data loss. Scheduler matching declared resources (D40). Three-level hooks with order, timeouts, failure policies (§8.1). Outbox, subscriptions, event triggers, delivery tracking, depth limit (§8.2). All catalog-listed `catalog.*`, `flow.*`, `approval.request`, `event.emit`, `workflow.execute` nodes. All workflow files valid against the catalog: `ingest-original`, `ingest-derived`, `create-clip`, `publish-video`, `publish-one`, `unpublish-video`, `delete-asset`, `restore-archived`, `reindex-asset`, `refresh-publication`, `verify-storage`, `bulk-create-clips` (§3.1–§3.3), the event-triggered `update-public-library`, `public-library-on-withdrawn`, `public-library-on-updated` (§8.2, R15) and the scheduled `expire-unapproved-renders` (D16, I45).
 
-**`cli`.** All commands of §11 that map to a route. `--json` everywhere. Unix socket and HTTPS with fingerprint pinning. Resumable upload with retry and resume after kill. Pairing and credential in the keyring, failing clearly when there is none. `attach`/`logs --follow` over SSE never change a job. Static binary check passes: `make check-static`.
+**`cli`.** All commands of §11 that map to a route. `--json` everywhere. `approval show` on a publication states that image and voice authorizations are the tenant's responsibility (D29). Unix socket and HTTPS with fingerprint pinning. Resumable upload with retry and resume after kill. Pairing and credential in the keyring, failing clearly when there is none. `attach`/`logs --follow` over SSE never change a job. Static binary check passes: `make check-static`.
 
 **`media`.** Worker loop with register, heartbeat, lease, cancel, complete. `local` driver full capability set, `gcs` driver tested against `fake-gcs-server` with the §7.2 operations. Cache per tenant with LRU, 7-day idle expiry, checksum on reuse, encrypted at rest (D22). All `storage.*`, `video.*`, `audio.*` nodes, real FFmpeg tests on generated fixtures: never upscale, timeline tolerance, VFR normalization, `video.cut` refuses non-`master`. Profiles `master-1080p`, `master-2160p-hevc`, `proxy-720p`, `speech-opus` versioned.
 
