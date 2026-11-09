@@ -27,6 +27,7 @@ Section 7 of the master plan allows these. None changes an existing name, type o
 | Package | Addition | Why |
 |---|---|---|
 | `plugin` | `InitializeParams.TenantID`, `InitializeParams.TempDir`; methods `host.secret` (request) and `host.log` (notification) with their types; `EventSubscriber` interface | The method set only had daemon-to-plugin calls, so there was no permission-checked way for a plugin to get a secret. Nothing told the engine how to reach plugin subscribers |
+| `hook` | `Invocation.IdempotencyKey` | §8.1 requires idempotency; a retried hook must look the same to the plugin (I271) |
 | `config` | `Daemon.Plugins` (`dir`, `installRoots`, `allowUnsandboxed`, `runtimePaths`) | Runtime settings need a home in `daemon.json` |
 | `domain` | `PluginRecord.Isolation`, `PluginRecord.TenantGrant` (both computed at read time, not persisted) | `vidyom plugin inspect` has to state what isolation is real and what this tenant granted |
 | `connector` | `LogQuerier`, `LogQuery`, `LogPage` | `GET /logs` must read local logs through the sink that keeps them (§10.1) |
@@ -142,6 +143,7 @@ The manifest **declares** the most a plugin may ask for. A tenant **grants** exp
 | Network | OS sandbox denies everything except a per-process loopback egress proxy that enforces the host allow-list. No grant, no proxy and no network |
 | Events | `event.deliver` only for types in effective `permissions.events` and only for the process's own tenant |
 | Command execution | Not grantable in this version. Only the entrypoint and operator-declared runtime paths may be executed |
+| Keyring | Not grantable. Seatbelt denies the Keychain services, seccomp denies `keyctl` |
 | Environment | Scrubbed: the daemon's environment, including any master key, is never inherited |
 
 The OS sandbox is Landlock plus seccomp on Linux and Seatbelt on macOS. When it is not available the plugin is refused, unless the operator set `plugins.allowUnsandboxed`, in which case `isolation: none` is reported wherever the plugin is shown.
@@ -152,7 +154,7 @@ One process per tenant and plugin (D6), started on demand, stopped when idle. JS
 
 ### 4.6 `hook.ActionRunner` and events
 
-`RunHookAction` resolves plugin and grant, checks the action against `provides.hookActions`, applies the hook's timeout, and maps every failure to a coded error whose message is redacted. `Reason` from the plugin is redacted. Failure policies, ordering and re-validation of modified parameters stay in the engine's dispatcher (§8.1). `EventSubscribers` and `DeliverEvent` serve the engine's Event Bus, which owns delivery tracking and retries.
+`RunHookAction` resolves plugin and grant, checks the action against `provides.hookActions`, applies the hook's timeout, fills `IdempotencyKey`, opens a span, records `vidyom_plugin_duration_seconds`, and maps every failure to a coded error whose message is redacted. `Reason` from the plugin is redacted. Failure policies, ordering and re-validation of modified parameters stay in the engine's dispatcher (§8.1). `EventSubscribers` and `DeliverEvent` serve the engine's Event Bus, which owns delivery tracking and retries. `Runtime.Verify` reports every record's integrity and isolation for `vidyom doctor`.
 
 ## 5. Phases
 
@@ -178,6 +180,7 @@ One process per tenant and plugin (D6), started on demand, stopped when idle. JS
 - **Mock-tested only:** Loki and OTLP collectors (`httptest`).
 - **Local fakes:** `repo.PluginRepo`, `security.Auditor`, `connector.SecretResolver`, `config.TenantSource`.
 - `go test -race` on all owned paths, plus `GOOS=windows`, `GOOS=linux` cross builds.
+- A Python script plugin in `internal/plugins/testdata` proves the protocol is language-neutral, where a usable `python3` exists. The sample plugin is Go because it needs no interpreter inside the sandbox (I265).
 
 ## 7. Wiring notes for `integration`
 
