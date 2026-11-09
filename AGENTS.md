@@ -4,7 +4,9 @@ Instructions for AI coding agents working in this repository. Humans should star
 
 ## Project status
 
-Vidyom is an open-source, AI-powered video workflow engine at the **specification stage**. No runtime code exists yet: `vidyom`, `vidyomd`, `vidyom-worker`, the daemon API, the workflow nodes and every command shown in the docs are **proposed interfaces**. Never write documentation, examples or comments that present them as implemented.
+Vidyom is an open-source video editing studio run by AI agents, at the **specification stage**. No runtime code exists yet: `vidyom`, `vidyomd`, `vidyom-worker`, the daemon API, the workflow nodes and every command shown in the docs are **proposed interfaces**, whatever the site says.
+
+**Site voice (maintainer's decision of 2026-11-09):** `website/`, `README.md` and the contribution files are written in the present tense, as if every roadmap phase were implemented. Treat them as product copy, not as evidence that code exists; `spec/` is the source of truth for what is decided, proposed or pending, and `SECURITY.md` stays factual. Even in that voice, never invent results, benchmarks, versions, release dates, install commands or legal conclusions, and never claim a **Validate** item has passed (write it as a check for the operator).
 
 ## Repository layout
 
@@ -35,9 +37,9 @@ CI runs `npm ci`, `npm run typecheck` and `npm run build` on every push and pull
 ## Writing rules
 
 - Everything is written in **English**: documentation, code, comments, UI copy and commit messages.
-- Mark requirement status with **Decided**, **Proposed**, **Future** or **Validate** (the spec writes them as `[DECIDED]`, `[PROPOSED]`, `[FUTURE]`, `[VALIDATE]`). Never promote a Proposed item to Decided on your own.
-- Do not fill pending decisions silently. Open items are listed in `website/docs/reference/open-questions.md` and spec §17. If a change depends on one, flag it instead of choosing.
-- When the website and the spec disagree, point it out rather than resolving it silently.
+- In `spec/`, mark requirement status with `[DECIDED]`, `[PROPOSED]`, `[FUTURE]` or `[VALIDATE]`. Never promote a Proposed item to Decided on your own. The website does not use these labels.
+- Do not fill pending decisions silently. Open items are listed in spec §17. If a change depends on one, flag it instead of choosing.
+- When the website and the spec disagree on anything other than implementation status, point it out rather than resolving it silently.
 - Use fictional examples (`ORI-001`, `media.example.internal`). Never include real credentials, tokens, signed URLs or personal data.
 - Every docs page needs frontmatter with `title` and `sidebar_position`. Link between docs with relative Markdown paths (`./workflows/create-clip.md`); `onBrokenLinks` is set to `throw`.
 

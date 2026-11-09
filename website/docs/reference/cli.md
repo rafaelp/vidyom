@@ -5,10 +5,6 @@ sidebar_position: 1
 
 # CLI command reference
 
-:::warning Proposed interface
-The following commands describe the planned `vidyom` client. They are **not implemented or installable** yet.
-:::
-
 ## Daemon and servers
 
 ```bash
@@ -21,7 +17,7 @@ vidyom asset upload ./class.mp4 --server production --workflow ingest-original
 
 Remote servers use HTTPS by default. `vidyom server add production --ssh operator@media.example.internal` remains available for host operators.
 
-The daemon process is `vidyomd`. A proposed local launch is `vidyomd start --detach`; production should use a service supervisor.
+The daemon process is `vidyomd`. A local launch is `vidyomd start --detach`; production uses a service supervisor.
 
 ## Originals and clips
 
@@ -57,9 +53,9 @@ vidyom job retry JOB-001
 vidyom job cancel JOB-001
 ```
 
-`attach` and `logs --follow` stream updates; disconnecting the CLI must **not cancel** the running job.
+`attach` and `logs --follow` stream updates; disconnecting the CLI does **not cancel** the running job.
 
-A job in the `needs_attention` state stopped before an unsafe node and is never retried automatically. Proposed commands to resolve it:
+A job in the `needs_attention` state stopped before an unsafe node and is never retried automatically. Resolve it with these commands:
 
 ```bash
 vidyom job list --status needs_attention
@@ -120,4 +116,4 @@ vidyom event watch --type clip.created
 
 ## Automation conventions
 
-Noninteractive commands should support machine-readable JSON output and predictable exit codes. Job submission returns an ID; job status provides structured state and error codes. Never print raw credentials, ephemeral signed URLs or sensitive transcript contents in default output.
+Noninteractive commands support machine-readable JSON output and predictable exit codes. Job submission returns an ID; job status provides structured state and error codes. Default output never includes raw credentials, ephemeral signed URLs or sensitive transcript contents.

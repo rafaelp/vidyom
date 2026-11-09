@@ -5,17 +5,17 @@ sidebar_position: 1
 
 # Repository layout
 
-## Current contents
+## Project files
 
-The [repository](https://github.com/rafaelp/vidyom) currently holds the specification only:
+The [repository](https://github.com/rafaelp/vidyom) also holds the product specification and the documentation site:
 
 ```text
 vidyom/
 ├── .github/                    # CI, Dependabot, issue and pull request templates
 ├── spec/                       # Complete product specification (v1.2 current; v1.1 and v1.0 for history)
 ├── website/                    # This Docusaurus documentation site
-│   ├── docs/                   # Specification pages
-│   └── examples/               # Illustrative workflows, provider bindings and media profiles
+│   ├── docs/                   # Documentation pages
+│   └── examples/               # Example workflows, provider bindings and media profiles
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md
 ├── LICENSE                     # Apache License 2.0
@@ -26,7 +26,7 @@ vidyom/
 
 ## Runtime layout
 
-**Decided:** The runtime code will follow this structure, added alongside `website/`. None of it exists yet.
+The runtime code follows this structure, alongside `website/`.
 
 ```text
 vidyom/

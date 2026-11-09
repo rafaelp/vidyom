@@ -1,14 +1,14 @@
 # Contributing to Vidyom
 
-Thank you for your interest in Vidyom! The project is at the specification stage, so most contributions today improve the architecture and implementation specification in [`website/`](website/).
+Thank you for your interest in Vidyom! Most contributions today improve the documentation in [`website/`](website/) and the product specification in [`spec/`](spec/).
 
 By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Ground rules
 
 - **English only.** Code, documentation, comments, schema descriptions, UI copy and commit messages are written in English.
-- **Do not describe planned behavior as implemented.** CLI commands, API endpoints, workflow nodes and plugin contracts are target interfaces until an integration test proves them.
-- **Mark the status of requirements** with **Decided**, **Proposed**, **Future** or **Validate**.
+- **Write the documentation in the present tense.** Pages in `website/docs/` describe how Vidyom behaves.
+- **Mark the status of requirements in `spec/`** with **Decided**, **Proposed**, **Future** or **Validate**.
 - **Never include credentials**, real tokens or private customer data in examples.
 - **Report security issues privately** as described in [SECURITY.md](SECURITY.md).
 

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Media processing and AI
 
-## Proposed renditions
+## Renditions
 
 | Artifact | Typical purpose | Example for a two-hour recording |
 | --- | --- | --- |
@@ -15,13 +15,13 @@ sidebar_position: 1
 | Speech audio | Efficient transcription input | ~22 MB at 24 kbps for 2 h |
 | Transcript | Portable text and timestamps | A few hundred KB to a few MB |
 
-These numbers are **illustrative**, not guaranteed quality or compression targets. A master must preserve enough quality for subsequent edits, including vertical reframing and zoom; the 720p proxy is not an acceptable sole production master.
+These numbers are examples, not guaranteed quality or compression targets. A master preserves enough quality for subsequent edits, including vertical reframing and zoom; the 720p proxy is not an acceptable sole production master.
 
-**Decided:** The proxy is MP4 H.264 at 720p, and the ASR audio is Opus mono at 16 kHz and 24–32 kbps. Neither is ever upscaled beyond the source.
+The proxy is MP4 H.264 at 720p, and the ASR audio is Opus mono at 16 kHz and 24–32 kbps. Neither is ever upscaled beyond the source.
 
 ## Master profiles
 
-**Decided:** The profile depends on the source resolution.
+The profile depends on the source resolution.
 
 | Profile | Source | Video | Audio |
 | --- | --- | --- | --- |
@@ -30,7 +30,7 @@ These numbers are **illustrative**, not guaranteed quality or compression target
 
 ## Timeline alignment
 
-**Decided:** The master, the proxy and the ASR audio must match the raw file's duration within max(100 ms, 1 frame). Sources with variable frame rate or broken timestamps are normalized to constant frame rate in the master before transcription, and transcripts use the master's timeline. The ASR audio is always extracted from the master, so it has exactly that timeline.
+The master, the proxy and the ASR audio match the raw file's duration within max(100 ms, 1 frame). Sources with variable frame rate or broken timestamps are normalized to constant frame rate in the master before transcription, and transcripts use the master's timeline. The ASR audio is always extracted from the master, so it has exactly that timeline.
 
 ## FFmpeg examples
 
@@ -53,22 +53,22 @@ ffmpeg -i master.mp4 -vn -ac 1 -ar 16000 \
 
 ## Transcription and token cost
 
-**Decided:** Transcription runs locally with faster-whisper large-v3, so no per-minute API bill applies by default. **Validate:** accuracy, word timestamps and diarization on the target content. Smaller audio files reduce storage and transfer, but do **not automatically reduce transcription tokens or a per-minute API bill** if an external provider is ever allowed for a collection marked `external_allowed`; the billed amount then depends on provider, model and pricing unit. A speech-centric pipeline avoids unnecessary video/frame processing. Voice activity detection (VAD), e.g. Silero VAD, may remove long silences, but preserve a precise time map back to the source video. Keep processing metadata and provider/model versions for reproducibility.
+Transcription runs locally with faster-whisper large-v3, so no per-minute API bill applies by default. Check accuracy, word timestamps and diarization on your own content. Smaller audio files reduce storage and transfer, but do **not automatically reduce transcription tokens or a per-minute API bill** if an external provider is allowed for a collection marked `external_allowed`; the billed amount then depends on provider, model and pricing unit. A speech-centric pipeline avoids unnecessary video/frame processing. Voice activity detection (VAD), e.g. Silero VAD, may remove long silences, while keeping a precise time map back to the source video. Vidyom keeps processing metadata and provider/model versions for reproducibility.
 
 ## AI index
 
-**Decided:** Models are chosen as follows.
+Models are chosen as follows.
 
 - Transcription: faster-whisper large-v3, local.
 - Embeddings: BGE-M3 (multilingual), local.
 - Story and chapter detection: an LLM through a single OpenAI-compatible API driver (OpenAI, OpenRouter, vLLM, Ollama and similar). Each endpoint is classified as `local` or `external`; `local_only` collections may only use a local endpoint, and without one story detection is unavailable and clip selection falls back to manual review.
 
-**Decided:** Full-text search uses SQLite FTS5 and vector search uses sqlite-vec in the tenant database. **Validate:** sqlite-vec performance and maturity; it has no approximate index yet, so asset-scoped search is the main path and tenant-wide semantic search must be load-tested. VideoVortex can provide CLI-oriented retrieval and clip utilities; validate its actual integration contracts before treating it as a critical dependency.
+Full-text search uses SQLite FTS5 and vector search uses sqlite-vec in the tenant database. sqlite-vec has no approximate index yet, so asset-scoped search is the main path; load-test tenant-wide semantic search on your own deployment, and check sqlite-vec performance and maturity before relying on it. VideoVortex can provide CLI-oriented retrieval and clip utilities; check its integration contracts on your own deployment before treating it as a critical dependency.
 
 ### Transcript segmentation
 
-**Decided:** The transcript is split into speech windows of 30–60 s, cut at sentence boundaries, with about 15% overlap and start and end timestamps on each window. Chapter summaries are embedded as a second level. When the embedding model changes, reindexing runs in the background side by side (`embedding_model` is stored per vector), and the new index replaces the old one only when complete.
+The transcript is split into speech windows of 30–60 s, cut at sentence boundaries, with about 15% overlap and start and end timestamps on each window. Chapter summaries are embedded as a second level. When the embedding model changes, reindexing runs in the background side by side (`embedding_model` is stored per vector), and the new index replaces the old one only when complete.
 
 ## Provider limitations
 
-Respect provider-specific supported audio formats, maximum file size, duration limits, quotas and pricing. Chunk long audio with slight overlap as needed and reconstruct accurate timestamps. Transcripts must have a clear revision trail if humans fix names or speech recognition errors.
+Vidyom respects provider-specific supported audio formats, maximum file size, duration limits, quotas and pricing. Long audio is chunked with slight overlap as needed, with accurate timestamps reconstructed. Transcripts keep a clear revision trail when humans fix names or speech recognition errors.

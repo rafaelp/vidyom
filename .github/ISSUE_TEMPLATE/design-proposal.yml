@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Vidyom is at the specification stage. Changes to a **Decided** requirement need maintainer approval in this issue before a pull request is opened.
+        Changes to a **Decided** requirement need maintainer approval in this issue before a pull request is opened.
   - type: dropdown
     id: area
     attributes:

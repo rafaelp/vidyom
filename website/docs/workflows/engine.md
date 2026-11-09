@@ -5,11 +5,11 @@ sidebar_position: 1
 
 # JSON workflow engine
 
-**Decided:** Workflows are JSON configuration, modeled after n8n's concepts of nodes, parameters, connections and workflow settings. The runtime must support creating new workflows **without writing code** when all required node types already exist. Vidyom is *not* required to execute n8n JSON directly in the first release.
+Workflows are JSON configuration, modeled after n8n's concepts of nodes, parameters, connections and workflow settings. The runtime supports creating new workflows **without writing code** when all required node types already exist. Vidyom does not execute n8n JSON directly.
 
 ## Workflow contract
 
-**Decided:** The workflow JSON model has these parts.
+The workflow JSON model has these parts.
 
 - `id`, `name`, semantic `version`, optional `description`.
 - JSON-schema-compatible `inputs` and `outputs`.
@@ -59,7 +59,7 @@ This is intentionally a **partial example**, not the full production ingest work
 
 ## Conditions
 
-**Decided:** Conditions are written in CEL (Common Expression Language): side-effect free, not Turing-complete and subject to evaluation cost limits. The Go daemon evaluates them with cel-go. Data references stay in `${...}` form, while conditions read the same values as plain CEL variables.
+Conditions are written in CEL (Common Expression Language): side-effect free, not Turing-complete and subject to evaluation cost limits. The Go daemon evaluates them with cel-go. Data references stay in `${...}` form, while conditions read the same values as plain CEL variables.
 
 ```json
 {"id": "publishIfApproved", "type": "flow.if",
@@ -68,29 +68,29 @@ This is intentionally a **partial example**, not the full production ingest work
 
 ## Merge and branching
 
-**Decided:** A node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any`: `all` waits for every non-skipped input, and `any` continues with the first completed input.
+A node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any`: `all` waits for every non-skipped input, and `any` continues with the first completed input.
 
 ## Approval node
 
-**Decided:** The `approval.request` node pauses a job until a person decides. Its parameters are `kind` (for example `clip_selection` or `publication`), `assetId`, `approvers`, `timeoutSeconds` and `onTimeout`. The pause is persisted, so the CLI may disconnect. `approvers` can tighten the default approval rule, never loosen it.
+The `approval.request` node pauses a job until a person decides. Its parameters are `kind` (for example `clip_selection` or `publication`), `assetId`, `approvers`, `timeoutSeconds` and `onTimeout`. The pause is persisted, so the CLI may disconnect. `approvers` can tighten the default approval rule, never loosen it.
 
 ## Subworkflows
 
-`workflow.execute` can call a separately versioned workflow such as `ingest-derived` or `publish-video`. The engine must validate parent-child invocation, authorization, input mapping, idempotency and recursion limits. Workflow versions are immutable for submitted jobs, so an edit does not silently alter running jobs.
+`workflow.execute` can call a separately versioned workflow such as `ingest-derived` or `publish-video`. The engine validates parent-child invocation, authorization, input mapping, idempotency and recursion limits. Workflow versions are immutable for submitted jobs, so an edit does not silently alter running jobs.
 
 ## Scheduling and errors
 
-Execution is dependency driven: independent nodes may run in parallel, while joins wait for all required predecessors. Built-in node retry must be bounded with backoff and idempotency. `--dry-run` validates the graph, parameters, permissions and connector capabilities without performing external side effects.
+Execution is dependency driven: independent nodes may run in parallel, while joins wait for all required predecessors. Built-in node retry is bounded with backoff and idempotency. `--dry-run` validates the graph, parameters, permissions and connector capabilities without performing external side effects.
 
 ### Side-effect classes
 
-**Decided:** Every node type declares a side-effect class that controls retry:
+Every node type declares a side-effect class that controls retry:
 
 | Class | Retry behavior |
 | --- | --- |
 | `none` | Pure; retried freely. |
 | `idempotent` | Retried with its idempotency key. |
-| `reconcilable` | Must query the remote state before any retry. |
+| `reconcilable` | Queries the remote state before any retry. |
 | `unsafe` | Never retried automatically; the job moves to the `needs_attention` state until a person resolves it. |
 
 A checkpoint is persisted after each completed node. Cancellation is cooperative between nodes: the running node finishes, or aborts if it supports aborting.

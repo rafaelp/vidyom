@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Workflow A — Ingest Original
 
-**Decided:** Ingestion runs first and is independent of clip creation. The input is any original recording (yoga class, course, meeting, lecture, interview, etc.). After processing, the original is permanently available for future semantic clipping.
+Ingestion runs first and is independent of clip creation. The input is any original recording (yoga class, course, meeting, lecture, interview, etc.). After processing, the original is permanently available for future semantic clipping.
 
 ```mermaid
 flowchart TD
@@ -28,15 +28,15 @@ flowchart TD
 
 1. **Import:** accept a local file, resumable upload, or an authorized imported copy from an existing platform. Calculate SHA-256; create stable `ORI-*` ID and metadata.
 2. **Archive:** save an untouched copy to logical storage role `archive`; verify checksum and record receipt. The initial connector is Google Cloud Storage Archive.
-3. **Master:** generate the working MP4 and store it permanently under role `master` (initially GCS Standard). **Decided:** the profile depends on the source. Sources up to 1080p use `master-1080p` (H.264 High, CRF 18, preset slow, max 1080p). Sources of 2160p or more use `master-2160p-hevc` (HEVC, CRF 20, 4K kept to allow vertical reframing and zoom). Audio is AAC 192 kbps in both. Sources with variable frame rate or broken timestamps are normalized to constant frame rate in the master before transcription.
-4. **Proxy:** produce smaller playback/preview MP4 (**Decided:** MP4 H.264 at 720p, never upscaled) stored under role `proxy`.
-5. **Audio:** **Decided:** derive mono speech audio from the master, so it has exactly the master's timeline. **Decided:** Opus mono at 16 kHz and 24–32 kbps. **Decided:** the master, the proxy and the speech audio must match the raw file's duration within max(100 ms, 1 frame); a larger drift fails the stage.
-6. **AI:** transcribe with timestamps; extract chapters, narratives, topics, summaries and embeddings. **Decided:** transcription runs locally with faster-whisper large-v3 and embeddings run locally with BGE-M3. Story and chapter detection uses an LLM through the OpenAI-compatible driver; a collection marked `local_only` (the default) may only use a local endpoint, and without one story detection is skipped for it. Transcripts use the master's timeline, which matches the raw timeline within the tolerance above.
-7. **Catalog:** write the canonical record to the tenant database, update the text and semantic index, and store canonical metadata; verify accessible master/index, then mark `ready_for_clipping`. **Decided:** the tenant database is the canonical catalog, and review in the MVP happens through the CLI with proxy links. MediaCMS is an optional connector for teams that want a web UI, not a requirement of this stage.
+3. **Master:** generate the working MP4 and store it permanently under role `master` (GCS Standard by default). The profile depends on the source. Sources up to 1080p use `master-1080p` (H.264 High, CRF 18, preset slow, max 1080p). Sources of 2160p or more use `master-2160p-hevc` (HEVC, CRF 20, 4K kept to allow vertical reframing and zoom). Audio is AAC 192 kbps in both. Sources with variable frame rate or broken timestamps are normalized to constant frame rate in the master before transcription.
+4. **Proxy:** produce smaller playback/preview MP4 (MP4 H.264 at 720p, never upscaled) stored under role `proxy`.
+5. **Audio:** derive mono speech audio from the master, so it has exactly the master's timeline. The audio is Opus mono at 16 kHz and 24–32 kbps. The master, the proxy and the speech audio match the raw file's duration within max(100 ms, 1 frame); a larger drift fails the stage.
+6. **AI:** transcribe with timestamps; extract chapters, narratives, topics, summaries and embeddings. Transcription runs locally with faster-whisper large-v3 and embeddings run locally with BGE-M3. Story and chapter detection uses an LLM through the OpenAI-compatible driver; a collection marked `local_only` (the default) may only use a local endpoint, and without one story detection is skipped for it. Transcripts use the master's timeline, which matches the raw timeline within the tolerance above.
+7. **Catalog:** write the canonical record to the tenant database, update the text and semantic index, and store canonical metadata; verify accessible master/index, then mark `ready_for_clipping`. The tenant database is the canonical catalog, and review happens through the CLI with proxy links. MediaCMS is an optional connector for teams that want a web UI, not a requirement of this stage.
 
 ## Storage policy
 
-- `archive`: long-term protection, never a normal working source. **Decided:** raw originals are always archived, permanently.
+- `archive`: long-term protection, never a normal working source. Raw originals are always archived, permanently.
 - `master`: durable, frequent-access, production-quality video. **Not a temporary cache.**
 - `proxy`: playable reduced video; may be regenerated if the working master remains accessible.
 - `transcripts`, `chapters`, `metadata`, `embeddings`: persistent and portable.

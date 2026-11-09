@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Publishing connectors
 
-**Decided:** Publishing must be provider-neutral. YouTube is the first destination. The roadmap after it is **Vimeo, PeerTube and Instagram Reels** (vertical clips reframed from the 4K master). Spotify is not planned. Other destinations, for example Dailymotion, remain possible community connectors but are not on the roadmap.
+Publishing is provider-neutral. Destinations are YouTube, **Vimeo, PeerTube and Instagram Reels** (vertical clips reframed from the 4K master). Spotify is not planned. Other destinations, for example Dailymotion, can be added as community connectors.
 
 ## Example configuration
 
@@ -43,12 +43,12 @@ One canonical `CLIP-001` may be published to `youtube-main` today and `vimeo-mai
 
 ## Safety and approvals
 
-Uploads are private/unlisted by default where supported, require approval before public visibility, and record the actor who approved. Reconcile uncertain outcomes before retrying uploads to prevent duplicates. Destructive remote deletes require independent authorization and must not cascade to the canonical original or backup.
+Uploads are private/unlisted by default where supported, require approval before public visibility, and record the actor who approved. Uncertain outcomes are reconciled before an upload is retried, which prevents duplicates. Destructive remote deletes require independent authorization and do not cascade to the canonical original or backup.
 
 ### Two-level approval
 
-**Decided:** Approval has two levels. An `editor` approves the clip selection (`approval.request` of kind `clip_selection`); a `publisher` (or `admin`) approves publication (kind `publication`). Changing the visibility or the public metadata of an already public video requires a new publisher approval. A workflow can tighten the rule through `approvers`, never loosen it. Roles are per tenant: `viewer`, `editor`, `publisher`, `admin`.
+Approval has two levels. An `editor` approves the clip selection (`approval.request` of kind `clip_selection`); a `publisher` (or `admin`) approves publication (kind `publication`). Changing the visibility or the public metadata of an already public video requires a new publisher approval. A workflow can tighten the rule through `approvers`, never loosen it. Roles are per tenant: `viewer`, `editor`, `publisher`, `admin`.
 
 ### Withdrawal and deletion
 
-**Decided:** Withdrawal, which unpublishes from every destination and from the public library, is immediate and can be done by a publisher or admin. Full deletion is done by an admin. The archive copy is purged when the archive's minimum storage duration ends (365 days on GCS Archive) and stays inaccessible until then. The audit keeps the fact of the deletion without the content. **Validate:** legal review under the LGPD of deferring the archive purge.
+Withdrawal, which unpublishes from every destination and from the public library, is immediate and can be done by a publisher or admin. Full deletion is done by an admin. The archive copy is purged when the archive's minimum storage duration ends (365 days on GCS Archive) and stays inaccessible until then. The audit keeps the fact of the deletion without the content. Review the deferred archive purge under the LGPD with your own counsel.

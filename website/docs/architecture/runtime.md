@@ -24,7 +24,7 @@ sidebar_position: 1
 
 Side-effecting nodes must have idempotency keys derived from workflow/job/node/attempt context. Upload operations verify object generations or checksums; publishing connectors reconcile remote video IDs before retrying to avoid duplicate videos. A daemon restart must not cause duplicate backups, clips, or publications. On startup, the daemon reconciles jobs that are `queued` or `running` in the database but missing from Redis, and re-enqueues them.
 
-**Decided:** Every node type declares a side-effect class:
+Every node type declares a side-effect class:
 
 | Class | Retry behavior |
 | --- | --- |
@@ -37,18 +37,18 @@ Cancellation is cooperative between nodes: the running node finishes, or aborts 
 
 ## Worker scheduling
 
-**Decided:** Workers declare their CPU, GPU, memory, disk and capacity, and the scheduler picks a compatible worker for each node. Execution records are kept for a configurable retention period (see [observability](../operations/observability.md)). Resource-aware dispatch allows a CPU worker for FFmpeg and GPU worker for transcription. Initially, local workers are sufficient. Future expansion to multiple hosts must preserve the same workflow JSON and stable job API. Workers never open database files; they talk to the daemon through its API or Redis.
+Workers declare their CPU, GPU, memory, disk and capacity, and the scheduler picks a compatible worker for each node. Execution records are kept for a configurable retention period (see [observability](../operations/observability.md)). Resource-aware dispatch allows a CPU worker for FFmpeg and GPU worker for transcription. Local workers are sufficient on a single host. Workers on multiple hosts use the same workflow JSON and stable job API. Workers never open database files; they talk to the daemon through its API or Redis.
 
 ## Worker cache
 
-**Decided:** Each tenant has its own cache directory with LRU eviction, a configurable maximum size and a 7-day idle expiry. Checksums are verified on reuse, temporary files are deleted at the end of each job, and the cache is encrypted at rest with the tenant key.
+Each tenant has its own cache directory with LRU eviction, a configurable maximum size and a 7-day idle expiry. Checksums are verified on reuse, temporary files are deleted at the end of each job, and the cache is encrypted at rest with the tenant key.
 
 ## Paths and uploads
 
 When the CLI requests a remote job with `file=/data/class.mp4`, that path belongs to the **daemon host**. Use an explicit resumable `vidyom asset upload` operation for a file located on the client machine. Validate checksum at completion and prevent arbitrary server filesystem traversal.
 
-**Decided:** Inputs use unified URIs: `server:` for a path on the daemon host, `upload:` for a completed client upload, `storage://role/key` for a logical storage location and `import:connector/id` for an item from an import connector.
+Inputs use unified URIs: `server:` for a path on the daemon host, `upload:` for a completed client upload, `storage://role/key` for a logical storage location and `import:connector/id` for an item from an import connector.
 
 ## Same-host transport
 
-**Decided:** On Linux, the CLI reaches a daemon on the same host through a Unix domain socket. When the daemon runs inside Docker Desktop on macOS or Windows, socket files cannot cross the VM boundary, so the CLI uses HTTPS on loopback instead.
+On Linux, the CLI reaches a daemon on the same host through a Unix domain socket. When the daemon runs inside Docker Desktop on macOS or Windows, socket files cannot cross the VM boundary, so the CLI uses HTTPS on loopback instead.

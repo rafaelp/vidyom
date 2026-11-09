@@ -1,8 +1,6 @@
 # Vidyom documentation website
 
-An English-language Docusaurus documentation site for **Vidyom**, an open-source AI-powered video workflow engine originally envisioned for [MapaDeva](https://www.mapadeva.com.br/).
-
-> **Project status:** This site contains architecture and implementation specifications. `vidyom`, `vidyomd`, the workers, and all sample commands are **proposed interfaces**, not an already released product.
+An English-language Docusaurus documentation site for **Vidyom**, the open-source video editing studio run by AI agents, originally built for [MapaDeva](https://www.mapadeva.com.br/).
 
 ## Requirements
 
@@ -38,12 +36,11 @@ The official site is deployed on Vercel at https://www.vidyom.org, which is the 
 ## Content conventions
 
 - All documentation, UI copy, sample code, and code comments must be in English.
-- Use **Decided**, **Proposed**, **Future**, and **Validate** to distinguish decisions from design suggestions and integration assumptions.
-- Workflows and commands are target interfaces until the implementation lands.
+- Describe product behavior in the present tense. Requirement status (**Decided**, **Proposed**, **Future**, **Validate**) belongs in `spec/`.
 - Never include credentials in documentation examples.
 
-See [Documentation introduction](./docs/intro.md) and [Implementation roadmap](./docs/operations/roadmap.md).
+See [Documentation introduction](./docs/intro.md) and [Delivered capabilities](./docs/operations/roadmap.md).
 
-## Design examples
+## Examples
 
-`examples/workflows/` contains illustrative workflow graphs, `examples/config/` holds provider binding examples, and `examples/profiles/` includes proposed media profiles. They are **not executable** until the Vidyom runtime and node registry are implemented.
+`examples/workflows/` contains example workflow graphs, `examples/config/` holds provider binding examples, and `examples/profiles/` includes media profiles.

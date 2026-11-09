@@ -12,6 +12,6 @@
 ## Checklist
 
 - [ ] Content, code and comments are in English
-- [ ] Planned behavior is not described as already implemented
+- [ ] Pages in `website/docs/` use the present tense; requirement status stays in `spec/`
 - [ ] No credentials, tokens or private data
 - [ ] `npm run typecheck` and `npm run build` pass in `website/`

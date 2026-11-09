@@ -39,7 +39,7 @@ Check private-only network binding and fail-closed behavior, rejected unauthenti
 
 ## G. Hooks and observability
 
-A failing optional Loki sink must not stop a job; a failing mandatory validation hook must stop before side effects. Verify audit continuity (the hash chain verifies end to end), traces/log IDs, outbox redelivery, plugin timeout, and nonduplicated event effects.
+A failing optional Loki sink does not stop a job; a failing mandatory validation hook stops before side effects. Verify audit continuity (the hash chain verifies end to end), traces/log IDs, outbox redelivery, plugin timeout, and nonduplicated event effects.
 
 ## H. Tenant isolation
 

@@ -5,9 +5,9 @@ sidebar_position: 1
 
 # Daemon API and protocol
 
-The daemon must expose a stable, versioned client API over local Unix domain sockets or HTTPS (TLS 1.3), which is the default remote transport. SSH tunneling remains available only for host operators. Requests and responses are structured JSON; long-running job and event streams may use an authenticated streaming protocol such as SSE/WebSocket or gRPC streaming.
+The daemon exposes a stable, versioned client API over local Unix domain sockets or HTTPS (TLS 1.3), which is the default remote transport. SSH tunneling remains available only for host operators. Requests and responses are structured JSON; long-running job and event streams may use an authenticated streaming protocol such as SSE/WebSocket or gRPC streaming.
 
-## Endpoint concepts
+## Endpoints
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
@@ -31,19 +31,19 @@ The daemon must expose a stable, versioned client API over local Unix domain soc
 | `GET` | `/api/v1/plugins` | Installed plugin metadata |
 | `GET` | `/api/v1/audit` | Authorized audit history |
 
-**Decided:** This endpoint list is the daemon API surface. It is **not yet implemented**, so none of these are live endpoints. API versioning must protect old CLI clients against silent behavioral changes; mutating requests use idempotency keys; every method enforces resource-level authorization.
+This endpoint list is the daemon API surface. API versioning protects old CLI clients against silent behavioral changes; mutating requests use idempotency keys; every method enforces resource-level authorization.
 
 ## Tenant scoping
 
-**Decided:** Vidyom is multi-tenant, so every resource request runs in one tenant. The client sends the tenant in the `Vidyom-Tenant` header on every tenant-scoped request, and paths stay tenant-free (for example `/api/v1/assets/ORI-001`). The daemon rejects a tenant-scoped request without the header, records the header value in logs and audit, and checks that the caller's role in that tenant allows the operation. IDs such as `ORI-001` and `JOB-002` are only unique within a tenant, and a request can never read or write another tenant's data.
+Vidyom is multi-tenant, so every resource request runs in one tenant. The client sends the tenant in the `Vidyom-Tenant` header on every tenant-scoped request, and paths stay tenant-free (for example `/api/v1/assets/ORI-001`). The daemon rejects a tenant-scoped request without the header, records the header value in logs and audit, and checks that the caller's role in that tenant allows the operation. IDs such as `ORI-001` and `JOB-002` are only unique within a tenant, and a request can never read or write another tenant's data.
 
 ## Pairing
 
-**Decided:** Remote clients enroll through pairing. An admin creates a one-time code; the CLI exchanges it at `/api/v1/devices/pair` for a per-device credential that can be revoked and is rotated. **Proposed:** the exchange is the only unauthenticated mutating call, and it accepts each code once.
+Remote clients enroll through pairing. An admin creates a one-time code; the CLI exchanges it at `/api/v1/devices/pair` for a per-device credential that can be revoked and is rotated. The exchange is the only unauthenticated mutating call, and it accepts each code once.
 
 ## Jobs that need attention
 
-**Decided:** A node with an `unsafe` side-effect class is never retried automatically. The job moves to the `needs_attention` state until a person resolves it, and `GET /api/v1/jobs/{jobId}` reports that state with the node and reason. Resolution options (**Proposed**) are to retry, skip or cancel.
+A node with an `unsafe` side-effect class is never retried automatically. The job moves to the `needs_attention` state until a person resolves it, and `GET /api/v1/jobs/{jobId}` reports that state with the node and reason. Resolution options are to retry, skip or cancel.
 
 ## Example job submission
 

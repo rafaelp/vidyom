@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Credentials, keyrings and the secrets vault
 
-**Decided:** Client machines keep credentials in the operating system keyring. On the server, secrets live in an encrypted vault inside each tenant database. Workflow files, command-line arguments, logs, job payloads and repository configuration must **never contain raw secret values**.
+Client machines keep credentials in the operating system keyring. On the server, secrets live in an encrypted vault inside each tenant database. Workflow files, command-line arguments, logs, job payloads and repository configuration **never contain raw secret values**.
 
 ## Client keyrings
 
@@ -19,13 +19,13 @@ The CLI uses the keyring for its own credentials, such as the per-device credent
 
 ## Server vault
 
-**Decided:** The daemon does not depend on a server-side OS keyring, which removes the headless Linux keyring problem. Each tenant has its own encrypted vault in its tenant database, using envelope encryption:
+The daemon does not depend on a server-side OS keyring, which removes the headless Linux keyring problem. Each tenant has its own encrypted vault in its tenant database, using envelope encryption:
 
 - One data key per tenant encrypts that tenant's secrets.
 - The data key is stored wrapped by a master key; wrapped tenant data keys live in the global system database.
 - The master key is unsealed at boot with no manual passphrase: TPM/systemd-creds on Linux, Keychain on macOS, DPAPI/TPM on Windows, or a KMS on any platform.
 
-The daemon must **fail closed**: if the master key is missing or sealed, it refuses to start or to serve secrets, and it never stores plain-text secrets as a fallback. **Validate:** unsealing on each platform (TPM/systemd-creds, Keychain, DPAPI/TPM) and with a KMS on the target hosts.
+The daemon **fails closed**: if the master key is missing or sealed, it refuses to start or to serve secrets, and it never stores plain-text secrets as a fallback. Test unsealing on your own hosts, on each platform you use (TPM/systemd-creds, Keychain, DPAPI/TPM) and with a KMS, before relying on it.
 
 ## Location modes
 
@@ -46,7 +46,7 @@ A disconnected client cannot supply a secret that exists *only* in its local key
 }
 ```
 
-## Proposed CLI
+## CLI
 
 ```bash
 vidyom secret add gcs-backup --location server
@@ -55,4 +55,4 @@ vidyom secret test gcs-backup
 vidyom secret delete gcs-backup
 ```
 
-Secrets are scoped to the active tenant, and one tenant can never read another tenant's vault. Input secret values through safe interactive prompts; remote secret provisioning requires explicit permission and end-to-end encrypted transport. List commands must show metadata, not secret values. Rotation should support testing a replacement credential before disabling the former.
+Secrets are scoped to the active tenant, and one tenant can never read another tenant's vault. Input secret values through safe interactive prompts; remote secret provisioning requires explicit permission and end-to-end encrypted transport. List commands show metadata, not secret values. Rotation supports testing a replacement credential before disabling the former.

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Encrypted transport and private networking
 
-**Decided:** CLI-to-daemon communication must be encrypted and authenticated when remote. The default remote transport is HTTPS with TLS 1.3. Operators must be able to bind the server only to a Tailscale, NetBird or comparable private-network interface, with no public listener.
+CLI-to-daemon communication is encrypted and authenticated when remote. The default remote transport is HTTPS with TLS 1.3. Operators can bind the server only to a Tailscale, NetBird or comparable private-network interface, with no public listener.
 
 ## Transports
 
@@ -18,19 +18,19 @@ sidebar_position: 1
 
 ## Client pairing
 
-**Decided:** A client is enrolled with a one-time pairing code instead of a shared token or SSH account:
+A client is enrolled with a one-time pairing code instead of a shared token or SSH account:
 
 1. An admin generates a one-time pairing code.
 2. The CLI exchanges the code for a per-device credential.
 3. The credential is revocable by an admin and rotated over time. The CLI keeps it in the OS keyring, as described in [credentials](./credentials.md).
 
-**Proposed:** a used or expired code is rejected, and a revoked device loses access immediately.
+A used or expired code is rejected, and a revoked device loses access immediately.
 
 ## Fail closed
 
-If a configured private interface is unavailable, **do not fall back to `0.0.0.0`**. Startup of the affected listener should fail and the daemon should remain safe. Alternative deployment: bind daemon on `127.0.0.1` and expose through a private-network reverse proxy such as Tailscale Serve.
+If a configured private interface is unavailable, **do not fall back to `0.0.0.0`**. Startup of the affected listener fails and the daemon remains safe. Alternative deployment: bind daemon on `127.0.0.1` and expose through a private-network reverse proxy such as Tailscale Serve.
 
-## Proposed client profile
+## Client profile
 
 ```json
 {
@@ -53,6 +53,6 @@ If a configured private interface is unavailable, **do not fall back to `0.0.0.0
 }
 ```
 
-Here `authRef` names the per-device credential obtained through pairing and kept in the client keyring. The `ssh` profile is intended only for host operators.
+Here `authRef` names the per-device credential obtained through pairing and kept in the client keyring. The `ssh` profile is only for host operators.
 
 Authentication confirms the caller's identity; authorization decides which tenants, workflows, connectors, storage roles, secrets and publication actions are allowed. VPN membership is **not** sufficient to grant administrator access. Use server identity checks, replay protection, limited token lifetimes and consistent audit records.
