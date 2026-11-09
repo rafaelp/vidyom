@@ -1,4 +1,4 @@
-// Package queue: Redis Streams dispatch and startup reconciliation (D4).
-//
-// Owner: component engine (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Package queue implements the dispatch queue on Redis Streams with consumer groups
+// (D4, I2). Redis holds pointers only: the tenant database stays the source of
+// truth, and internal/jobs re-enqueues whatever Redis has lost (§15.5).
 package queue
