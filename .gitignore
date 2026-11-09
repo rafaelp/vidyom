@@ -14,3 +14,26 @@ node_modules/
 .docusaurus/
 build/
 .cache/
+
+# Shared commit lock (scripts/commit.sh)
+.commit.lock
+
+# Go build output and coverage
+/bin/
+*.test
+*.out
+
+# Local runtime data (daemon data, cache, scratch, spool)
+/data/
+/.vidyom/
+/tmp/
+
+# Python (aiworker/)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Next.js (library/)
+.next/
