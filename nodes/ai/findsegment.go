@@ -49,7 +49,7 @@ func (n findSegmentNode) Execute(ctx context.Context, env node.Env, in node.Inpu
 		return node.Result{}, err
 	}
 	store := daemon.Store()
-	marks, err := store.Transcripts().Sensitive(ctx, id.Ref(asset.ID), version)
+	marks, err := sensitiveMarks(ctx, store, asset, version, 0)
 	if err != nil {
 		return node.Result{}, classify(err)
 	}
@@ -113,7 +113,7 @@ type deriveParams struct {
 }
 
 // Execute maps a source's transcript onto a clip's timeline (§4.3). Sensitive marks
-// follow later, in ai.index, which knows the clip (I207).
+// are carried later, by ai.index, which knows the clip (I207).
 func (n deriveNode) Execute(ctx context.Context, env node.Env, in node.Input) (node.Result, error) {
 	daemon, err := node.RequireDaemon(env)
 	if err != nil {

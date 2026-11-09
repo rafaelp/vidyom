@@ -57,7 +57,7 @@ func analyzeWithPolicy(ctx context.Context, env node.DaemonEnv, asset domain.Ass
 	if llm == nil {
 		return domain.Analysis{UnavailableReason: reason}, retrieval.Usage{}, nil
 	}
-	marks, err := env.Store().Transcripts().Sensitive(ctx, id.Ref(asset.ID), asset.CurrentVersion)
+	marks, err := sensitiveMarks(ctx, env.Store(), asset, asset.CurrentVersion, 0)
 	if err != nil {
 		return domain.Analysis{}, retrieval.Usage{}, classify(err)
 	}
@@ -130,7 +130,7 @@ func draftWithPolicy(ctx context.Context, env node.DaemonEnv, asset domain.Asset
 		}
 		transcript = stored
 	}
-	marks, err := env.Store().Transcripts().Sensitive(ctx, id.Ref(asset.ID), asset.CurrentVersion)
+	marks, err := sensitiveMarks(ctx, env.Store(), asset, asset.CurrentVersion, 0)
 	if err != nil {
 		return retrieval.Editorial{}, false, classify(err)
 	}

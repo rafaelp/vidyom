@@ -13,6 +13,7 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/errs"
 	"github.com/rafaelp/vidyom/internal/contract/id"
 	"github.com/rafaelp/vidyom/internal/contract/node"
+	"github.com/rafaelp/vidyom/internal/contract/repo"
 	"github.com/rafaelp/vidyom/internal/retrieval"
 	"github.com/rafaelp/vidyom/schemas"
 )
@@ -125,6 +126,80 @@ func allowedLLM(ctx context.Context, env node.DaemonEnv, asset domain.Asset) (co
 		env.Logger().Info("content goes to an external LLM endpoint under a consent record", "asset", asset.ID, "endpoint", llm.Name())
 	}
 	return llm, ""
+}
+
+// maxLineageDepth bounds the walk up a lineage; real chains are short (D36).
+const maxLineageDepth = 16
+
+// sensitiveMarks returns what must not reach external AI for an asset version: its own
+// marks and, at its current version, what its sources mark right now, so a mark added
+// after a clip was cut still counts (D30, I207).
+func sensitiveMarks(ctx context.Context, repos repo.TenantRepos, asset domain.Asset, version string, depth int) ([]domain.SensitiveSegment, error) {
+	own, err := repos.Transcripts().Sensitive(ctx, id.Ref(asset.ID), version)
+	if err != nil {
+		return nil, err
+	}
+	if version != asset.CurrentVersion {
+		return own, nil
+	}
+	inherited, err := inheritedMarks(ctx, repos, asset, depth)
+	if err != nil {
+		return nil, err
+	}
+	return append(own, inherited...), nil
+}
+
+// inheritedMarks maps the sources' marks onto a derivative's timeline. A source no longer
+// in the catalog has nothing to add: the marks it passed on were stored when the
+// derivative was indexed.
+func inheritedMarks(ctx context.Context, repos repo.TenantRepos, asset domain.Asset, depth int) ([]domain.SensitiveSegment, error) {
+	if asset.Lineage == nil || depth >= maxLineageDepth {
+		return nil, nil
+	}
+	var out []domain.SensitiveSegment
+	offset := 0.0
+	for _, cut := range asset.Lineage.Segments {
+		span := cut.EndSeconds - cut.StartSeconds
+		if span <= 0 {
+			continue
+		}
+		sourceID := cut.SourceAssetID
+		if sourceID == "" {
+			sourceID = asset.Lineage.SourceAssetID
+		}
+		start := offset
+		offset += span
+		if sourceID == "" {
+			continue
+		}
+		source, err := repos.Assets().Get(ctx, id.Ref(sourceID))
+		if errs.IsCode(err, errs.CodeNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		version := cut.SourceVersion
+		if version == "" {
+			version = source.CurrentVersion
+		}
+		marks, err := sensitiveMarks(ctx, repos, source, version, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		onClip := retrieval.MapToDerived(retrieval.MarksToIntervals(marks), []domain.Segment{{StartSeconds: cut.StartSeconds, EndSeconds: cut.EndSeconds}})
+		for _, interval := range onClip {
+			out = append(out, domain.SensitiveSegment{
+				AssetID:      asset.ID,
+				Version:      asset.CurrentVersion,
+				StartSeconds: start + interval.Start,
+				EndSeconds:   start + interval.End,
+				Reason:       "inherited from " + string(sourceID),
+				MarkedBy:     "system",
+			})
+		}
+	}
+	return out, nil
 }
 
 // usageRecords turns LLM consumption into budget entries (I216).

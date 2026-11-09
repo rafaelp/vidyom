@@ -50,7 +50,7 @@ Flow through `ingest-original`: `ai.transcribe` (scratch audio from the master) 
 ### Phase A: Python worker (roadmap phase 1)
 
 - Packaging: `aiworker/pyproject.toml`, name `vidyom`, stdlib-only core, Python >= 3.12, extras `asr` (`faster-whisper`), `embeddings` (`sentence-transformers`), `all`. Console script `vidyom-ai-worker`, also `python -m vidyom`.
-- Protocol: NDJSON framing with the same 64 MiB line limit as `jsonrpc.MaxMessageBytes`, all methods and error codes of the schema, `initialize` first, `$/progress`, `$/cancelRequest`. Long methods run in a thread pool so `health` and cancellation stay responsive; `shutdown` drains in-flight work, then the process exits.
+- Protocol: NDJSON framing with the same 64 MiB line limit as `jsonrpc.MaxMessageBytes`, all methods and error codes of the schema, `initialize` first, `$/progress`, `$/cancelRequest`. Long methods run in thread pools, one per method, so `health`, cancellation and query embeddings stay responsive; `shutdown` drains in-flight work, then the process exits.
 - Transports: `--stdio`, `--socket <path>` (mode 0600 from creation, refuses to replace a non-socket, stale socket detection), `--tcp 127.0.0.1:<port> --token-file <path>` (loopback only, token required, compared in constant time).
 - `--engine fake|real` is required, no default, no fallback in either direction (I27).
 - `fake` engine: canned transcript scaled to the audio's duration, or the fixture named by `VIDYOM_AI_FAKE_TRANSCRIPT`. Audio duration from WAV headers or Ogg granule positions with the stdlib, `ffprobe` when on `PATH`, otherwise it fails. Embeddings: `fake-hash-embed@1`, byte-for-byte the Go algorithm. Labeled at every surface: startup banner on stderr, `engine: "fake"`, capability `fake`, `health.detail`, `engine: "fake/canned@1"` on the transcript and a first segment stating that the text is canned.
@@ -79,7 +79,7 @@ Flow through `ingest-original`: `ai.transcribe` (scratch audio from the master) 
 - Modes: `complete_story`, `short` (fits `targetDurationSeconds`), `best_moments` (several disjoint intervals in one candidate, an assembly).
 - Evidence: excerpt taken from the transcript, never from LLM text; timestamps; confidence; rationale. Ambiguity rule in I205. Output also states `method` (`llm` or `retrieval`), so the approval shows how the proposal was made.
 - The `asset` parameter is reduced to its reference and the asset is re-read from the store; fields in the parameter are ignored, so a workflow cannot widen the AI policy (I208). No hit at all fails the node (I211).
-- D8: the effective policy comes from the stored asset, never from node parameters (`core`'s I104 keeps the column effective). An endpoint not classified `local` on `local_only` content is treated as absent, even if `env.LLM` returned it. D30: redaction before any non-local endpoint.
+- D8: the effective policy comes from the stored asset, never from node parameters (`core`'s I104 keeps the column effective). An endpoint not classified `local` on `local_only` content is treated as absent, even if `env.LLM` returned it. D30: redaction before any non-local endpoint, with the sources' marks read live through the lineage (I207).
 - `Analyze`: transcript blocks → summary, chapters, tags, stories; blocks merged; LLM output validated and clamped. No allowed endpoint or a failed endpoint gives `available: false` with a reason (I28, I206).
 - `Editorial`: title, description, tags, with the fallback of I28.
 

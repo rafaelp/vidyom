@@ -2,7 +2,6 @@ package ainodes
 
 import (
 	"context"
-	"fmt"
 	"math"
 
 	"github.com/rafaelp/vidyom/internal/contract/domain"
@@ -209,54 +208,21 @@ func validateEmbeddings(e *embedOutput) error {
 	return nil
 }
 
-// carrySensitiveMarks maps the source's marks onto a derivative's timeline, because
-// public exports read the clip's own marks: without this, cutting a sensitive interval
-// into a clip would launder it (D30, I207). A clip of a clip works, because its source's
-// marks were carried the same way.
+// carrySensitiveMarks stores a derivative's inherited marks as its own, because a
+// clip's marks are what later readers see first: without this, cutting a sensitive
+// interval into a clip would launder it (D30, I207).
 func carrySensitiveMarks(ctx context.Context, tx repo.TenantRepos, asset domain.Asset, version string) error {
-	if asset.Lineage == nil || len(asset.Lineage.Segments) == 0 {
-		return nil
+	if version != asset.CurrentVersion {
+		return nil // an older version may have been cut from other segments
 	}
-	sourceOf := func(segment domain.Segment) id.Friendly {
-		if segment.SourceAssetID != "" {
-			return segment.SourceAssetID
-		}
-		return asset.Lineage.SourceAssetID
+	marks, err := inheritedMarks(ctx, tx, asset, 0)
+	if err != nil {
+		return err
 	}
-	offset := 0.0
-	for _, cut := range asset.Lineage.Segments {
-		span := cut.EndSeconds - cut.StartSeconds
-		source := sourceOf(cut)
-		if source == "" || span <= 0 {
-			offset += max(span, 0)
-			continue
-		}
-		sourceVersion := cut.SourceVersion
-		if sourceVersion == "" {
-			parent, err := tx.Assets().Get(ctx, id.Ref(source))
-			if err != nil {
-				return err
-			}
-			sourceVersion = parent.CurrentVersion
-		}
-		marks, err := tx.Transcripts().Sensitive(ctx, id.Ref(source), sourceVersion)
-		if err != nil {
+	for _, mark := range marks {
+		if err := tx.Transcripts().MarkSensitive(ctx, mark); err != nil {
 			return err
 		}
-		mapped := retrieval.MapToDerived(retrieval.MarksToIntervals(marks), []domain.Segment{{StartSeconds: cut.StartSeconds, EndSeconds: cut.EndSeconds}})
-		for _, interval := range mapped {
-			if err := tx.Transcripts().MarkSensitive(ctx, domain.SensitiveSegment{
-				AssetID:      asset.ID,
-				Version:      version,
-				StartSeconds: offset + interval.Start,
-				EndSeconds:   offset + interval.End,
-				Reason:       fmt.Sprintf("inherited from %s", source),
-				MarkedBy:     "system",
-			}); err != nil {
-				return err
-			}
-		}
-		offset += span
 	}
 	return nil
 }

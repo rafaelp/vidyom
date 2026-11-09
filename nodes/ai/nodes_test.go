@@ -798,6 +798,87 @@ func TestIndexCarriesSensitiveMarksToAClip(t *testing.T) {
 	}
 }
 
+// A clip of a clip inherits through its parent, onto its own timeline (D36).
+func TestIndexCarriesMarksThroughAChain(t *testing.T) {
+	env := newDaemonEnv(t)
+	ctx := context.Background()
+	env.store.PutAsset(original())
+	if err := env.store.Transcripts().MarkSensitive(ctx, domain.SensitiveSegment{AssetID: "ORI-001", Version: "v1", StartSeconds: 120, EndSeconds: 130}); err != nil {
+		t.Fatal(err)
+	}
+	parent := original()
+	parent.ID, parent.ULID, parent.Kind = "CLIP-001", "01J00000000000000000000002", domain.KindClip
+	parent.Lineage = &domain.Lineage{SourceAssetID: "ORI-001", Segments: []domain.Segment{{SourceAssetID: "ORI-001", SourceVersion: "v1", StartSeconds: 100, EndSeconds: 160}}}
+	child := original()
+	child.ID, child.ULID, child.Kind = "CLIP-002", "01J00000000000000000000004", domain.KindClip
+	child.Lineage = &domain.Lineage{SourceAssetID: "CLIP-001", Segments: []domain.Segment{{SourceAssetID: "CLIP-001", SourceVersion: "v1", StartSeconds: 15, EndSeconds: 40}}}
+	env.store.PutAsset(parent)
+	env.store.PutAsset(child)
+	if _, err := run(t, findNode(t, "ai.index"), env, 1, map[string]any{"assetId": "CLIP-002", "transcript": storyTranscript(), "embeddings": embedded(t, "")}); err != nil {
+		t.Fatal(err)
+	}
+	marks, err := env.store.Transcripts().Sensitive(ctx, "CLIP-002", "v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 120-130 of the original is 20-30 of the parent, then 5-15 of the child.
+	if len(marks) != 1 || marks[0].StartSeconds != 5 || marks[0].EndSeconds != 15 {
+		t.Fatalf("marks = %+v", marks)
+	}
+}
+
+// A mark added after the clip was cut must still stop text reaching external AI (D30).
+func TestLaterMarkOnTheSourceStillProtectsTheClip(t *testing.T) {
+	env := newDaemonEnv(t)
+	ctx := context.Background()
+	env.store.PutAsset(original())
+	clip := allowExternal(original())
+	clip.ID, clip.ULID, clip.Kind = "CLIP-001", "01J00000000000000000000002", domain.KindClip
+	clip.Lineage = &domain.Lineage{SourceAssetID: "ORI-001", Segments: []domain.Segment{{SourceAssetID: "ORI-001", SourceVersion: "v1", StartSeconds: 0, EndSeconds: 260}}}
+	env.store.PutAsset(clip)
+	transcript := storyTranscript()
+	if _, err := run(t, findNode(t, "ai.index"), env, 1, map[string]any{"assetId": "CLIP-001", "transcript": transcript, "embeddings": embedded(t, "")}); err != nil {
+		t.Fatal(err)
+	}
+	// The mark comes after the clip's index, on the source only.
+	if err := env.store.Transcripts().MarkSensitive(ctx, domain.SensitiveSegment{AssetID: "ORI-001", Version: "v1", StartSeconds: 120, EndSeconds: 130}); err != nil {
+		t.Fatal(err)
+	}
+	server, llm := mockEndpoint(t, config.EndpointExternal)
+	env.llm = llm
+
+	if _, err := run(t, findNode(t, "ai.editorial"), env, 1, map[string]any{"assetId": "CLIP-001", "prompt": "P"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, findNode(t, "ai.analyze"), env, 1, map[string]any{"assetId": "CLIP-001", "transcript": transcript}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, findNode(t, "ai.find_segment"), env, 1, map[string]any{"asset": "CLIP-001", "query": "who had no remorse"}); err != nil {
+		t.Fatal(err)
+	}
+	requests := server.Requests()
+	if len(requests) < 3 {
+		t.Fatalf("%d requests", len(requests))
+	}
+	for _, request := range requests {
+		if strings.Contains(request.Text(), "Maria") {
+			t.Fatalf("%s sent sensitive speech to an external endpoint:\n%s", request.Task, request.Text())
+		}
+	}
+}
+
+// A source gone from the catalog cannot fail its clip: its marks were stored at index.
+func TestMissingSourceAddsNoMarks(t *testing.T) {
+	env := newDaemonEnv(t)
+	clip := original()
+	clip.ID, clip.ULID, clip.Kind = "CLIP-001", "01J00000000000000000000002", domain.KindClip
+	clip.Lineage = &domain.Lineage{SourceAssetID: "ORI-404", Segments: []domain.Segment{{StartSeconds: 0, EndSeconds: 10}}}
+	env.store.PutAsset(clip)
+	if _, err := run(t, findNode(t, "ai.index"), env, 1, map[string]any{"assetId": "CLIP-001", "transcript": storyTranscript(), "embeddings": embedded(t, "")}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // D15: reindexing runs side by side and the new model takes over only when complete.
 func TestIndexSwapsTheActiveModelOnlyWhenComplete(t *testing.T) {
 	env := newDaemonEnv(t)

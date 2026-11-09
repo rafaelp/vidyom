@@ -97,10 +97,14 @@ Component decisions for the first executable version, numbered `I200`–`I219` p
 
 ### I207. Sensitive marks follow a clip through its lineage
 
-- **Choice.** When `ai.index` indexes a derivative, it maps every sensitive mark of the source version onto the derivative's timeline, using `asset.Lineage.Segments`, and stores them with `MarkSensitive`, in the same transaction. Marks use reason `inherited from <source>`.
-- **Why.** D30 excludes marked segments from `public.db` and captions, and `publishing` reads the clip's own marks. Without this, cutting a sensitive interval into a clip would launder it. `ai.index` is the one node every derivative passes that has the lineage, and it needs no catalog change.
-- **Limit, stated plainly.** A mark added to a source **after** a clip was derived does not reach that clip. Neither `service.Assets.AddSensitive` nor this node handles it. Flagged for `core` and `publishing`.
-- **Revisit if.** Marks should be evaluated live through the lineage at export time.
+- **Choice.** Two steps, both through `asset.Lineage.Segments`, including clips of clips.
+  - When `ai.index` indexes a derivative at its current version, it stores the sources' marks on its own timeline with `MarkSensitive`, in the same transaction, reason `inherited from <source>`.
+  - `ai.analyze`, `ai.find_segment` and `ai.editorial` also read the sources' marks live, so a mark added **after** a clip was cut still stops that text reaching an external endpoint.
+
+  A source no longer in the catalog adds nothing, since what it passed on was stored at index time.
+- **Why.** D30 excludes marked segments from `public.db`, captions and external AI. Without this, cutting a sensitive interval into a clip would launder it. `ai.index` is the one node every derivative passes that has the lineage, and it needs no catalog change.
+- **Limit, stated plainly.** `publicexport.SensitiveIntervals` reads a clip's own marks and its direct sources' (`publishing`'s I231), one level up. A mark added later to a grandparent reaches a clip of a clip on public paths only after that clip is indexed again. Flagged in the final report.
+- **Revisit if.** Marks should be evaluated live through the whole chain at export time as well.
 
 ### I215. An `external` capability marks a non-local engine
 
