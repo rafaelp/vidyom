@@ -102,8 +102,8 @@ func listOf[T any](items []T, err error) (api.List[T], error) {
 	return api.List[T]{Items: items}, nil
 }
 
-// page normalizes a service's list so items is never null.
-func page[T any](l api.List[T], err error) (api.List[T], error) {
+// normalized makes sure a service's list has a non-null items array.
+func normalized[T any](l api.List[T], err error) (api.List[T], error) {
 	if err != nil {
 		return api.List[T]{}, err
 	}

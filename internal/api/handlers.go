@@ -193,17 +193,17 @@ func (s *server) jobHandlers() map[string]handlerFunc {
 	}
 	return map[string]handlerFunc{
 		api.RouteJobsList: func(c *call) error {
-			page0, err := c.pageQuery()
+			paging, err := c.pageQuery()
 			if err != nil {
 				return err
 			}
 			q := api.JobQuery{
-				PageQuery: page0,
+				PageQuery: paging,
 				Status:    domain.JobStatus(c.query("status")),
 				Workflow:  c.query("workflow"),
 				AssetID:   c.query("asset_id"),
 			}
-			list, err := page(s.d.Jobs.List(c.ctx, c.scope, q))
+			list, err := normalized(s.d.Jobs.List(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteJobsGet: func(c *call) error {
@@ -216,7 +216,7 @@ func (s *server) jobHandlers() map[string]handlerFunc {
 			if err != nil {
 				return err
 			}
-			list, err := page(s.d.Jobs.Logs(c.ctx, c.scope, c.ref(), q))
+			list, err := normalized(s.d.Jobs.Logs(c.ctx, c.scope, c.ref(), q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteJobsCancel: action(func(c *call, r api.JobActionRequest) (domain.Job, error) {
@@ -332,18 +332,18 @@ func (s *server) handleUploadChunk(c *call) error {
 func (s *server) assetHandlers() map[string]handlerFunc {
 	return map[string]handlerFunc{
 		api.RouteAssetsList: func(c *call) error {
-			page0, err := c.pageQuery()
+			paging, err := c.pageQuery()
 			if err != nil {
 				return err
 			}
 			q := api.AssetQuery{
-				PageQuery:  page0,
+				PageQuery:  paging,
 				Kind:       domain.AssetKind(c.query("kind")),
 				Status:     domain.AssetStatus(c.query("status")),
 				SourceID:   c.query("source_id"),
 				Collection: c.query("collection"),
 			}
-			list, err := page(s.d.Assets.List(c.ctx, c.scope, q))
+			list, err := normalized(s.d.Assets.List(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteAssetsGet: func(c *call) error {
@@ -666,17 +666,17 @@ func (s *server) handleSearch(c *call) error {
 func (s *server) approvalHandlers() map[string]handlerFunc {
 	return map[string]handlerFunc{
 		api.RouteApprovalsList: func(c *call) error {
-			page0, err := c.pageQuery()
+			paging, err := c.pageQuery()
 			if err != nil {
 				return err
 			}
 			q := api.ApprovalQuery{
-				PageQuery: page0,
+				PageQuery: paging,
 				Status:    domain.ApprovalStatus(c.query("status")),
 				Kind:      domain.ApprovalKind(c.query("kind")),
 				AssetID:   c.query("asset_id"),
 			}
-			list, err := page(s.d.Approvals.List(c.ctx, c.scope, q))
+			list, err := normalized(s.d.Approvals.List(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteApprovalsGet: func(c *call) error {
@@ -715,17 +715,17 @@ func (s *server) publicationHandlers() map[string]handlerFunc {
 			return replyRun(c, out, err)
 		},
 		api.RoutePublicationsList: func(c *call) error {
-			page0, err := c.pageQuery()
+			paging, err := c.pageQuery()
 			if err != nil {
 				return err
 			}
 			q := api.PublicationQuery{
-				PageQuery:   page0,
+				PageQuery:   paging,
 				AssetID:     c.query("asset_id"),
 				Destination: c.query("destination"),
 				Status:      domain.PublicationStatus(c.query("status")),
 			}
-			list, err := page(s.d.Publications.List(c.ctx, c.scope, q))
+			list, err := normalized(s.d.Publications.List(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RoutePublicationsGet: func(c *call) error {
@@ -808,11 +808,11 @@ func (s *server) pluginHandlers() map[string]handlerFunc {
 }
 
 func (s *server) eventQuery(c *call) (api.EventQuery, error) {
-	page0, err := c.pageQuery()
+	paging, err := c.pageQuery()
 	if err != nil {
 		return api.EventQuery{}, err
 	}
-	return api.EventQuery{PageQuery: page0, Since: c.query("since"), Type: event.Type(c.query("type"))}, nil
+	return api.EventQuery{PageQuery: paging, Since: c.query("since"), Type: event.Type(c.query("type"))}, nil
 }
 
 func (s *server) eventHandlers() map[string]handlerFunc {
@@ -822,16 +822,16 @@ func (s *server) eventHandlers() map[string]handlerFunc {
 			if err != nil {
 				return err
 			}
-			list, err := page(s.d.Events.List(c.ctx, c.scope, q))
+			list, err := normalized(s.d.Events.List(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteEventsDeliv: func(c *call) error {
-			page0, err := c.pageQuery()
+			paging, err := c.pageQuery()
 			if err != nil {
 				return err
 			}
-			q := api.DeliveryQuery{PageQuery: page0, Status: event.DeliveryStatus(c.query("status"))}
-			list, err := page(s.d.Events.Deliveries(c.ctx, c.scope, q))
+			q := api.DeliveryQuery{PageQuery: paging, Status: event.DeliveryStatus(c.query("status"))}
+			list, err := normalized(s.d.Events.Deliveries(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteEventsStream: func(c *call) error {
@@ -1043,18 +1043,18 @@ func (s *server) budgetHandlers() map[string]handlerFunc {
 func (s *server) auditHandlers() map[string]handlerFunc {
 	return map[string]handlerFunc{
 		api.RouteAuditList: func(c *call) error {
-			page0, err := c.pageQuery()
+			paging, err := c.pageQuery()
 			if err != nil {
 				return err
 			}
 			q := api.AuditQuery{
-				PageQuery: page0,
+				PageQuery: paging,
 				Since:     c.query("since"),
 				Actor:     c.query("actor"),
 				Action:    c.query("action"),
 				Resource:  c.query("resource"),
 			}
-			list, err := page(s.d.Audit.List(c.ctx, c.scope, q))
+			list, err := normalized(s.d.Audit.List(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteAuditVerify: func(c *call) error {
@@ -1071,11 +1071,11 @@ func (s *server) auditHandlers() map[string]handlerFunc {
 // ---- Logs and observability ----
 
 func (s *server) logQuery(c *call) (api.LogQuery, error) {
-	page0, err := c.pageQuery()
+	paging, err := c.pageQuery()
 	if err != nil {
 		return api.LogQuery{}, err
 	}
-	return api.LogQuery{PageQuery: page0, Since: c.query("since"), Level: c.query("level"), JobID: c.query("job_id")}, nil
+	return api.LogQuery{PageQuery: paging, Since: c.query("since"), Level: c.query("level"), JobID: c.query("job_id")}, nil
 }
 
 func (s *server) observabilityHandlers() map[string]handlerFunc {
@@ -1096,7 +1096,7 @@ func (s *server) observabilityHandlers() map[string]handlerFunc {
 			if err != nil {
 				return err
 			}
-			list, err := page(s.d.Observability.Logs(c.ctx, c.scope, q))
+			list, err := normalized(s.d.Observability.Logs(c.ctx, c.scope, q))
 			return reply(c, http.StatusOK, list, err)
 		},
 		api.RouteLogsStream: func(c *call) error {

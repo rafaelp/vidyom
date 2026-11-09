@@ -37,6 +37,7 @@ const (
 	tokenSystem    = "tok-system"
 	tokenWorker    = "tok-worker"
 	tokenRevoked   = "tok-revoked"
+	tokenNobody    = "tok-nobody" // a member with no role, so no permission at all
 )
 
 // world is a fake of everything behind the handler. Each call is recorded with its
@@ -124,6 +125,7 @@ func newWorld(t *testing.T) *world {
 			tokenEditor:    {UserULID: "01J0000000000000000000000C", Email: "editor@example.com", Method: domain.AuthDevice},
 			tokenViewer:    {UserULID: "01J0000000000000000000000D", Email: "viewer@example.com", Method: domain.AuthDevice},
 			tokenSystem:    {UserULID: "01J0000000000000000000000E", Email: "root@example.com", Method: domain.AuthDevice, SystemAdmin: true},
+			tokenNobody:    {UserULID: "01J0000000000000000000000F", Email: "nobody@example.com", Method: domain.AuthDevice},
 		},
 		members: map[string]domain.Role{
 			"admin@example.com/acme":     domain.RoleAdmin,
@@ -131,6 +133,7 @@ func newWorld(t *testing.T) *world {
 			"editor@example.com/acme":    domain.RoleEditor,
 			"viewer@example.com/acme":    domain.RoleViewer,
 			"viewer@example.com/globex":  domain.RoleAdmin,
+			"nobody@example.com/acme":    domain.Role(""),
 		},
 		shutdown: make(chan struct{}),
 		counts:   map[string]int{},

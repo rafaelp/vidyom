@@ -353,18 +353,17 @@ func TestSystemAdminNeedsAMembership(t *testing.T) {
 }
 
 func TestRoutePermissionsAreEnforced(t *testing.T) {
-	// viewer@ is a viewer of acme: below every route that needs more, and nothing
-	// in this table is decided per resource.
+	// nobody@ is a member of acme with no role, so no route's permission holds.
 	w := newWorld(t)
 	h := w.serve()
 	for _, rt := range api.Routes {
-		if rt.Permission == "" || serviceDecidesPermission[rt.Name] || domain.RoleViewer.Has(rt.Permission) {
+		if rt.Permission == "" || serviceDecidesPermission[rt.Name] {
 			continue
 		}
 		t.Run(rt.Name, func(t *testing.T) {
 			w.resetCalls()
 			req := requestFor(rt, routeCases[rt.Name])
-			req.token = tokenViewer
+			req.token = tokenNobody
 			if rt.Tenant != api.TenantNone {
 				req.tenant = tenantA
 			}
@@ -385,6 +384,29 @@ func TestRoutePermissionsAreEnforced(t *testing.T) {
 				t.Fatalf("a denied read wrote the audit: %+v", records)
 			}
 		})
+	}
+}
+
+// Routes with no table permission depend on the resource (D7), so the service decides
+// and must see who is asking.
+func TestDynamicRoutesReachTheServiceWithTheRole(t *testing.T) {
+	w := newWorld(t)
+	h := w.serve()
+	approve := request{method: "POST", path: "/api/v1/approvals/APR-001/approve", token: tokenViewer, tenant: tenantA, key: "k1"}
+	wantStatus(t, do(h, approve), http.StatusOK)
+	got := w.lastCall(t)
+	if got.Name != "approvals.Approve" || got.Scope.Principal.Role != domain.RoleViewer {
+		t.Fatalf("call = %+v", got)
+	}
+
+	// The service's refusal is the answer, and the audit shows the attempt failed.
+	w.resetCalls()
+	w.err = errs.Forbidden(string(domain.PermApprovalDecidePublication))
+	approve.key = "k2"
+	wantError(t, do(h, approve), http.StatusForbidden, errs.CodeForbidden)
+	records := w.auditRecords()
+	if len(records) != 2 || records[1].Result != resultFailed {
+		t.Fatalf("records = %+v", records)
 	}
 }
 

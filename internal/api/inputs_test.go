@@ -328,6 +328,25 @@ func TestWorkflowLookupErrorStopsTheRun(t *testing.T) {
 	wantError(t, rec, http.StatusNotFound, errs.CodeNotFound)
 }
 
+// /tmp and /private/tmp on macOS: either form of a symlinked root must work, and the
+// canonical reference names the real file.
+func TestRootBehindASymlink(t *testing.T) {
+	f := newIngestFixture(t)
+	alias := filepath.Join(filepath.Dir(f.root), "alias")
+	if err := os.Symlink(f.root, alias); err != nil {
+		t.Fatal(err)
+	}
+	h := f.w.serve(func(d *Deps) { d.IngestRoots = []string{alias} })
+	real := filepath.Join(f.root, "class.mp4")
+	for _, ref := range []string{"server:" + filepath.Join(alias, "class.mp4"), "server:" + real} {
+		f.w.resetCalls()
+		wantStatus(t, do(h, f.run(fileInput(t, ref))), http.StatusAccepted)
+		if got := f.submittedInputs(t)["file"]; got != "server:"+real {
+			t.Fatalf("%s canonicalized to %v", ref, got)
+		}
+	}
+}
+
 func TestLexicalRootCheckHandlesPrefixNames(t *testing.T) {
 	s := &server{d: Deps{IngestRoots: []string{"/data/ingest"}}}
 	cases := map[string]bool{

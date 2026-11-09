@@ -162,11 +162,47 @@ Real services are not imported. Replacing the fakes is `integration`'s work in `
 
 Master plan §10 `api`, repeated as a checklist:
 
-- [ ] Every route in `api.Routes` is served, worker routes included.
-- [ ] `Vidyom-Tenant` rule, idempotency keys, permission checks from the route table, cross-tenant `404`, error model.
-- [ ] Unix socket with restricted mode and peer identity; HTTPS TLS 1.3; HTTPS on loopback for Docker Desktop.
-- [ ] No listener when sealed or when the configured interface is missing; never a `0.0.0.0` fallback.
-- [ ] SSE with `Last-Event-ID` resume; disconnecting never affects a job.
-- [ ] Resumable uploads with checksum; `server:` enforcement against `ingestRoots`.
-- [ ] `vidyomd init`, `vidyomd start`, `service.Uploads`, `service.Doctor`.
-- [ ] Handler tests with fake services; own paths build, `go vet` clean, tests pass with `-race`.
+- [x] Every route in `api.Routes` is served, worker routes included.
+- [x] `Vidyom-Tenant` rule, idempotency keys, permission checks from the route table, cross-tenant `404`, error model.
+- [x] Unix socket with restricted mode and peer identity; HTTPS TLS 1.3; HTTPS on loopback for Docker Desktop.
+- [x] No listener when sealed or when the configured interface is missing; never a `0.0.0.0` fallback.
+- [x] SSE with `Last-Event-ID` resume; disconnecting never affects a job.
+- [x] Resumable uploads with checksum; `server:` enforcement against `ingestRoots`.
+- [x] `vidyomd init`, `vidyomd start`, `service.Uploads`, `service.Doctor`.
+- [x] Handler tests with fake services; own paths build, `go vet` clean, tests pass with `-race`.
+
+Services are fakes in this component's committed tests. What runs against real components is `integration`'s, through `wire.go`.
+
+## 15. Wiring notes for `integration`
+
+`cmd/vidyomd/wire.go` sets `wireDeps` in `init()`. Everything goes in `daemon.Deps`:
+
+| Field | From | Note |
+|---|---|---|
+| `API.Authenticator`, `API.Devices` | `authentication.New(...)`, `.Devices()` | Leave `authentication.Options.TLSFingerprint` nil: the daemon fills the pin from the listener |
+| `API.Authorizer` | `authorization.New(...)` | |
+| `API.Auditor`, `API.Audit` | `audit.New(...)`, `.Service()` | Needs `Options.System`: tenant-free mutations and the boot record go to the system chain. Do not also call `vault.AuditBoot`; `daemon.Run` writes `daemon.boot` |
+| `API.TenantStores` | `persistence.Open(...)` | `RequireExisting: !cfg.Bootstrapping` |
+| `API.Tenants`, `Users`, `Budgets`, `TenantConfig` | `tenants.New(...)` | `Options.ConfigDir: cfg.ConfigDir` |
+| `API.Secrets` | `vault.New(...).Secrets()` | |
+| `API.Assets`, `Search`, `Storages`, `Publications`, `Plugins`, `Observability`, `Connectors` | Their components | |
+| `API.Workflows`, `Jobs`, `Approvals`, `Introspection`, `Coordinator`, `Events` | `jobs.New(...)` and `events.New(...)` | |
+| `API.Uploads` | Optional | `daemon.Run` builds `uploads.New` from `TenantStores` and `cfg.SpoolDir`. Build it in `wire.go` only if another component needs the same value |
+| `API.Doctor` | Leave nil | `daemon.Run` installs its own |
+| `API.HealthChecks` | Optional | For example the AI worker, not critical. Redis is added from `Queue` as critical |
+| `MasterKey` | `vault.ProviderFor(cfg.Vault.Unseal)` | Required; `Run` checks it before any listener |
+| `Queue` | `queue.NewRedis(...)` | |
+| `Preflight` | Optional | Whatever must hold before serving |
+| `Background` | Engine loops, scheduler, event dispatcher, `tenants.Maintenance` | An error stops the daemon, so a service should return an error only when it cannot continue |
+| `Reload` | `tenants.Reload` | `SIGHUP`; `Manager` too if it reloads |
+| `Bootstrap` | An adapter over `tenants.Bootstrap` | `Credentials` is the `*authentication.Service`. `wireDeps` is also called for `vidyomd init`, with `cfg.Bootstrapping` true, so anything that needs Redis or a populated database should wait for `Run` |
+| `Logger` | `slog.New(Manager.Handler)` | The default is JSON lines on stderr |
+
+Compose:
+
+- Same-host on Docker Desktop: `{"https": {"interface": "eth0", "port": 8443, "loopbackPublished": true, "tls": {"mode": "auto"}}}` and `ports: ["127.0.0.1:8443:8443"]`. Verified by hand against a real Docker Desktop while this was built. There is no way for the daemon to check the publish side; `doctor --network` warns about it.
+- `VIDYOMD_CONFIG_DIR` or `--config-dir` must point at the directory holding `daemon.json`. It is decoded strictly, so every key must exist in `config.Daemon`.
+- Daemon and workers must be able to read `spoolDir`: directories are `0750`, files `0640`.
+- A shared Unix socket directory must not be group-writable, or the daemon refuses it. Use `0750` with a shared group and socket mode `0660`.
+- The worker token is in `<data-dir>/secrets/worker.token` unless `--worker-token-file` says otherwise. Mount that file for the workers.
+- Every tenant-scoped mutation needs `Idempotency-Key`. The CLI sends one. A hand-written `curl` must too.

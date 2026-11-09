@@ -174,6 +174,44 @@ func TestRealInterfaceLookup(t *testing.T) {
 	t.Skip("no loopback interface")
 }
 
+// The whole path with no injected lookup: a real interface name, its real addresses.
+func TestBindingARealInterface(t *testing.T) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := ""
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 && iface.Flags&net.FlagUp != 0 {
+			name = iface.Name
+		}
+	}
+	if name == "" {
+		t.Skip("no loopback interface")
+	}
+	cfg := baseConfig(t)
+	cfg.Listeners = config.Listeners{HTTPS: &config.HTTPSListener{Interface: name, Port: 0, TLS: config.TLS{Mode: config.TLSAuto}}}
+	r := start(t, cfg, testDeps(&fakeAuthn{}))
+	defer r.stop(t)
+	if len(r.infos) == 0 {
+		t.Fatal("no listener")
+	}
+	for _, info := range r.infos {
+		host, _, err := net.SplitHostPort(info.Address)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !net.ParseIP(host).IsLoopback() || info.Interface != name {
+			t.Errorf("unexpected listener: %+v", info)
+		}
+		resp, err := pinnedClient("", nil).Get("https://" + info.Address + "/api/v1/version")
+		if err != nil {
+			t.Fatalf("%s: %v", info.Address, err)
+		}
+		_ = resp.Body.Close()
+	}
+}
+
 func TestInterfaceBindsEveryAddressAndNothingElse(t *testing.T) {
 	cfg := baseConfig(t)
 	cfg.Listeners = config.Listeners{HTTPS: &config.HTTPSListener{Interface: "ovl0", Port: freePort(t), TLS: config.TLS{Mode: config.TLSAuto}}}
