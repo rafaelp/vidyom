@@ -37,7 +37,8 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 
 - **Choice.**
   - A failed task heartbeat does not stop the node. The daemon enforces the lease when the result arrives, through `lease_id`. After `DaemonOutageLimit` (default 1 h) of consecutive failures the node is aborted. `410` on a heartbeat aborts at once and drops the result.
-  - `complete` and `fail` are re-delivered with capped backoff until acknowledged or the worker shuts down. `410` means another owner: ack and drop.
+  - `complete` and `fail` are re-delivered with capped backoff until acknowledged. `410` means another owner: ack and drop. Nothing else acks, so a `404`, which the engine never answers for its own tasks, is retried as a misrouted request. After `DaemonOutageLimit` delivery gives up, leaving the entry pending, so a poisoned task cannot hold a slot forever.
+  - Plaintext inputs go when the node ends, before delivery, which can last an outage.
   - The heartbeat's cancel flag cancels the node's context only when its descriptor has `SupportsAbort`. Otherwise the node finishes (D11). A cancelled node is reported with `Code: "cancelled"`, not retryable.
   - Graceful shutdown waits `--shutdown-grace` (default 30 s), then cancels nodes and reports `unavailable`, retryable.
   - Stale claiming takes batches of 16, so entries of long tasks cannot hide a dead consumer's, and skips tasks running here. Claiming uses twice the lease period as minimum idle, and a live lease elsewhere answers through the daemon.
@@ -76,7 +77,7 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 
 ### I185. Scratch files carry their provenance in a sidecar
 
-- **Choice.** `storage.get`, `video.transcode` and `video.cut` write `<file>.origin.json` with `role`, `key`, `sha256`, `profile` and `family` (`master`, `proxy`). `OpenInput` on a `scratch://` reference returns `LocalInput.Role` and `SHA256` from it and, when a role is recorded, recomputes the checksum. `video.cut` accepts only role `master` with a matching checksum. `audio.extract` accepts role `master` or family `master`. `storage.put` copies `profile` into its output. Nothing a client sends can create a sidecar.
+- **Choice.** `storage.get`, `video.transcode` and `video.cut` write `<file>.origin.json` with `role`, `key`, `sha256`, `profile` and `family` (`master`, `proxy`). `OpenInput` on a `scratch://` reference returns `LocalInput.Role` and `SHA256` from it and, when a role is recorded, recomputes the checksum. `video.cut` accepts only role `master` with a matching checksum. `audio.extract` accepts role `master` or family `master`. A re-encode of anything derived from a proxy stays family `proxy`, whatever its target profile. `storage.put` copies `profile` into its output. Only scratch has sidecars: one beside a `server:` or `upload:` file is ignored. Nothing a client sends can create one in scratch.
 - **Why.** §6.4 requires "the worker's local cache stores the role and the origin checksum, and `video.cut` checks both", and D56 requires knowing that an audio source is the master, not a proxy. A scratch URI alone carries neither.
 - **Revisit if.** Scratch moves to object storage (I5's Future case): the same fields become object metadata.
 
@@ -90,18 +91,19 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 
 - **Choice.**
   - **Tolerance:** max(100 ms, 1 frame of the reference), 100 ms for a reference without video (D21).
-  - **Duration:** the container duration, or a packet scan when it is missing or the timestamps are broken.
-  - **VFR:** more than 0.5% of PTS deltas (at least 2) deviate from the median by more than 10% and 1 ms.
-  - **Broken timestamps:** a missing PTS, non-monotonic DTS, or a gap larger than 5 s and 100 medians.
+  - **Duration:** the container duration, or a packet scan of the longer of video and audio when it is missing or the timestamps are broken. An output keeps the longer stream, so a video-only figure would reject a healthy file.
+  - **VFR:** more than 0.5% of timestamp deltas (at least 2) deviate from the median by more than 10% and 1.5 ms. The floor sits above Matroska's millisecond rounding.
+  - **Rate of a stream that declares none:** measured from its timestamps. `r_frame_rate` is not used, because it names the smallest tick rather than the frames held.
+  - **Broken timestamps:** a packet with neither PTS nor DTS, non-monotonic DTS, or a gap larger than 5 s and 100 medians. A stream missing only some PTS is measured by its DTS, since B-frames in AVI and MPEG-PS normally have none.
   - **Normalization:** `video.transcode` always writes CFR with an explicit rate. A CFR source keeps its exact rational rate. A VFR or broken source takes the nearest standard rate (23.976, 24, 25, 29.97, 30, 50, 59.94, 60) within 1.5% of its average, else the next one above it, else its rounded average when above 60, capped at 120. Broken inputs also get `-fflags +genpts+igndts`. Audio goes through `aresample=async=1:first_pts=0`.
-  - **Rejection:** `video.validate_timeline` fails with permanent `validation_failed` above tolerance, carrying the durations, and reports `valid: true` otherwise. `video.transcode`, `video.cut` and `audio.extract` also check their own output, so a bad file never reaches a later node.
+  - **Rejection:** `video.validate_timeline` fails with permanent `validation_failed` above tolerance, with the durations in the message, which is what reaches the job's record, and reports `valid: true` otherwise. `video.transcode`, `video.cut` and `audio.extract` also check their own output, so a bad file never reaches a later node.
 - **Why.** D21 sets the tolerance and the CFR rule, not how to detect VFR nor which rate to pick. R10 says "rejects". The catalog's `valid` output stays true on success so a workflow can read it. Thresholds are set against generated fixtures. **Validate:** on real camera files.
 - **Revisit if.** Real recordings are misclassified.
 
 ### I192. Clip and preview rendering
 
 - **Choice.**
-  - `video.cut` always re-encodes, for frame accuracy, with per-segment input seeking and a concat filter. It uses the source's master profile by `auto:master` unless `profile` is given, never upscaled. Up to 64 segments. A segment beyond the source's duration by more than the tolerance is `invalid_argument`, within it is clamped. Output duration must match the segment sum within max(100 ms, one frame per segment).
+  - `video.cut` always re-encodes, for frame accuracy, with per-segment input seeking and a concat filter. It uses the source's master profile by `auto:master` unless `profile` is given, never upscaled. Up to 64 segments. A segment beyond the video stream's end by more than the tolerance is `invalid_argument`, within it is clamped: where audio outlasts video, a clip needs video. Output duration must match the segment sum within max(100 ms, one frame per segment).
   - `video.cut` requires `DirectAccess` on the `master` instance (§7.2), answering `capability_unsupported` otherwise, and role `master` plus a checksum on the resolved input.
   - `video.preview` uses fixed parameters, not a profile: H.264 `veryfast`, CRF 30, at most 480p, AAC 64 kbps. It reads `proxy` or scratch, and refuses `master` and `archive`, because §3.2 says from the proxy and a preview must not pull the master from storage.
   - `video.thumbnail` writes JPEG at most 1280 wide, never upscaled. `atSeconds` defaults to a tenth of the duration and is clamped into it.
@@ -131,7 +133,7 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 
 ### I186. Checksums on GCS without paying for reads
 
-- **Choice.** GCS has no SHA-256. On write the driver computes SHA-256 and CRC32C over the stream. A mismatch with `PutOptions.SHA256` cancels the upload before commit, so no object appears. After commit it compares its CRC32C with the server's and deletes the object on a difference. Both values are stored as object metadata (`vidyom-sha256`, `vidyom-crc32c`). `Verify` checks the wanted SHA-256 against the recorded one and the recorded CRC32C against the server's current CRC32C, with no read. An object with no recorded metadata is streamed and hashed. `storage.put` with `verifyChecksum` relies on the driver's write-time check plus a `Stat`, so it never reads the role it just wrote, on any driver.
+- **Choice.** GCS has no SHA-256. On write the driver computes SHA-256 and CRC32C over the stream. A mismatch with `PutOptions.SHA256` cancels the upload before commit, so no object appears. After commit it compares its CRC32C with the server's and deletes the object on a difference. Both values are stored as object metadata (`vidyom-sha256`, `vidyom-crc32c`). A failure to record them deletes the new generation, so a failed write leaves no object it could not verify. A copy names the source's metadata explicitly, since a rewrite with a non-empty body may not carry it over on real GCS. `Verify` checks the wanted SHA-256 against the recorded one and the recorded CRC32C against the server's current CRC32C, with no read. An object with no recorded metadata is streamed and hashed. `storage.put` with `verifyChecksum` relies on the driver's write-time check plus a `Stat`, so it never reads the role it just wrote, on any driver.
 - **Why.** §7.2 says not to use Archive for operational reads, and R29 warns about retrieval costs, yet §3.1 requires a verified backup. The server's CRC32C describes the bytes it stored, and the local CRC32C was computed over the same stream as the SHA-256. A read-back of a 10 GB raw file would cost real money on every ingest for little more assurance.
 - **Revisit if.** An audit requires a periodic deep read: `verify-storage` could stream on request. **Validate:** on real GCS (I12), `fake-gcs-server` only imitates it.
 
@@ -143,7 +145,7 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
   |---|---|---|
   | `versioning` | yes: generations retained, on by default, `parameters.versioning: false` turns it off | declared by `parameters.versioning`, a bucket setting |
   | `range_reads`, `server_side_copy`, `checksum_verification` | yes | yes |
-  | `resumable_upload` | yes: a retry with the same idempotency key and a seekable source continues from the verified partial file | yes: chunked upload within one `Put`; a retried node uploads again |
+  | `resumable_upload` | yes: after a failed attempt, a retry with the same idempotency key and a seekable source continues from the verified partial file. A killed process starts over, since each attempt owns its file and only a failing one parks it | yes: chunked upload within one `Put`; a retried node uploads again |
   | `storage_classes` | no: recorded in metadata, no physical effect | yes |
   | `restore_semantics` | no: nothing needs restoring | no: `ARCHIVE` reads immediately |
   | `direct_access` | from `usage` | from `usage` |
@@ -168,6 +170,7 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 
 - **Choice.** `credentialsRef` is required, the value is the service account JSON resolved at open, and it stays in the client's memory. There is no fallback to ambient application-default credentials. `parameters.endpoint` points at an emulator and is the only way to run without credentials. Tests run one conformance suite against `fake-gcs-server` twice: in a container (`fsouza/fake-gcs-server`, name `vidyom-dev-media-*`, non-default port, removed at the end) when Docker answers, and in-process through its `fakestorage` package otherwise and always. Real GCS is never contacted (I12).
 - **Why.** Ambient credentials would be a silent fallback, picking up whatever the host has (§15.6's spirit). A container proves the driver over real HTTP against the server's released image, and the in-process run keeps a plain `go test` meaningful with no Docker.
+- **Outages.** Calls that move no media have a 2-minute deadline and 4 attempts (`parameters.retryAttempts`). Transfers can last hours, so they get a stall timeout instead: 5 minutes with no progress (`parameters.stallTimeoutSeconds`). Otherwise an outage would hang a node while its heartbeat kept it looking alive, and it would never reach `node.Transient`.
 - **Revisit if.** Workload identity is wanted: an explicit `parameters.ambientCredentials` could allow it.
 
 ---
@@ -183,3 +186,7 @@ Pointed out per `AGENTS.md`, implementation as stated.
 | 3 | §4.1 vs §6.3 | §4.1 says the audio comes from the master; the §6.3 example passes `compress` output straight to `ai.transcribe` (R26 already notes the missing `audio.extract`) | `audio.extract` accepts the scratch master through its sidecar (I185) |
 | 4 | `node.Scratch.Resolve` comment vs §6.4 | "Refusing other jobs' files" vs a child job reading its parent's render | Explicit list on the lease (I182) |
 | 5 | `website/examples/profiles/` vs `schemas/media-profile.v1.json` | The website's examples have no `version` and `speech-opus` no `container`, which the schema requires | The schema |
+
+## Open for the maintainer
+
+- **`ingestRoots` are daemon-wide.** Any tenant with permission to run a workflow can read any `server:` path inside them. §5.4 restricts server paths to input directories and says nothing about tenants, while D6 isolates tenants everywhere else. This version follows the text as written: a multi-tenant host should keep its ingest roots to files all its tenants may see, and per-tenant roots would need a configuration change in `api` and `media`.
