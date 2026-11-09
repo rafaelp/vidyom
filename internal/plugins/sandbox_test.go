@@ -82,7 +82,7 @@ func TestSandboxFilesystem(t *testing.T) {
 		{"read the daemon's data", "p", "read-file", map[string]string{"path": secretFile}},
 		{"write the daemon's data", "p", "write-file", map[string]string{"path": filepath.Join(data, "x"), "data": "x"}},
 		{"write a ro: grant", "p", "write-file", map[string]string{"path": filepath.Join(readable, "x"), "data": "x"}},
-		{"replace its own code", "p", "write-file", map[string]string{"path": filepath.Join(store, "bin", "plugin"), "data": "x"}},
+		{"change its own manifest", "p", "write-file", map[string]string{"path": filepath.Join(store, "vidyom-plugin.json"), "data": "x"}},
 		{"add to its own store", "p", "write-file", map[string]string{"path": filepath.Join(store, "x"), "data": "x"}},
 		{"read a grant it was not given", "nothing", "read-file", map[string]string{"path": readableFile}},
 		{"use another process's temp directory", "nothing", "read-file", map[string]string{"path": filepath.Join(tempDir, "scratch")}},

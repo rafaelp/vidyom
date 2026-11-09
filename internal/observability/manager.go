@@ -73,6 +73,17 @@ type Options struct {
 	Tuning Tuning
 }
 
+// OptionsFromConfig fills what comes from daemon.json. Registry, Secrets, Tenants,
+// TenantSecrets and Auditor are left for wiring.
+func OptionsFromConfig(cfg config.Daemon) Options {
+	o := Options{RetentionDays: cfg.Retention.LogDays}
+	if cfg.DataDir != "" {
+		o.LogDir = filepath.Join(cfg.DataDir, "logs")
+		o.StateFile = filepath.Join(cfg.DataDir, "observability-state.json")
+	}
+	return o
+}
+
 // Manager is the Observability Manager (§10.1). Emit and the telemetry.Metrics methods
 // never block on an exporter and never fail, whatever exporters are doing.
 type Manager struct {

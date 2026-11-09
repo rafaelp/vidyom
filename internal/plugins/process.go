@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,7 +43,6 @@ type process struct {
 
 	cmd      *exec.Cmd
 	conn     *jsonrpc.Conn
-	stdin    *os.File
 	runDir   string
 	proxy    *egressProxy
 	redactor *redact.Redactor
@@ -103,7 +103,7 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 	}()
 
 	tempDir := ""
-	if hasPermission(perms.Filesystem, PermJobTemp) {
+	if slices.Contains(perms.Filesystem, PermJobTemp) {
 		tempDir = filepath.Join(runDir, "tmp")
 		if err := os.Mkdir(tempDir, 0o700); err != nil {
 			return nil, fmt.Errorf("create plugin temp directory: %w", err)
@@ -197,7 +197,6 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 	}
 	started = true
 	p.cmd = cmd
-	p.stdin = stdinW
 	p.conn = jsonrpc.NewConn(stdoutR, stdinW, stdinW, p.handleHostCall)
 
 	connDone := make(chan struct{})
@@ -234,15 +233,22 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 	params := plugin.InitializeParams{ProtocolVersion: plugin.ProtocolVersion, Permissions: perms, TenantID: tenant, TempDir: tempDir}
 	if err := p.conn.Call(initCtx, plugin.MethodInitialize, params, &result); err != nil {
 		p.kill()
-		return nil, errs.Wrap(errs.CodeUnavailable, err, "plugin "+rec.ID+" did not complete initialize")
+		return nil, startFailure{errs.Wrap(errs.CodeUnavailable, err, "plugin "+rec.ID+" did not complete initialize")}
 	}
 	if err := checkHandshake(result, m); err != nil {
 		p.kill()
-		return nil, err
+		return nil, startFailure{err}
 	}
 	p.log.Info("plugin started", "event", "plugin.started", "isolation", iso.name(), "version", rec.Version)
 	return p, nil
 }
+
+// startFailure marks an error from a process that did start, which counts toward the
+// restart backoff. A refusal before starting does not: nothing ran, and nothing would
+// get better with waiting.
+type startFailure struct{ error }
+
+func (e startFailure) Unwrap() error { return e.error }
 
 // checkHandshake refuses a process that is not what was installed, or claims more than
 // its manifest (I271).
@@ -300,10 +306,10 @@ func (p *process) idleSince() time.Time { return time.Unix(0, p.lastUsed.Load())
 
 func (p *process) inFlight() int { return len(p.slots) }
 
-// kill ends the process now.
+// kill ends the process now. Once it has exited its PID is not ours to signal.
 func (p *process) kill() {
 	p.stopping.Store(true)
-	if p.cmd != nil && p.cmd.Process != nil {
+	if p.cmd != nil && p.cmd.Process != nil && !p.hasExited() {
 		killGroup(p.cmd.Process.Pid)
 	}
 }
@@ -373,7 +379,7 @@ func (p *process) handleHostCall(ctx context.Context, method string, params json
 		if p.stopping.CompareAndSwap(false, true) {
 			p.log.Error("plugin flooded the daemon and was killed", "event", "plugin.flood")
 			p.r.metrics.Add(telemetry.SecurityAnomalies, 1, telemetry.Labels{"kind": "plugin_flood", telemetry.LabelTenant: string(p.tenant)})
-			killGroup(p.cmd.Process.Pid)
+			p.kill()
 		}
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeUnauthorized, Message: "too many calls"}
 	}

@@ -525,7 +525,8 @@ func (r *Runtime) acquire(ctx context.Context, tenant domain.TenantID, rec domai
 	}
 	p, err := r.spawn(ctx, tenant, rec, m, perms)
 	if err != nil {
-		if !errs.IsCode(err, errs.CodeFailedPrecondition) {
+		var started startFailure
+		if errors.As(err, &started) || !errs.IsCode(err, errs.CodeFailedPrecondition) {
 			r.mu.Lock()
 			s.recordFailure(r.now())
 			r.mu.Unlock()

@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 // Isolation levels reported in domain.PluginRecord.Isolation (I260).
@@ -104,13 +103,4 @@ func splitFilesystem(entries []string, tempDir string) (read, write []string, er
 		}
 	}
 	return read, write, nil
-}
-
-func hasPermission(entries []string, want string) bool {
-	for _, entry := range entries {
-		if strings.EqualFold(entry, want) {
-			return true
-		}
-	}
-	return false
 }

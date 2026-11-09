@@ -653,6 +653,16 @@ func TestDefaultsAreLocalJSONLAndPrometheus(t *testing.T) {
 	}
 }
 
+func TestOptionsFromConfig(t *testing.T) {
+	o := OptionsFromConfig(config.Daemon{DataDir: "/var/lib/vidyom", Retention: config.Retention{LogDays: 7}})
+	if o.LogDir != "/var/lib/vidyom/logs" || o.RetentionDays != 7 || o.StateFile != "/var/lib/vidyom/observability-state.json" {
+		t.Errorf("options: %+v", o)
+	}
+	if o := OptionsFromConfig(config.Daemon{}); o.LogDir != "" || o.StateFile != "" {
+		t.Errorf("no data directory: %+v", o)
+	}
+}
+
 func TestExplicitConfigurationIsRespected(t *testing.T) {
 	dir := t.TempDir()
 	f := newFixture()
@@ -1349,7 +1359,7 @@ func TestTraceHelpersRoundTrip(t *testing.T) {
 func TestObserveDuration(t *testing.T) {
 	f := newFixture()
 	m := newManager(t, config.Observability{Metrics: []config.Sink{sink("m", "fake")}}, Options{Registry: f.reg})
-	done := ObserveDuration(m, telemetry.WorkflowDuration, telemetry.Labels{"workflow_id": "create-clip", telemetry.LabelTenant: "acme"})
+	done := ObserveDuration(m, telemetry.WorkflowDuration, telemetry.Labels{"workflow": "create-clip", telemetry.LabelTenant: "acme"})
 	done()
 	flush(t, m)
 	f.mu.Lock()
@@ -1357,7 +1367,7 @@ func TestObserveDuration(t *testing.T) {
 	f.mu.Unlock()
 	eventually(t, "the observation", func() bool {
 		for _, p := range exp.snapshot() {
-			if p.Name == telemetry.WorkflowDuration && p.Kind == "histogram" && p.Labels["workflow_id"] == "create-clip" {
+			if p.Name == telemetry.WorkflowDuration && p.Kind == "histogram" && p.Labels["workflow"] == "create-clip" {
 				return true
 			}
 		}

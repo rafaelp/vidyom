@@ -474,6 +474,11 @@ func TestHandshakeFailures(t *testing.T) {
 				t.Errorf("want %s, got %v", c.code, err)
 			}
 			eventually(t, "nothing to be left running", func() bool { return f.r.liveProcesses() == 0 })
+			// A process that started and failed counts toward the backoff, so it is not
+			// started again on every call.
+			if _, err := f.call("p", "whoami", nil); !errs.IsCode(err, errs.CodeUnavailable) {
+				t.Errorf("during the backoff: %v", err)
+			}
 		})
 	}
 	t.Run("--no-init", func(t *testing.T) {
