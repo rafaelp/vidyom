@@ -49,14 +49,17 @@ fmt-check: ## Fail if any Go file is not gofmt-formatted
 	@out=$$(find . -name '*.go' -not -path './website/*' -not -path './library/*' -exec gofmt -l {} +); \
 	if [ -n "$$out" ]; then echo "not gofmt-formatted:"; echo "$$out"; exit 1; fi
 
-check-static: ## Prove the CLI and worker stay cgo-free and free of database packages
+check-static: ## Prove the CLI, worker and contracts stay cgo-free and free of database packages
+	CGO_ENABLED=0 $(GO) build ./internal/contract/... ./schemas
+	@bad=$$(CGO_ENABLED=0 $(GO) list -deps ./internal/contract/... ./schemas | grep -E '$(FORBIDDEN_DEPS)' || true); \
+	if [ -n "$$bad" ]; then echo "contract packages link forbidden packages:"; echo "$$bad"; exit 1; fi
 	CGO_ENABLED=0 $(GO) build -o /dev/null ./cmd/vidyom
 	CGO_ENABLED=0 $(GO) build -o /dev/null ./cmd/vidyom-worker
 	@for cmd in vidyom vidyom-worker; do \
 		bad=$$(CGO_ENABLED=0 $(GO) list -deps ./cmd/$$cmd | grep -E '$(FORBIDDEN_DEPS)' || true); \
 		if [ -n "$$bad" ]; then echo "cmd/$$cmd links forbidden packages:"; echo "$$bad"; exit 1; fi; \
 	done
-	@echo "check-static: vidyom and vidyom-worker are cgo-free and database-free"
+	@echo "check-static: contracts, vidyom and vidyom-worker are cgo-free and database-free"
 
 cross: ## Cross-compile the CLI and worker for all platforms (D41)
 	@for target in $(CROSS_TARGETS); do \
