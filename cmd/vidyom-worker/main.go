@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -151,7 +152,26 @@ func loadDaemonConfig(path string) (config.Daemon, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return cfg, fmt.Errorf("parse %s: %w", path, err)
 	}
+	applyDirectoryDefaults(&cfg)
 	return cfg, nil
+}
+
+// applyDirectoryDefaults gives the shared directories the same defaults the daemon
+// gives them (I138), so a daemon.json that leaves them out means the same thing to
+// both processes.
+func applyDirectoryDefaults(cfg *config.Daemon) {
+	if cfg.DataDir == "" {
+		return
+	}
+	if cfg.SpoolDir == "" {
+		cfg.SpoolDir = filepath.Join(cfg.DataDir, "spool")
+	}
+	if cfg.ScratchDir == "" {
+		cfg.ScratchDir = filepath.Join(cfg.DataDir, "scratch")
+	}
+	if cfg.CacheDir == "" {
+		cfg.CacheDir = filepath.Join(cfg.DataDir, "cache")
+	}
 }
 
 // readToken reads the worker token from its file. The value never appears in a flag
