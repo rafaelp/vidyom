@@ -52,6 +52,10 @@ type request struct {
 }
 
 func main() {
+	if has("--sleeper") {
+		time.Sleep(time.Hour)
+		return
+	}
 	if has("--crash-at-start") {
 		fmt.Fprintln(os.Stderr, "crashing as asked")
 		os.Exit(3)
@@ -246,6 +250,15 @@ func invoke(ctx context.Context, inv hook.Invocation) (any, error) {
 	case "spawn-child":
 		// Keeps running after this process ends, unless the group is killed.
 		cmd := exec.Command(os.Args[0], "--sleeper")
+		if err := cmd.Start(); err != nil {
+			return answer(false, err.Error()), nil
+		}
+		return answer(true, strconv.Itoa(cmd.Process.Pid)), nil
+	case "spawn-detached":
+		// Leaves the process group and holds stderr open, so killing the group misses it.
+		cmd := exec.Command(os.Args[0], "--sleeper")
+		cmd.Stderr = os.Stderr
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 		if err := cmd.Start(); err != nil {
 			return answer(false, err.Error()), nil
 		}

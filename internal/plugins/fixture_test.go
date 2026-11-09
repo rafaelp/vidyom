@@ -343,7 +343,7 @@ func (f *fixture) writeTree(name, binary string, manifest map[string]any) string
 var probeActions = []string{
 	"env", "whoami", "echo-data", "read-file", "write-file", "exec", "dial", "udp", "unix", "http-get", "keyctl", "secret",
 	"leak-secret", "fail-with-secret", "sleep", "ignore-cancel", "crash", "oversized", "flood", "big-parameters", "long-reason",
-	"spawn-child", "stderr-only",
+	"spawn-child", "spawn-detached", "stderr-only",
 }
 
 func probeManifest(id string, perms map[string]any, args ...string) map[string]any {

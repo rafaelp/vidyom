@@ -29,6 +29,7 @@ import (
 const (
 	maxLogMessage    = 8 << 10
 	maxHostCallsRate = 1000 // per second, more is a flood (I271)
+	pipeDrainWait    = time.Second
 )
 
 // process is one running plugin for one tenant.
@@ -49,7 +50,8 @@ type process struct {
 	log      *slog.Logger
 
 	slots    chan struct{} // in-flight limit
-	exited   chan struct{}
+	exited   chan struct{} // the process has ended
+	finished chan struct{} // and everything it held has been released
 	stopping atomic.Bool
 	started  time.Time
 	lastUsed atomic.Int64
@@ -92,6 +94,7 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 		log:      r.logger.With("tenant_id", string(tenant), "plugin", rec.ID),
 		slots:    make(chan struct{}, r.opts.MaxInFlight),
 		exited:   make(chan struct{}),
+		finished: make(chan struct{}),
 		started:  r.now(),
 	}
 	p.touch()
@@ -214,7 +217,6 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 		defer close(connDone)
 		// The context is not the caller's: the connection lives as long as the process.
 		_ = p.conn.Run(context.Background())
-		stdoutR.Close()
 		// A closed connection, for instance over an oversized message, ends the process.
 		if !p.hasExited() {
 			killGroup(cmd.Process.Pid)
@@ -224,17 +226,27 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 	go func() {
 		defer close(stderrDone)
 		p.drainStderr(stderrR)
-		stderrR.Close()
 	}()
 	go func() {
 		err := cmd.Wait()
 		close(p.exited)
 		_ = p.conn.Close()
 		killGroup(cmd.Process.Pid) // anything it left behind
+		// A child that left the process group can hold the pipes open forever. What is
+		// already in them gets a moment to be read, and then they close.
+		timer := time.NewTimer(pipeDrainWait)
+		select {
+		case <-connAndStderrDone(connDone, stderrDone):
+		case <-timer.C:
+		}
+		timer.Stop()
+		stdoutR.Close()
+		stderrR.Close()
 		<-connDone
 		<-stderrDone
 		p.releaseResources()
 		r.onExit(p, err)
+		close(p.finished)
 	}()
 
 	initCtx, cancel := context.WithTimeout(ctx, r.opts.InitTimeout)
@@ -251,6 +263,17 @@ func (r *Runtime) spawn(ctx context.Context, tenant domain.TenantID, rec domain.
 	}
 	p.log.Info("plugin started", "event", "plugin.started", "isolation", iso.name(), "version", rec.Version)
 	return p, nil
+}
+
+// connAndStderrDone closes when both readers have ended.
+func connAndStderrDone(connDone, stderrDone <-chan struct{}) <-chan struct{} {
+	both := make(chan struct{})
+	go func() {
+		<-connDone
+		<-stderrDone
+		close(both)
+	}()
+	return both
 }
 
 // startFailure marks an error from a process that did start, which counts toward the
@@ -321,6 +344,7 @@ func (p *process) stop(ctx context.Context) {
 	if p.cmd == nil {
 		return
 	}
+	defer func() { <-p.finished }() // what it held is gone when stop returns
 	p.stopping.Store(true)
 	if !p.hasExited() {
 		callCtx, cancel := context.WithTimeout(ctx, p.r.opts.ShutdownTimeout)
@@ -483,7 +507,8 @@ func (p *process) drainStderr(r io.Reader) {
 		}
 		p.log.Warn(p.clean(line), "event", "plugin.stderr")
 	}
-	// A line over the buffer ends the scanner: keep the pipe from filling.
+	// A line over the buffer ends the scanner: keep the pipe from filling, until the
+	// pipe closes.
 	_, _ = io.Copy(io.Discard, r)
 }
 

@@ -593,6 +593,9 @@ func TestIdleProcessesStopAndRestartOnUse(t *testing.T) {
 	if _, err := os.Stat(first["temp"].(string)); !os.IsNotExist(err) {
 		t.Errorf("the private temp directory must go with the process: %v", err)
 	}
+	if !strings.Contains(f.logs.String(), `"event":"plugin.started"`) {
+		t.Errorf("logs: %s", f.logs.String())
+	}
 	var second map[string]any
 	if err := json.Unmarshal(f.mustCall("p", "whoami", nil).Parameters, &second); err != nil {
 		t.Fatal(err)
@@ -664,6 +667,46 @@ func TestChildrenDieWithThePlugin(t *testing.T) {
 		p, err := os.FindProcess(childPID)
 		return err != nil || signalZero(p) != nil
 	})
+}
+
+// TestDetachedChildCannotHangCleanup is a child that left the process group and keeps
+// stderr open. It survives, since nothing here can find it, but it must not keep the
+// daemon's goroutines or the private temp directory.
+func TestDetachedChildCannotHangCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sessions")
+	}
+	f := newFixture(t, unsandboxed)
+	f.installProbe("p", plugin.Permissions{Filesystem: []string{PermJobTemp}})
+	var who map[string]any
+	if err := json.Unmarshal(f.mustCall("p", "whoami", nil).Parameters, &who); err != nil {
+		t.Fatal(err)
+	}
+	result := f.mustCall("p", "spawn-detached", nil)
+	if !result.Allow {
+		t.Fatalf("spawn: %+v", result)
+	}
+	childPID, err := strconv.Atoi(result.Reason)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if p, err := os.FindProcess(childPID); err == nil {
+			_ = p.Kill()
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	start := time.Now()
+	if err := f.r.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(start); elapsed > 15*time.Second {
+		t.Errorf("Close took %v", elapsed)
+	}
+	if _, err := os.Stat(who["temp"].(string)); !os.IsNotExist(err) {
+		t.Errorf("the temp directory must be gone when stop returns: %v", err)
+	}
 }
 
 func TestStderrAndHostLogAreRedactedAndNeverBlock(t *testing.T) {
