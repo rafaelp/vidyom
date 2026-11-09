@@ -77,7 +77,7 @@ func (n *uploadNode) Execute(ctx context.Context, env node.Env, in node.Input) (
 		return node.Result{}, classifyStore(err)
 	}
 	if err := checkUploadGate(ctx, store, record, cfg.Publishing); err != nil {
-		return node.Result{}, node.Permanent(err)
+		return node.Result{}, classifyStore(err)
 	}
 	conn, err := d.Publishing(ctx, record.Destination)
 	if err != nil {

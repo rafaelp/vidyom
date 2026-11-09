@@ -100,6 +100,11 @@ func refreshRecord(ctx context.Context, store repo.TenantStore, conn connector.P
 	}
 	remote, err := conn.GetStatus(ctx, record.RemoteID)
 	if errs.IsCode(err, errs.CodeNotFound) {
+		// A video that was live and is gone was removed. A fresh upload may just not be
+		// listed yet, which must not read as a withdrawal.
+		if record.Status != domain.PubPublished && record.Status != domain.PubScheduled {
+			return record, false, nil
+		}
 		remote, err = connector.RemoteVideo{RemoteID: record.RemoteID, Status: connector.RemoteRemoved}, nil
 	}
 	if err != nil {
@@ -175,7 +180,7 @@ func refreshRecord(ctx context.Context, store repo.TenantStore, conn connector.P
 			return err
 		}
 		if record.Visibility != next.Visibility {
-			if err := auditEffect(ctx, tx, tenant, actor, "publication.visibility_observed", next, now); err != nil {
+			if err := auditEffect(ctx, tx, tenant, actor, "publication.visibility_observed", domain.PermPublicationRead, next, now); err != nil {
 				return err
 			}
 		}

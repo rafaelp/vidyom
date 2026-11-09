@@ -100,7 +100,7 @@ func (n *prepareNode) prepare(ctx context.Context, d node.DaemonEnv, tx repo.Ten
 	if existing, found, err := tx.Publications().FindByIdempotencyKey(ctx, key); err != nil {
 		return prepareOutput{}, err
 	} else if found {
-		return outputFor(tx, ctx, existing)
+		return outputFor(ctx, tx, existing)
 	}
 
 	if err := publishableStatus(asset); err != nil {
@@ -165,7 +165,7 @@ func (n *prepareNode) prepare(ctx context.Context, d node.DaemonEnv, tx repo.Ten
 				return prepareOutput{}, err
 			}
 		}
-		out, err := outputFor(tx, ctx, r)
+		out, err := outputFor(ctx, tx, r)
 		if err != nil {
 			return prepareOutput{}, err
 		}
@@ -203,7 +203,7 @@ func (n *prepareNode) prepare(ctx context.Context, d node.DaemonEnv, tx repo.Ten
 	if err := d.Emit(ctx, tx, event.Draft{Type: event.PublicationCreated, AssetID: string(asset.ID), Payload: eventPayload(record)}); err != nil {
 		return prepareOutput{}, err
 	}
-	return outputFor(tx, ctx, record)
+	return outputFor(ctx, tx, record)
 }
 
 func firstOf(values ...string) string {
@@ -300,7 +300,7 @@ func mergeTags(ctx context.Context, tx repo.TenantRepos, asset domain.Asset, tag
 }
 
 // outputFor builds the node's output from a record.
-func outputFor(tx repo.TenantRepos, ctx context.Context, r domain.Publication) (prepareOutput, error) {
+func outputFor(ctx context.Context, tx repo.TenantRepos, r domain.Publication) (prepareOutput, error) {
 	file, err := sourceOf(ctx, tx, r)
 	if err != nil {
 		return prepareOutput{}, err

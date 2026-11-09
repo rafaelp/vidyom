@@ -14,6 +14,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/rafaelp/vidyom/internal/contract/connector"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
@@ -176,7 +177,11 @@ func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader) (int64, 
 	}
 }
 
+// syncDir makes a rename durable. Windows cannot flush a directory handle.
 func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	d, err := os.Open(dir)
 	if err != nil {
 		return err

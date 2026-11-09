@@ -65,10 +65,13 @@ func (n *awaitNode) Execute(ctx context.Context, env node.Env, in node.Input) (n
 	wait := n.opts.PollMin
 	for {
 		remote, err := conn.GetStatus(ctx, record.RemoteID)
-		if err != nil {
+		switch {
+		case errs.IsCode(err, errs.CodeNotFound):
+			// A fresh upload may not be listed yet. Keep waiting until the timeout
+			// rather than calling it gone (Validate: real API lag).
+		case err != nil:
 			return node.Result{}, awaitError(ctx, err)
-		}
-		if remote.Status != connector.RemoteProcessing {
+		case remote.Status != connector.RemoteProcessing:
 			return n.finish(ctx, d, record, remote)
 		}
 		env.Progress(0, "waiting for "+record.Destination+" to finish processing")

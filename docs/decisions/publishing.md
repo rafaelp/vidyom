@@ -1,6 +1,6 @@
 # Implementation decisions: `publishing`
 
-Decisions of the `publishing` component, numbered from its range `I220–I239` (master plan, section 8). Same format as [`docs/decisions.md`](../decisions.md): the choice, the reason and what would make us revisit it. None of them changes a maintainer decision `Dn`. What this log says the component does is a **target** until its commits land; the final report states what is done and what is mock-tested only.
+Decisions of the `publishing` component, numbered from its range `I220–I239` (master plan, section 8). Same format as [`docs/decisions.md`](../decisions.md): the choice, the reason and what would make us revisit it. None of them changes a maintainer decision `Dn`. What this log describes has landed in this component's commits; the final report states what is mock-tested only.
 
 ## Publication lifecycle
 
@@ -115,7 +115,7 @@ Decisions of the `publishing` component, numbered from its range `I220–I239` (
 
 ### I229. `publish.await_processing` polls and does not suspend
 
-- **Choice.** It polls inside the task with backoff (2 s to 60 s, overridable for tests), default `timeoutSeconds` 21600. `node.Suspension` is designed for approvals and `flow.wait`, and this component cannot assume the engine resumes a daemon-pool task. A timeout is transient and leaves the record `processing`; `publish.refresh` can pick it up.
+- **Choice.** It polls inside the task with backoff (2 s to 60 s, overridable for tests), default `timeoutSeconds` 21600. `node.Suspension` is designed for approvals and `flow.wait`, and this component cannot assume the engine resumes a daemon-pool task. A timeout is transient and leaves the record `processing`; `publish.refresh` can pick it up. "Not found" while waiting counts as still processing, because a fresh upload may not be listed yet; `publish.refresh` treats it as removed only for a record that was `published` or `scheduled`. **Validate** the real API's lag.
 - **Why.** Simple, cancellable, restart-safe: class `none` runs again and re-reads remote state.
 - **Revisit if.** Long processing holds too many task slots: a `flow.wait` loop in the workflow or a suspension can replace it.
 

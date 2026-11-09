@@ -145,8 +145,8 @@ func TestFullLifecycle(t *testing.T) {
 	if err != nil || !version.Immutable {
 		t.Fatalf("version must be immutable after publication (D35): %+v, %v", version, err)
 	}
-	if len(h.store.AuditRecords()) != 1 || h.store.AuditRecords()[0].Resource != pub {
-		t.Fatalf("visibility change must be audited: %+v", h.store.AuditRecords())
+	if records := h.store.AuditRecords(); len(records) != 1 || records[0].Resource != pub || records[0].Permission != domain.PermPublicationCreate || records[0].Actor != "job:JOB-001" {
+		t.Fatalf("visibility change must be audited: %+v", records)
 	}
 
 	events := h.store.Events()
@@ -193,6 +193,9 @@ func TestFullLifecycle(t *testing.T) {
 	}
 	if hasEvent(h.store.Events(), event.PublicationWithdrawn) != 1 {
 		t.Fatal("publication.withdrawn must fire")
+	}
+	if records := h.store.AuditRecords(); records[len(records)-1].Permission != domain.PermPublicationWithdraw {
+		t.Fatalf("the withdrawal is audited under its own permission: %+v", records)
 	}
 
 	run[syncOutput](h, "catalog.public.sync", map[string]any{})
@@ -371,6 +374,40 @@ func TestAwaitProcessing(t *testing.T) {
 		cancel()
 		_, err := h.runErr("publish.await_processing", map[string]any{"publicationId": pub}, runOpts{ctx: ctx})
 		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v", err)
+		}
+	})
+
+	t.Run("a fresh upload not yet listed is waited for", func(t *testing.T) {
+		h := newHarness(t)
+		polls := 0
+		h.addScripted("lagging", func(s *scripted) {
+			s.getStatus = func(ctx context.Context, remoteID string) (connector.RemoteVideo, error) {
+				polls++
+				if polls < 3 {
+					return connector.RemoteVideo{}, errs.NotFound("video")
+				}
+				return s.Publishing.GetStatus(ctx, remoteID)
+			}
+		})
+		pub := run[prepareOutput](h, "publish.prepare", map[string]any{"assetId": "CLIP-001", "destination": "lagging", "approvalId": "APR-001"}).PublicationID
+		run[uploadOutput](h, "publish.upload", map[string]any{"publicationId": pub})
+		out := run[awaitOutput](h, "publish.await_processing", map[string]any{"publicationId": pub})
+		if !out.Ready || polls != 3 {
+			t.Fatalf("polls %d, await %+v", polls, out)
+		}
+	})
+
+	t.Run("a destination error stops the wait", func(t *testing.T) {
+		h := newHarness(t)
+		h.addScripted("down", func(s *scripted) {
+			s.getStatus = func(context.Context, string) (connector.RemoteVideo, error) {
+				return connector.RemoteVideo{}, errs.New(errs.CodeUnavailable, "down")
+			}
+		})
+		pub := run[prepareOutput](h, "publish.prepare", map[string]any{"assetId": "CLIP-001", "destination": "down", "approvalId": "APR-001"}).PublicationID
+		run[uploadOutput](h, "publish.upload", map[string]any{"publicationId": pub})
+		if _, err := h.runErr("publish.await_processing", map[string]any{"publicationId": pub}); !node.IsTransient(err) {
 			t.Fatalf("got %v", err)
 		}
 	})
@@ -1808,7 +1845,28 @@ func TestRefresh(t *testing.T) {
 		}
 	})
 
-	t.Run("an unknown video also counts as removed", func(t *testing.T) {
+	t.Run("a live video the destination no longer lists counts as removed", func(t *testing.T) {
+		h := newHarness(t)
+		gone := false
+		h.addScripted("odd", func(s *scripted) {
+			s.getStatus = func(ctx context.Context, remoteID string) (connector.RemoteVideo, error) {
+				if gone {
+					return connector.RemoteVideo{}, errs.NotFound("video")
+				}
+				return s.Publishing.GetStatus(ctx, remoteID)
+			}
+		})
+		pub := run[prepareOutput](h, "publish.prepare", map[string]any{"assetId": "CLIP-001", "destination": "odd", "visibility": "public", "approvalId": "APR-001"}).PublicationID
+		run[uploadOutput](h, "publish.upload", map[string]any{"publicationId": pub})
+		run[finalizeOutput](h, "publish.finalize", map[string]any{"publicationId": pub, "visibility": "public"})
+		gone = true
+		run[refreshOutput](h, "publish.refresh", map[string]any{"publicationId": pub})
+		if got := h.publication(pub).Status; got != domain.PubWithdrawn {
+			t.Fatalf("status %s", got)
+		}
+	})
+
+	t.Run("a fresh upload not yet listed is not a withdrawal", func(t *testing.T) {
 		h := newHarness(t)
 		h.addScripted("odd", func(s *scripted) {
 			s.getStatus = func(context.Context, string) (connector.RemoteVideo, error) {
@@ -1817,9 +1875,9 @@ func TestRefresh(t *testing.T) {
 		})
 		pub := run[prepareOutput](h, "publish.prepare", map[string]any{"assetId": "CLIP-001", "destination": "odd", "approvalId": "APR-001"}).PublicationID
 		run[uploadOutput](h, "publish.upload", map[string]any{"publicationId": pub})
-		run[refreshOutput](h, "publish.refresh", map[string]any{"publicationId": pub})
-		if got := h.publication(pub).Status; got != domain.PubWithdrawn {
-			t.Fatalf("status %s", got)
+		out := run[refreshOutput](h, "publish.refresh", map[string]any{"publicationId": pub})
+		if out.Publications[0].Changed || h.publication(pub).Status != domain.PubProcessing {
+			t.Fatalf("refresh %+v", out)
 		}
 	})
 

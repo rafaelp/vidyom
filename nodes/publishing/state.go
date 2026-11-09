@@ -298,7 +298,7 @@ func moreOpen(a, b domain.Visibility) domain.Visibility {
 
 // auditEffect records an external visibility change (D37). It records the fact,
 // never content, and a failure propagates so the effect is never unaudited.
-func auditEffect(ctx context.Context, tx repo.TenantRepos, tenant domain.TenantID, actor, action string, p domain.Publication, now time.Time) error {
+func auditEffect(ctx context.Context, tx repo.TenantRepos, tenant domain.TenantID, actor, action string, perm domain.Permission, p domain.Publication, now time.Time) error {
 	details, err := json.Marshal(map[string]string{
 		"destination": p.Destination,
 		"visibility":  string(p.Visibility),
@@ -313,7 +313,7 @@ func auditEffect(ctx context.Context, tx repo.TenantRepos, tenant domain.TenantI
 		At:         now,
 		Actor:      actor,
 		Action:     action,
-		Permission: domain.PermPublicationCreate,
+		Permission: perm,
 		Resource:   string(p.ID),
 		Result:     "allowed",
 		Details:    details,

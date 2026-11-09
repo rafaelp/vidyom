@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -301,7 +302,11 @@ func seal(path string) (string, int64, error) {
 	return hex.EncodeToString(h.Sum(nil)), size, nil
 }
 
+// syncDir makes a rename durable. Windows cannot flush a directory handle.
 func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	d, err := os.Open(dir)
 	if err != nil {
 		return err

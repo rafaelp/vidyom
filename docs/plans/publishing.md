@@ -27,7 +27,9 @@ Out of scope:
 |---|---|---|
 | `connectors/publishing/mock` | `mock` | Driver `mock`, JSON state, injection |
 | `connectors/publishing/youtube` | `youtube` | Driver `youtube`: resumable upload, status, thumbnails, captions, reconcile |
+| `connectors/publishing/youtube/youtubetest` | `youtubetest` | Local HTTP mock of the YouTube Data API, also usable by `integration` |
 | `connectors/publishing/vimeo`, `peertube`, `instagram-reels` | `vimeo`, `peertube`, `instagramreels` | Skeletons |
+| `connectors/publishing/skeleton`, `connectors/catalog/skeleton` | `skeleton` | The shared body of those skeletons |
 | `connectors/publishing/resolver` | `resolver` | `connector.PublishingResolver` over the registry and tenant configuration |
 | `connectors/catalog/public` | `public` | Public catalog driver `local-file` |
 | `connectors/catalog/mediacms`, `videovortex`, `rewind` | same | Skeletons |
@@ -240,10 +242,12 @@ pubs := publishingnodes.NewService(publishingnodes.ServiceDeps{...})
 
 ## 14. Definition of done (master plan, section 10)
 
-- [ ] `mock` destination with persisted state, failure injection and reconcile
-- [ ] `youtube` connector with resumable upload and reconcile tested against an HTTP mock
-- [ ] `published` only with URL (R43), published-file deduplication (R4), `allowPrivateUploadBeforeApproval` (D37)
-- [ ] `publicexport` producing the schema, atomic replace, opaque public IDs, sensitive segments excluded (D30), test scanning the file for storage keys and ULIDs
-- [ ] `local-file` public connector
-- [ ] Skeletons with documented gaps per I11
-- [ ] Own paths build, `go vet` clean, tests pass with `-race`, decisions recorded, nothing unimplemented presented as working
+Checked against the final report's commands. YouTube and everything downstream of it is mock-tested only (I12).
+
+- [x] `mock` destination with persisted state, failure injection and reconcile
+- [x] `youtube` connector with resumable upload and reconcile tested against an HTTP mock
+- [x] `published` only with URL (R43), published-file deduplication (R4), `allowPrivateUploadBeforeApproval` (D37)
+- [x] `publicexport` producing the schema, atomic replace, opaque public IDs, sensitive segments excluded (D30), test scanning the file for storage keys and ULIDs
+- [x] `local-file` public connector
+- [x] Skeletons with documented gaps per I11
+- [x] Own paths build, `go vet` clean, tests pass with `-race`, decisions recorded, nothing unimplemented presented as working

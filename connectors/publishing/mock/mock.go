@@ -31,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sync"
 	"time"
 
@@ -243,7 +244,7 @@ func (d *Destination) save(s State) error {
 	if err == nil {
 		err = os.Rename(tmp.Name(), d.path)
 	}
-	if err == nil {
+	if err == nil && runtime.GOOS != "windows" { // Windows cannot flush a directory
 		var dirFile *os.File
 		if dirFile, err = os.Open(dir); err == nil {
 			err = dirFile.Sync()

@@ -171,7 +171,7 @@ func (n *withdrawNode) withdrawOne(ctx context.Context, d node.DaemonEnv, record
 		if err := settleAsset(ctx, tx, record.AssetID, false, now); err != nil {
 			return err
 		}
-		if err := auditEffect(ctx, tx, d.Tenant(), jobActor(d), "publication.withdrawn", record, now); err != nil {
+		if err := auditEffect(ctx, tx, d.Tenant(), jobActor(d), "publication.withdrawn", domain.PermPublicationWithdraw, record, now); err != nil {
 			return err
 		}
 		return d.Emit(ctx, tx, event.Draft{Type: event.PublicationWithdrawn, AssetID: string(record.AssetID), Payload: eventPayload(record)})

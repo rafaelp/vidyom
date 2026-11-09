@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -168,7 +169,7 @@ func (f *fileStore) save(key string, s session) error {
 	if err == nil {
 		err = os.Rename(tmp.Name(), f.path(key))
 	}
-	if err == nil {
+	if err == nil && runtime.GOOS != "windows" { // Windows cannot flush a directory
 		var dir *os.File
 		if dir, err = os.Open(f.dir); err == nil {
 			err = dir.Sync()

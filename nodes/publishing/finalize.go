@@ -98,7 +98,7 @@ func (n *finalizeNode) Execute(ctx context.Context, env node.Env, in node.Input)
 		kinds := []domain.ApprovalKind{domain.ApprovalPublication, domain.ApprovalVisibilityChange}
 		a, err := checkApproval(ctx, store, approvalID, record.AssetID, record.AssetVersion, kinds...)
 		if err != nil {
-			return node.Result{}, node.Permanent(err)
+			return node.Result{}, classifyStore(err)
 		}
 		record.ApprovalID = a.ID
 		approved = true
@@ -197,7 +197,7 @@ func (n *finalizeNode) Execute(ctx context.Context, env node.Env, in node.Input)
 		if err := settleAsset(ctx, tx, record.AssetID, approved, now); err != nil {
 			return err
 		}
-		if err := auditEffect(ctx, tx, d.Tenant(), jobActor(env), "publication.visibility_set", record, now); err != nil {
+		if err := auditEffect(ctx, tx, d.Tenant(), jobActor(env), "publication.visibility_set", domain.PermPublicationCreate, record, now); err != nil {
 			return err
 		}
 		eventType := event.PublicationCompleted
@@ -275,7 +275,7 @@ func (n *finalizeNode) schedule(ctx context.Context, d node.DaemonEnv, conn conn
 		if err := tx.Publications().Update(ctx, record); err != nil {
 			return err
 		}
-		if err := auditEffect(ctx, tx, d.Tenant(), jobActor(d), "publication.visibility_scheduled", record, now); err != nil {
+		if err := auditEffect(ctx, tx, d.Tenant(), jobActor(d), "publication.visibility_scheduled", domain.PermPublicationCreate, record, now); err != nil {
 			return err
 		}
 		return d.Emit(ctx, tx, event.Draft{Type: event.PublicationUpdated, AssetID: string(record.AssetID), Payload: eventPayload(record)})
