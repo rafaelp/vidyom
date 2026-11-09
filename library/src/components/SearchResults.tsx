@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 import { formatDate, formatTimestamp, kindLabel, languageTag, pluralize, spokenDuration } from '@/lib/format';
 import type { MatchedIn, SearchMoment, SearchResult } from '@/lib/search/types';
 import { Snippet } from './Snippet';

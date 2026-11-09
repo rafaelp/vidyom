@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 import { formatDate, languageTag } from '@/lib/format';
 import { videoPath } from '@/lib/links';
 import type { VideoSummary } from '@/lib/types';

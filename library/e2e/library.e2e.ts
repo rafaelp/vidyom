@@ -70,6 +70,9 @@ async function api(pathname: string): Promise<{ status: number; body: any; heade
 }
 
 beforeAll(async () => {
+  if (!fs.existsSync(path.join(ROOT, '.next', 'BUILD_ID'))) {
+    throw new Error('No production build found: run `npm run build` first.');
+  }
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vidyom-library-e2e-'));
   dbPath = path.join(directory, 'tenant', 'public.db');
   const port = await freePort();
@@ -437,6 +440,43 @@ describe('replacing and removing the file while running', () => {
     expect(logs).not.toContain('zzzzqqqq');
     expect(logs).not.toContain('nervous');
     expect(fs.readdirSync(path.dirname(dbPath))).toEqual(['public.db']);
+  });
+
+  it('sends a long transcript on request', async () => {
+    const id = 'longtranscript0000000000';
+    replaceDataset({
+      videos: [
+        {
+          public_id: id,
+          title: 'A long class',
+          kind: 'original',
+          published_at: '2026-10-01T00:00:00Z',
+          duration_seconds: 4000,
+          destinations: [
+            {
+              destination: 'youtube',
+              url: `https://media.example.internal/watch/${id}`,
+              embed_url: `https://media.example.internal/embed/${id}`,
+              supports_timestamps: true,
+            },
+          ],
+          transcript: Array.from({ length: 400 }, (_, i) => ({
+            start: i * 10,
+            end: i * 10 + 10,
+            text: `Spoken segment number ${i}.`,
+          })),
+        },
+      ],
+    });
+    const preview = await html(`/videos/${id}`);
+    expect(preview.body).toContain('Spoken segment number 299.');
+    expect(preview.body).not.toContain('Spoken segment number 300.');
+    expect(preview.body).toContain('Show the full transcript (400 segments)');
+
+    const full = await html(`/videos/${id}?transcript=all`);
+    expect(full.body).toContain('Spoken segment number 399.');
+    expect(full.body).not.toContain('Show the full transcript');
+    replaceDataset({});
   });
 
   it('did not print a framework error', () => {

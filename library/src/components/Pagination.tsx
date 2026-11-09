@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 
 interface PaginationProps {
   page: number;

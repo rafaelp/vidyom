@@ -129,9 +129,9 @@ No model is bundled.
 | `/` | Filter form, card grid, pagination | Nothing published yet; no match for filters; page past the end |
 | `/videos/[id]` | Player facade or destination links, metadata, chapters, transcript, related | `404` for unknown or withdrawn; no destination; no chapters; no transcript |
 | `/search` | Query box, mode notice, results with moments | No query; no results; `mode` notice; fetch failure |
-| any, dataset not ready | Rewritten by `proxy.ts` to `/unavailable` with `503` and `Retry-After` | Copy differs for missing, invalid and unsupported |
+| any, dataset not ready | Answered by `proxy.ts` with a self-contained `503` and `Retry-After` | Copy differs for missing, invalid and unsupported |
 
-Components: `Header`, `Footer`, `ThemeToggle`, `HeaderSearch`, `SearchExperience`, `Player`, `Thumbnail`, `VideoCard`, `MomentLink`, `ChapterList`, `Transcript`, `Pagination`, `FilterBar`, `ModeNotice`, `EmptyState`, `JsonLd`.
+Components: `SiteHeader`, `SiteFooter`, `ThemeToggle`, `HeaderSearch`, `SearchExperience`, `SearchResults`, `Player`, `Thumbnail`, `VideoCard`, `TimestampLink`, `Pagination`, `FilterForm`, `FilterFields`, `ModeNotice`, `Snippet`, `EmptyState`, `DatasetUnavailable`, `JsonLd`.
 
 Rules:
 

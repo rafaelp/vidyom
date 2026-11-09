@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 import { DatasetUnavailable } from '@/components/DatasetUnavailable';
 import { EmptyState } from '@/components/EmptyState';
 import { FilterDisclosure, FilterFields } from '@/components/FilterFields';

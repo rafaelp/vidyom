@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 import { EmptyState } from '@/components/EmptyState';
 
 // The framework adds noindex to a 404 by itself.

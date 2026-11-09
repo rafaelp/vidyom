@@ -37,7 +37,8 @@ Decisions of the public library component, numbered `I240`–`I259` per section 
 
 ### I244. Dataset states and status codes
 
-- **Choice.** `ready`, `missing`, `invalid`, `unsupported_schema`. Not ready gives `503` with `Retry-After: 60` on pages, through a `proxy.ts` rewrite to `/unavailable`, and on the API, with `dataset_unavailable`. Pages also render that state themselves, in case the file disappears between the proxy and the page; that window answers `200` with `noindex`. A valid file with no videos is a normal `200` with an empty state. The UI and API never reveal the file path.
+- **Choice.** `ready`, `missing`, `invalid`, `unsupported_schema`. Not ready gives `503` with `Retry-After: 60` on pages, as a self-contained response from `proxy.ts`, and on the API, with `dataset_unavailable`. Pages also render that state themselves, in case the file disappears between the proxy and the page; that window answers `200` with `noindex`. A valid file with no videos is a normal `200` with an empty state. The UI and API never reveal the file path.
+- **Not a rewrite.** A rewrite to an `/unavailable` route was the first version. Run over HTTP it hung for two minutes: Next.js treats a rewrite as external when its origin differs from the server's, `NextURL` turns `127.0.0.1` into `localhost`, so on a server started with `-H 127.0.0.1` the rewrite becomes an HTTP proxy to `localhost`, which on macOS resolves to `::1`, where nothing listens. Building the target from the `Host` header would fix that and open an SSRF. A plain response has no such path.
 - **Why.** A search engine reading `200` on an outage could drop pages; `503` tells it to come back. An empty catalog is a legitimate state, and after a withdrawal it may be the correct one. `schema_version` must equal `1`: v1.sql says a new version is a new file, so a newer file is refused rather than misread.
 - **Revisit if.** A schema version 2 ships; the reader then gains a second branch.
 

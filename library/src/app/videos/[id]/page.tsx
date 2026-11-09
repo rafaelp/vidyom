@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 import { notFound } from 'next/navigation';
 import { DatasetUnavailable } from '@/components/DatasetUnavailable';
 import { ExternalIcon } from '@/components/icons';

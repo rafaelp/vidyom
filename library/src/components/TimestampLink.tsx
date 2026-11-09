@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 import { formatTimestamp, spokenDuration } from '@/lib/format';
 import { momentLink } from '@/lib/links';
 import type { Destination } from '@/lib/types';

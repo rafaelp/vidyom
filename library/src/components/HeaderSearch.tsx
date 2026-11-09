@@ -8,7 +8,7 @@ export function HeaderSearch() {
   const pathname = usePathname();
   if (pathname === '/search') return null;
   return (
-    <Form action="/search" role="search" className="header-search">
+    <Form action="/search" prefetch={false} role="search" className="header-search">
       <div className="search-field">
         <label htmlFor="header-search-input" className="sr-only">
           Search videos

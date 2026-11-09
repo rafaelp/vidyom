@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { SiteLink as Link } from '@/components/SiteLink';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { pluralize } from '@/lib/format';
 import { MAX_QUERY_LENGTH, type SearchErrorBody, type SearchResponse } from '@/lib/search/types';
