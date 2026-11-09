@@ -67,6 +67,14 @@ func sharedRoot(t *testing.T) string {
 	if !ok {
 		root = t.TempDir()
 		roots[t.Name()] = root
+		// Under -count, the next run must get its own root: only the call to TempDir
+		// schedules a removal, so a reused path would keep the previous run's objects.
+		name := t.Name()
+		t.Cleanup(func() {
+			rootsMu.Lock()
+			defer rootsMu.Unlock()
+			delete(roots, name)
+		})
 	}
 	return root
 }
