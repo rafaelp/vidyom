@@ -33,11 +33,12 @@ internal/apiclient/
 internal/cli/
   cli.go                         Execute, Run, Options, root command, global flags, exit codes
   config.go                      client configuration file (no secrets)
-  credentials.go                 keyring accounts, credential lookup
+  connection.go                  server and tenant resolution, the command's client, list helpers
+  credentials.go                 keyring accounts, credential lookup, no-echo prompt, confirmations
   keyring_os.go, keyring_testfile.go   default keyring; build-tagged file keyring for E2E only
-  output.go                      JSON and tables, errors and hints, time and duration parsing
-  prompt.go                      no-echo prompt, stdin secrets, confirmations
-  cmd_*.go                       one file per command family of §11
+  output.go                      JSON and tables, errors and hints
+  parse.go                       timecodes, durations, money, typed inputs, file references
+  cmd_*.go                       the command families of §11
 ```
 
 ## 3. Client configuration
