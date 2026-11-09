@@ -38,6 +38,14 @@
             "outcome_unknown": 1
           }
         }
+      },
+      "mock-private": {
+        "driver": "mock",
+        "visibility": "public",
+        "allowPrivateUploadBeforeApproval": true,
+        "parameters": {
+          "stateDir": "@ROOT@/mock"
+        }
       }
     },
     "defaults": {

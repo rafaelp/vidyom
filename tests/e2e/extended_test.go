@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -110,6 +111,33 @@ func (sc *scenario) stepFailurePaths(t *testing.T) {
 			}
 			return false, "no publication yet"
 		})
+	})
+
+	t.Run("private-upload-before-approval", func(t *testing.T) {
+		// D37: where a destination allows it, the file goes up private, and only the
+		// publisher's decision opens it.
+		var run api.RunWorkflowResponse
+		sc.publisher.jsonOut(t, &run, "workflow", "run", "publish-private-first",
+			"--input", "assetId="+sc.grandchild, "--input", `destinations=["mock-private"]`, "--idempotency-key", "private-first")
+		waitFor(t, jobTimeout, "the private upload", func() (bool, string) {
+			state := sc.mockIfAny(t, "mock-private")
+			return state.Uploads == 1, fmt.Sprint(state.Uploads)
+		})
+		for _, video := range sc.mock(t, "mock-private").Videos {
+			if video.Visibility != "private" {
+				t.Errorf("uploaded before the gate as %s", video.Visibility)
+			}
+		}
+		sc.approvePending(t, sc.publisher)
+		sc.waitJob(t, sc.publisher, string(run.JobID), domain.JobCompleted)
+		for _, video := range sc.mock(t, "mock-private").Videos {
+			if video.Visibility != "public" {
+				t.Errorf("after the gate the video is %s", video.Visibility)
+			}
+		}
+		if state := sc.mock(t, "mock-private"); state.Uploads != 1 {
+			t.Errorf("the gate uploaded again: %d", state.Uploads)
+		}
 	})
 
 	t.Run("an-unknown-outcome-with-no-reconcile", func(t *testing.T) {
@@ -256,8 +284,12 @@ func (sc *scenario) stepOtherWorkflows(t *testing.T) {
 		}
 	})
 
+	t.Run("publish-sync", func(t *testing.T) {
+		sc.publisher.ok(t, "publish", "sync", sc.grandchild)
+	})
+
 	t.Run("the-scheduled-workflows-run-on-demand", func(t *testing.T) {
-		for _, workflow := range []string{"verify-storage", "expire-unapproved-renders"} {
+		for _, workflow := range []string{"verify-storage", "expire-unapproved-renders", "purge-deleted-archives"} {
 			var run api.RunWorkflowResponse
 			sc.admin.jsonOut(t, &run, "workflow", "run", workflow, "--idempotency-key", "on-demand-"+workflow)
 			sc.waitJob(t, sc.admin, string(run.JobID), domain.JobCompleted)
@@ -389,4 +421,114 @@ func (sc *scenario) stepObservabilityProfile(t *testing.T) {
 	t.Logf("Grafana lists: %s", truncate(string(body), 200))
 	sc.admin.ok(t, "observability", "disable", "loki")
 	sc.admin.ok(t, "observability", "disable", "tempo")
+}
+
+// ---- §15.6: what an unauthorized client cannot do, and D7 on public metadata ----
+
+func (sc *scenario) stepAuthorization(t *testing.T) {
+	sc.viewer.refused(t, "forbidden", "plugin", "install", "/tmp/anything")
+	sc.viewer.refused(t, "forbidden", "storage", "restore", "--asset", "ORI-001", "--to", "master", "--yes")
+	sc.viewer.refused(t, "forbidden", "asset", "delete", "ORI-001", "--yes")
+	sc.viewer.refused(t, "forbidden", "publish", "ORI-001", "--to", "mock-main")
+	sc.viewer.refused(t, "forbidden", "unpublish", sc.grandchild, "--all")
+	sc.editor.refused(t, "forbidden", "unpublish", sc.grandchild, "--all")
+
+	// D7: changing the public metadata of a public video is a publisher's decision.
+	sc.editor.refused(t, "forbidden", "asset", "update", sc.grandchild, "--title", "An editor's title")
+	const title = "A title the publisher chose"
+	sc.publisher.ok(t, "asset", "update", sc.grandchild, "--title", title)
+	waitFor(t, time.Minute, "the new title in public.db", func() (bool, string) {
+		got := strings.TrimSpace(sc.stack.SQL(t, publicDB, "select title from videos;"))
+		return strings.Contains(got, title), got
+	})
+}
+
+// ---- §15.6, §9.1: no secret in logs, snapshots or exported files ----
+
+func (sc *scenario) stepSecrets(t *testing.T) {
+	const value = "fictional-secret-value-4c1f2b7a"
+	cmd := exec.Command(sc.admin.bin, "secret", "add", "demo-token", "--location", "server")
+	cmd.Env = sc.admin.env()
+	cmd.Stdin = strings.NewReader(value)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("secret add: %v %s", err, out)
+	}
+	var secrets api.List[domain.SecretMeta]
+	sc.admin.jsonOut(t, &secrets, "secret", "list")
+	found := false
+	for _, secret := range secrets.Items {
+		found = found || secret.Name == "demo-token"
+	}
+	if !found {
+		t.Fatalf("the secret is not listed: %+v", secrets.Items)
+	}
+	listed, _ := json.Marshal(secrets)
+	if strings.Contains(string(listed), value) {
+		t.Fatal("secret list shows the value")
+	}
+	sc.admin.ok(t, "secret", "test", "demo-token")
+	sc.viewer.refused(t, "forbidden", "secret", "add", "viewer-token", "--location", "server")
+
+	// Nothing that was ever a credential sits in plain text where it should not.
+	forbidden := map[string]string{"the secret's value": value}
+	for _, c := range []*client{sc.admin, sc.editor, sc.publisher, sc.viewer} {
+		forbidden[c.name+"'s device credential"] = c.credential(t)
+	}
+	for _, rel := range []string{"data/logs/vidyomd.jsonl", publicDB, accessLog} {
+		raw, err := os.ReadFile(sc.stack.Fetch(t, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for label, secret := range forbidden {
+			if strings.Contains(string(raw), secret) {
+				t.Errorf("%s holds %s", rel, label)
+			}
+		}
+	}
+	// The vault holds ciphertext, and the plaintext is nowhere else in tenant.db. A query,
+	// because SQLite may still hold recent writes in its WAL.
+	plain := fmt.Sprintf("CAST('%s' AS BLOB)", value)
+	counts := sc.stack.SQL(t, tenantDB, "select count(*) from secrets; select count(*) from secrets where instr(ciphertext, "+plain+") > 0;"+
+		" select count(*) from audit_log where details like '%"+value+"%'; select count(*) from jobs where inputs like '%"+value+"%';")
+	if got := strings.Fields(counts); len(got) != 4 || got[0] == "0" || got[1] != "0" || got[2] != "0" || got[3] != "0" {
+		t.Errorf("secret, ciphertext hits, audit hits, job hits: %v", got)
+	}
+}
+
+// ---- §15.4, I9: a storage role moves without touching a workflow ----
+
+func (sc *scenario) stepSwitchStorage(t *testing.T) {
+	config := func(master string) string {
+		instance := func(role, root, usage string) string {
+			return fmt.Sprintf(`"%s": {"driver": "local", "root": %q, "usage": %q, "parameters": {"accessLog": %q}}`,
+				role, sc.stack.ServerPath(root), usage, sc.stack.ServerPath(accessLog))
+		}
+		return `{"storages": {` + strings.Join([]string{
+			instance("archive", "storage/archive", "backup_only"),
+			instance("master", master, "operational"),
+			instance("proxy", "storage/proxy", "operational"),
+		}, ", ") + `}, "archivePolicy": "approved_versions"}`
+	}
+	sc.stack.WriteTenantConfig(t, tenant, "storages.json", config("storage/master2"))
+	time.Sleep(time.Second)
+	defer sc.stack.WriteTenantConfig(t, tenant, "storages.json", config("storage/master"))
+
+	small := sc.generateFixture(t, "small.mp4", 40, "640x360", 25)
+	var started struct {
+		Job *api.RunWorkflowResponse `json:"job"`
+	}
+	sc.editor.jsonOut(t, &started, "original", "import", small, "--title", "On the new master", "--type", "yoga_class", "--idempotency-key", "moved-master")
+	job := sc.waitJob(t, sc.editor, string(started.Job.JobID), domain.JobCompleted)
+	var asset domain.Asset
+	sc.editor.jsonOut(t, &asset, "asset", "show", string(job.AssetID))
+	moved := filepath.Join("storage", "master2", tenant, asset.WorkingMaster.Key)
+	if !sc.stack.Exists(t, moved) {
+		t.Errorf("the new master is not at %s", moved)
+	}
+	if sc.stack.Exists(t, filepath.Join("storage", "master", tenant, asset.WorkingMaster.Key)) {
+		t.Error("the new master also landed in the old role's root")
+	}
+	if asset.WorkingMaster.Location == nil || !strings.HasSuffix(asset.WorkingMaster.Location.Bucket, "master2") {
+		t.Errorf("the file's recorded location: %+v", asset.WorkingMaster.Location)
+	}
 }

@@ -239,6 +239,8 @@ func (s *composeStack) WriteTenantConfig(t *testing.T, tenant, name, content str
 
 func (s *composeStack) WorkerMetricsURL() string { return "" }
 
+func (s *composeStack) ServerPath(rel string) string { return inside(rel) }
+
 func (s *composeStack) UnixSocket() string { return "" }
 
 func (s *composeStack) startObservability(t *testing.T) {

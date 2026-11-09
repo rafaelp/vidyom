@@ -110,6 +110,9 @@ func TestScenario(t *testing.T) {
 		{"x9-metrics", sc.stepMetrics},
 		{"x10-unix-socket", sc.stepUnixSocket},
 		{"x11-observability-profile", sc.stepObservabilityProfile},
+		{"x12-unauthorized-clients", sc.stepAuthorization},
+		{"x13-secrets", sc.stepSecrets},
+		{"x14-storage-role-moves", sc.stepSwitchStorage},
 	}
 	for _, step := range steps {
 		if !t.Run(step.name, step.run) {
@@ -815,6 +818,15 @@ func (sc *scenario) mock(t *testing.T, destination string) mockState {
 	var state mockState
 	mustUnmarshal(t, data, &state)
 	return state
+}
+
+// mockIfAny reads a destination's state, empty until its first upload.
+func (sc *scenario) mockIfAny(t *testing.T, destination string) mockState {
+	t.Helper()
+	if !sc.stack.Exists(t, filepath.Join("mock", tenant, destination+".json")) {
+		return mockState{}
+	}
+	return sc.mock(t, destination)
 }
 
 func (sc *scenario) publications(t *testing.T, c *client, asset string) []domain.Publication {

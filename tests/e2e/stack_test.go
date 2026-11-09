@@ -64,6 +64,8 @@ type stack interface {
 	// WorkerMetricsURL is where a worker's Prometheus endpoint can be read from this
 	// machine, or empty when it cannot.
 	WorkerMetricsURL() string
+	// ServerPath is an absolute path as the daemon sees a path under the stack's root.
+	ServerPath(rel string) string
 	// UnixSocket is the daemon's socket path on this machine, or empty.
 	UnixSocket() string
 	// Dump logs what a person needs to read after a failure.

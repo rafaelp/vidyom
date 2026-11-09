@@ -21,10 +21,11 @@ import (
 
 // The real-model proof (deliverable 5 of the integration stage, I291): faster-whisper
 // large-v3 and BGE-M3 on CPU, through the AI worker image, on real speech, searched with
-// a paraphrase that shares no word with what was said. This is what §15.2's "no literal
-// match" means, and what the fake engine cannot show. It downloads gigabytes, needs macOS
-// for `say`, and reports what happened instead of asserting a quality it cannot promise:
-// the assertions are only that the path ran on real models.
+// paraphrases that share no word with what was said. This is what §15.2's "no literal
+// match" means, and what the fake engine cannot show. Several stories, so the right one
+// has to win among others, and each is long enough for its own embedding windows (D15).
+// It downloads gigabytes, needs macOS for `say`, and reports what happened instead of
+// asserting a quality it cannot promise: the assertions are only that real models ran.
 //
 //	make real-model-proof
 //
@@ -34,7 +35,7 @@ import (
 const modelsVolume = "vidyom-dev-integration-models"
 
 // story is one passage of the spoken fixture, with a query saying the same thing in other
-// words. Each story is long enough for its own embedding windows (D15).
+// words.
 type story struct {
 	Name  string
 	Text  string
@@ -47,9 +48,12 @@ var stories = []story{
 		Text: "When the storm came, Tomas could not find his dog anywhere in the village. " +
 			"He walked along the river for three days, calling her name until his voice broke. " +
 			"Neighbors told him to stop looking, that no animal could survive such floods. " +
-			"On the fourth morning he heard scratching at the kitchen door. " +
+			"The water had carried away two bridges and the whole lower road. " +
+			"He slept in a barn and ate whatever strangers offered him. " +
+			"On the fourth morning, back at his house, he heard scratching at the kitchen door. " +
 			"There she stood, thin and muddy, her tail wagging as though nothing had happened. " +
 			"Tomas sat down on the floor and cried into her wet fur for a long time. " +
+			"He fed her the last of the soup and carried her to the fire. " +
 			"Since that day he has never once closed that door at night.",
 		Query: "beloved pet reappears safely following severe weather",
 	},
@@ -58,19 +62,57 @@ var stories = []story{
 		Text: "Every morning before sunrise, old Marta lit the oven in her little bakery by the harbor. " +
 			"Fishermen came for bread while the sky was still black, and she never charged them for the first loaf. " +
 			"Her daughter told her again and again that this generosity would ruin the shop. " +
+			"The accounts never balanced, and some winters there was barely enough flour. " +
 			"Marta only laughed and kept kneading the dough with her strong hands. " +
+			"She said that a man who goes out to sea hungry does not come back. " +
 			"When she turned ninety, the whole town lined up outside with flowers and coins, " +
 			"and every boat in the harbor rang its bell at dawn to thank her.",
-		Query: "elderly woman giving free loaves honored by grateful community",
+		Query: "elderly woman giving free loaves honored, grateful community",
 	},
 	{
 		Name: "violin",
 		Text: "My grandfather kept a broken violin on top of the wardrobe for fifty years. " +
 			"He had carried it across the border as a young man, wrapped in a blanket, and he refused to talk about it. " +
-			"Last winter, I took it to a repair shop in the city, and the craftsman found a letter hidden inside the body. " +
+			"We children were told never to touch it. " +
+			"Last winter, I took it to a repair shop in the city, because I wanted to surprise him for his birthday. " +
+			"The craftsman opened the body and found a letter hidden inside, folded very small. " +
 			"It was from his sister, who stayed behind, promising to meet him again after the war. " +
+			"He had never known it was there. " +
 			"He read it twice, folded it carefully, and asked me to teach him how to play again.",
-		Query: "hidden correspondence discovered within old musical instrument reveals family secret",
+		Query: "concealed correspondence discovered, antique musical instrument, family secret revealed",
+	},
+	{
+		Name: "climber",
+		Text: "The climbers left the hut at four with clear skies and a good forecast. " +
+			"By noon the cloud had dropped onto the ridge and Anna could no longer see her rope partner. " +
+			"She heard him shout once and then nothing. " +
+			"She dug a shallow trench in the snow, wrapped herself in the orange bivouac sack, and blew her whistle every ten minutes through the night. " +
+			"In the morning a helicopter crew spotted the orange shape from far above. " +
+			"They lowered a medic on a cable and lifted her out with frostbite in three fingers. " +
+			"Her partner had reached the valley on his own and had raised the alarm. " +
+			"Neither of them has climbed that route since.",
+		Query: "mountaineer survives blizzard overnight, rescuers airlift stranded alpinist",
+	},
+	{
+		Name: "chess",
+		Text: "Nobody in the school expected anything from the quiet boy in the last row. " +
+			"His teacher, Mister Okafor, noticed that he was drawing little boards in the margin of his notebook. " +
+			"After class he brought out an old wooden set and showed him how the pieces move. " +
+			"Within one year the boy was beating every adult in the neighborhood. " +
+			"Within three he sat across from a national master in a hall full of strangers and won on the sixtieth move. " +
+			"At the trophy ceremony he walked past the officials and handed the cup to his teacher. " +
+			"The old man kept it on his desk until he retired, and he told every new class where it came from.",
+		Query: "shy pupil becomes champion, strategy game, credits mentor",
+	},
+	{
+		Name: "lighthouse",
+		Text: "For thirty years the lighthouse at Cape Verano was kept by a widow named Ines. " +
+			"Each evening she climbed one hundred and forty steps with a can of oil. " +
+			"The government wrote twice to say that the lamp would be automated, and twice she wrote back that machines do not notice a small boat in trouble. " +
+			"One November night she saw a flare far beyond the reef, rowed out alone through heavy swell, and brought back four sailors tied to a single plank. " +
+			"The newspapers called her a hero, and she asked them to print the price of oil instead. " +
+			"When the electric lamp finally came she stayed in the cottage and still watched the water every night.",
+		Query: "coastal beacon guardian rescued shipwreck survivors, resisted automation",
 	},
 }
 
@@ -323,20 +365,26 @@ print("bge-m3 ready", round(time.time() - t, 1))
 			var result api.SearchResponse
 			start := time.Now()
 			admin.jsonOut(t, &result, "original", "search", s.Query, "--asset", "ORI-001", "--mode", mode, "--limit", "20")
-			rank := 0
+			// A window can straddle two stories, so two ranks: the first hit touching this
+			// story at all, and the hit holding the most of it, which is the strict one.
+			rankAny, rankBest, bestOverlap := 0, 0, 0.0
 			hits := []map[string]any{}
 			for j, hit := range result.Items {
-				inStory := hit.StartSeconds < spans[i][1] && spans[i][0] < hit.EndSeconds
-				if rank == 0 && inStory {
-					rank = j + 1
+				overlap := min(hit.EndSeconds, spans[i][1]) - max(hit.StartSeconds, spans[i][0])
+				if overlap > 0 && rankAny == 0 {
+					rankAny = j + 1
+				}
+				if overlap > bestOverlap {
+					bestOverlap, rankBest = overlap, j+1
 				}
 				hits = append(hits, map[string]any{
 					"start": hit.StartSeconds, "end": hit.EndSeconds, "score": hit.Score, "source": hit.Source,
-					"in_story": inStory, "text": truncate(hit.Text, 90),
+					"overlap_seconds": math.Max(overlap, 0), "text": truncate(hit.Text, 90),
 				})
 			}
 			entry[mode] = map[string]any{
-				"mode": result.Mode, "model": result.EmbeddingModel, "hits": hits, "rank_of_story": rank,
+				"mode": result.Mode, "model": result.EmbeddingModel, "hits": hits, "windows": len(result.Items),
+				"rank_touching_story": rankAny, "rank_of_best_window": rankBest,
 				"query_ms": time.Since(start).Milliseconds(),
 			}
 		}

@@ -445,6 +445,8 @@ func (s *nativeStack) WorkerMetricsURL() string {
 	return fmt.Sprintf("http://127.0.0.1:%d/metrics", s.workerMetricsPort)
 }
 
+func (s *nativeStack) ServerPath(rel string) string { return s.path(rel) }
+
 func (s *nativeStack) UnixSocket() string { return s.path("run", "vidyomd.sock") }
 
 func (s *nativeStack) Dump(t *testing.T) {
