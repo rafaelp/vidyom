@@ -87,7 +87,8 @@
       "parameters": {
         "publicationId": "${nodes.prepare.output.publication_id}",
         "visibility": "${inputs.visibility}",
-        "approvalId": "${inputs.approvalId}"
+        "approvalId": "${inputs.approvalId}",
+        "captions": { "format": "vtt" }
       }
     }
   ],
