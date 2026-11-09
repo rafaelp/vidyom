@@ -2,6 +2,7 @@ package jobqueue
 
 import (
 	"testing"
+	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/id"
 	"github.com/rafaelp/vidyom/internal/contract/node"
@@ -23,6 +24,21 @@ func TestTaskIDRoundTrip(t *testing.T) {
 		if _, _, _, err := ParseTaskID(bad); err == nil {
 			t.Errorf("%q should fail", bad)
 		}
+	}
+}
+
+func TestScratchCleanupPointer(t *testing.T) {
+	job := id.New()
+	p := ScratchCleanupPointer("acme", job, time.Unix(1, 0))
+	gotJob, gotNode, attempt, err := ParseTaskID(p.TaskID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotJob != job || gotNode != ScratchCleanupNodeID || attempt != 1 {
+		t.Fatalf("task ID %s", p.TaskID)
+	}
+	if p.Pool != node.PoolMedia || p.NodeType != NodeTypeScratchCleanup || p.TenantID != "acme" {
+		t.Fatalf("pointer %+v", p)
 	}
 }
 

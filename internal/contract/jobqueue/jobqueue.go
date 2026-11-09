@@ -61,6 +61,27 @@ type Pointer struct {
 	EnqueuedAt time.Time       `json:"enqueued_at"`
 }
 
+// NodeTypeScratchCleanup marks a pointer that asks a worker to delete a finished
+// job's scratch directory (I5, I45). The engine enqueues it when a job reaches a
+// terminal state, in a pool with access to the shared scratch volume. It takes no
+// lease and has no result: the worker removes the directory and acks. No node of
+// the catalog has this type.
+const NodeTypeScratchCleanup = "internal.scratch_cleanup"
+
+// ScratchCleanupNodeID is the node part of a cleanup pointer's task ID.
+const ScratchCleanupNodeID = "_scratch_cleanup"
+
+// ScratchCleanupPointer builds the pointer for a job that reached a terminal state.
+func ScratchCleanupPointer(tenant domain.TenantID, job id.ULID, at time.Time) Pointer {
+	return Pointer{
+		TaskID:     TaskID(job, ScratchCleanupNodeID, 1),
+		TenantID:   tenant,
+		Pool:       node.PoolMedia,
+		NodeType:   NodeTypeScratchCleanup,
+		EnqueuedAt: at,
+	}
+}
+
 // Delivery is a read pointer with its stream position.
 type Delivery struct {
 	Pointer  Pointer

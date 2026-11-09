@@ -68,6 +68,13 @@ type Lease struct {
 	TraceID        string          `json:"trace_id,omitempty"`
 	// Permissions were granted to the job at submission (node.Env.HasPermission).
 	Permissions []domain.Permission `json:"permissions,omitempty"`
+	// ScratchJobs lists ancestor jobs whose scratch this task may read, for files a
+	// parent passes to a workflow.execute child (I182). The engine fills it from
+	// JobTrigger.ParentJobID; empty means only the task's own job.
+	ScratchJobs []id.ULID `json:"scratch_jobs,omitempty"`
+	// AI carries the tenant's AI settings for pool ai tasks (I197). No secrets. When
+	// nil, connectors apply their defaults.
+	AI *config.AI `json:"ai,omitempty"`
 }
 
 // TaskHeartbeatRequest extends a lease and reports progress.
