@@ -313,6 +313,13 @@ func storyProposals(req FindRequest, sentences []Sentence, hits []domain.SearchH
 			if hit.Score < clusters[i].score*clusterScoreShare {
 				continue
 			}
+			// A paraphrase finds nothing lexically, and then fused scores differ only by
+			// rank: every neighbor looks as strong as the best hit, and they chained into a
+			// proposal spanning half the recording. Without the two lists agreeing, a hit
+			// is its own proposal, and the editor sees the alternatives.
+			if !corroborated(hit) {
+				continue
+			}
 			if hit.StartSeconds <= clusters[i].interval.End+mergeGapSeconds && hit.EndSeconds >= clusters[i].interval.Start-mergeGapSeconds {
 				clusters[i].interval.Start = min(clusters[i].interval.Start, hit.StartSeconds)
 				clusters[i].interval.End = max(clusters[i].interval.End, hit.EndSeconds)
@@ -339,6 +346,12 @@ func storyProposals(req FindRequest, sentences []Sentence, hits []domain.SearchH
 		})
 	}
 	return out
+}
+
+// corroborated reports whether both lists found this hit, or it has no fused provenance
+// to judge by.
+func corroborated(hit domain.SearchHit) bool {
+	return hit.Source != "vector" && hit.Source != "lexical"
 }
 
 func reachStoredStory(interval Interval, analysis *domain.Analysis) Interval {

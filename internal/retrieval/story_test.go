@@ -595,3 +595,29 @@ func TestFindResultEncoding(t *testing.T) {
 		t.Error("usage is not node output")
 	}
 }
+
+// Found in the real-model proof: a paraphrase matches nothing lexically, so fused scores
+// differ only by rank, and overlapping windows chained into one proposal covering most of
+// the recording. Each stays its own proposal unless both lists agree on it.
+func TestParaphraseHitsDoNotChainIntoOneProposal(t *testing.T) {
+	sentences := []Sentence{
+		{Start: 0, End: 50, Text: "First story."},
+		{Start: 50, End: 95, Text: "Second story."},
+		{Start: 95, End: 140, Text: "Third story."},
+	}
+	hit := func(start, end, score float64, source string) domain.SearchHit {
+		return domain.SearchHit{AssetID: "ORI-001", Version: "v1", Level: domain.ChunkWindow, StartSeconds: start, EndSeconds: end, Score: score, Source: source}
+	}
+	paraphrase := storyProposals(FindRequest{}, sentences, []domain.SearchHit{
+		hit(45, 93, 1.0/61, "vector"), hit(0, 50, 1.0/62, "vector"), hit(85, 133, 1.0/63, "vector"),
+	})
+	if len(paraphrase) != 3 {
+		t.Fatalf("%d proposals from three uncorroborated hits: %+v", len(paraphrase), paraphrase)
+	}
+	corroboratedHits := storyProposals(FindRequest{}, sentences, []domain.SearchHit{
+		hit(45, 93, 2.0/61, "hybrid"), hit(85, 133, 2.0/62, "hybrid"),
+	})
+	if len(corroboratedHits) != 1 {
+		t.Fatalf("two touching hits found by both lists should be one story: %+v", corroboratedHits)
+	}
+}
