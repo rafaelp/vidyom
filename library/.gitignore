@@ -1,0 +1,17 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local datasets: generated fixtures and shipped public.db files
+data/
+
+# Test output
+coverage/
+
+# Local configuration
+.env
+.env.*
+!.env.example
