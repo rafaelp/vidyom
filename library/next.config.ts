@@ -8,6 +8,10 @@ const config: NextConfig = {
   reactStrictMode: true,
   // Thumbnails are plain <img> from the destination (I252); the optimizer is unused.
   images: { unoptimized: true },
+  // Off, so a build run by a coding agent makes no advisory lookup on the npm registry (I255).
+  experimental: { agentUpgrade: false },
+  // Off, so `next dev` writes no AGENTS.md here: the repository has its own at the root.
+  agentRules: false,
   // library/ is its own project inside a repository that is mostly Go.
   turbopack: { root: __dirname },
   outputFileTracingRoot: __dirname,

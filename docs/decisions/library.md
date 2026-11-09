@@ -130,7 +130,8 @@ Decisions of the public library component, numbered `I240`–`I259` per section 
 ### I255. No external calls
 
 - **Choice.** Fonts (DM Sans, Space Grotesk, as on the docs site) are self-hosted from `@fontsource-variable` npm packages through `next/font/local`, so neither the build nor a page view contacts a font host. Every npm script runs the framework through `scripts/next.mjs`, which sets `NEXT_TELEMETRY_DISABLED`, so it reports nothing to Vercel. Verified by recording and blocking outbound `fetch` during a build: plain `next build` tried `telemetry.nextjs.org` eight times, `npm run build` not once. Anything running `next` directly, such as a Dockerfile, must set the variable itself. Client code calls only `/api/search`. A test scans the source for other hosts and for anything naming the daemon.
-- **One call this cannot remove.** Next.js 16's upgrade check for coding agents looked up `registry.npmjs.org/-/npm/v1/security/advisories/bulk` in the same builds, which ran under a coding agent. It is a read-only public lookup by the framework, not by this project, and it happens only at build time.
+- **Also off.** `experimental.agentUpgrade`. Next.js 16 looks up `registry.npmjs.org/-/npm/v1/security/advisories/bulk` from a build run by a coding agent unless told not to. With both settings the same recording shows no outbound call from a build or while serving.
+- **Also off.** `agentRules`, which makes `next dev` write an `AGENTS.md` into the project. The repository has its own at the root.
 - **Why.** The project allows no third-party scripts or analytics (section 8 of the plan), and D34 requires the site never to reach the daemon.
 - **Also.** Both fonts are OFL-1.1. They count for the open license audit (§17.2, I32).
 - **Revisit if.** Never for scripts or analytics without a maintainer decision.
