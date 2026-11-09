@@ -3,7 +3,7 @@
 > **Open-source AI-powered video workflow engine**  
 > **Preserve · Discover · Transform · Share**  
 > **Foundation document for architecture, product, and implementation**  
-> Document version: **1.2 — 2026-11-08** (maintainer decisions D1–D52 on the pending items of v1.1; see **§21 Revision log v1.2**)  
+> Document version: **1.2 — 2026-11-09** (maintainer decisions D1–D59 on the pending items of v1.1; see **§21 Revision log v1.2**)  
 > Project origin: **MapaDeva — https://www.mapadeva.com.br/**  
 > Status: **specification for implementation; does not represent features already delivered**.
 
@@ -20,7 +20,7 @@ This document consolidates **all decisions expressed throughout the Vidyom defin
 
 In revision v1.1, passages that were changed or added are marked **(v1.1, Rn)**, where `Rn` refers to the corresponding item in §20. Where the revision resolved an ambiguity that the conversation had not decided, the result is marked **[PROPOSED]**, never [DECIDED]. No [DECIDED] decision from v1.0 was reversed; they were only clarified or made consistent.
 
-In revision v1.2, passages changed by the maintainer's decisions of 2026-11-08 are marked **(v1.2, Dn)**, where `Dn` refers to the corresponding item in §21, and those decisions are [DECIDED] unless marked otherwise.
+In revision v1.2, passages changed by the maintainer's decisions of 2026-11-08 and 2026-11-09 are marked **(v1.2, Dn)**, where `Dn` refers to the corresponding item in §21, and those decisions are [DECIDED] unless marked otherwise.
 
 The command names, plugin contracts, and JSON formats in this document are **target interfaces of Vidyom**, not commands that already exist in MediaCMS, VideoVortex, FFmpeg, YouTube, or n8n. Example IDs, bucket names, URLs, paths, and times are fictitious.
 
@@ -106,7 +106,7 @@ The category is **metadata**, not a fixed structure: `yoga_class`, `course`, `me
 - **[DECIDED]** An original talk/class can generate N clips across multiple production moments, without rerunning the original ingestion.
 - **[DECIDED]** An asset can be published to several destinations, each with its own `remote_id`, URL, metadata, and state.
 - **[DECIDED] (v1.2, D1)** Use a ULID as the immutable technical key and friendly IDs as human aliases.
-- **(v1.1, R5) [DECIDED] (v1.2, D46) Friendly ID prefixes and format:** `ORI-` (original), `CLIP-` (clip), `EDT-` (edited), `JOB-` (execution), `APR-` (approval), `PUB-` (publication), `CLIENT-` (registered client). Sequential numbering per prefix **and per tenant (v1.2, D46)**, with at least 3 digits and no upper limit (`ORI-1000` is valid). A friendly ID is resolved within the tenant given by the `Vidyom-Tenant` header; the ULID is globally unique. Allocation is transactional in the canonical catalog (the tenant database, **(v1.2, D5, D6)**), so that two clips created at the same time never receive the same ID. A friendly ID is never reused, even after deletion. The API always accepts and returns both the technical ID and the alias. **(v1.2, D1) [DECIDED]** v1.2 adopted English prefixes: `CLIP-` replaces `COR-`, and the other prefixes are unchanged. The immutable technical key remains a ULID and friendly IDs are aliases. Storage paths follow the prefix (`clips/CLIP-001/v1/master.mp4`).
+- **(v1.1, R5) [DECIDED] (v1.2, D46) Friendly ID prefixes and format:** `ORI-` (original), `CLIP-` (clip), `EDT-` (edited), `JOB-` (execution), `APR-` (approval), `PUB-` (publication), `CLIENT-` (registered client), `UPL-` (resumable upload) **(v1.2, D55)**. Sequential numbering per prefix **and per tenant (v1.2, D46)**, with at least 3 digits and no upper limit (`ORI-1000` is valid). A friendly ID is resolved within the tenant given by the `Vidyom-Tenant` header; the ULID is globally unique. Allocation is transactional in the canonical catalog (the tenant database, **(v1.2, D5, D6)**), so that two clips created at the same time never receive the same ID. A friendly ID is never reused, even after deletion. The API always accepts and returns both the technical ID and the alias. **(v1.2, D1) [DECIDED]** v1.2 adopted English prefixes: `CLIP-` replaces `COR-`, and the other prefixes are unchanged. The immutable technical key remains a ULID and friendly IDs are aliases. Storage paths follow the prefix (`clips/CLIP-001/v1/master.mp4`).
 - **(v1.1, R6; v1.2, D35) [DECIDED] Asset versions:** **(v1.2, D35)** a media version becomes **immutable once it is published** (at least one confirmed publication). Before that, the files of a version can be replaced in place. After publication, any new render (e.g., an adjustment to start/end after approval), transcode of the master, or file replacement creates a new version (`v2`, `v3`…). Editing only metadata (title, tags) never creates a media version, but is recorded in the history. Storage keys include the version (§14.1), and each publication records which version was sent. This replaces the v1.1 proposal (R6) that every version was immutable from creation.
 - **(v1.1, R7) Clips of clips:** since the definition of `clip` allows deriving from “another asset”, a derivative that reaches `ready_for_clipping` can be the source of a new clip. **(v1.2, D36) [DECIDED]** To avoid generation loss, the intervals are converted to the timeline of the root original and rendered from the original's master, when it exists and the edit is continuous; the lineage records the full chain.
 
@@ -161,7 +161,7 @@ Complementary flags: `master_available` (verified periodically by `verify-storag
 5. Generate, with FFmpeg, a **compressed working master** that is nonetheless suitable for future clips. **(v1.1, R10)** The master, the proxy, and the ASR audio must keep the **same timeline** as the raw file (no trimming of start/end, same zero instant, normalized timestamps). After generating each one, `ffprobe` compares its duration with that of the raw file and rejects a difference above max(100 ms, 1 frame) **(v1.2, D21)**. Sources with variable frame rate or broken timestamps are normalized to constant frame rate in the master before transcription, and transcripts use the master's timeline **(v1.2, D21)**. This is what allows the transcript timestamps to be used directly on the master and the proxy.
 6. Send and verify the master in the `master` role (initially GCS Standard).
 7. Generate a lightweight proxy in the `proxy` role (initially GCS Standard).
-8. Extract audio optimized for transcription **directly from the best-quality file available**, avoiding double audio compression.
+8. **(v1.2, D56)** Extract audio optimized for transcription **from the working master**, never from the proxy, so that it has exactly the master's timeline. This replaces extraction from the best-quality file available; the second audio compression is accepted [VALIDATE: effect on transcription accuracy].
 9. Optionally use VAD (voice activity detection) to exclude long silences, preserving a timestamp map between the processed audio and the video.
 10. Transcribe locally with **faster-whisper large-v3** **(v1.2, D9)**, with timestamps; store the raw transcript and open formats.
 11. Generate summaries, chapters, topics/tags, story identification, and embeddings with AI. **(v1.2, D9, D15, D8)** Embeddings run locally with BGE-M3 over speech windows of 30–60 s cut at sentence boundaries (about 15% overlap), with chapter summaries embedded as a second level. Story and chapter detection uses an LLM through a single OpenAI-compatible driver; a `local_only` collection may only use an endpoint classified as `local` (otherwise story detection is unavailable and clip selection falls back to manual review). External processing requires `external_allowed` (D8).
@@ -199,7 +199,7 @@ Consolidated condition: `backup_verified` ∧ `master_available` (verified) ∧ 
 4. Retrieve the preceding and following context and estimate narrative boundaries (introduction, development, conclusion).
 5. Generate candidates with timestamps and confidence scores; if ambiguous, request selection/review, do not cut at random.
 6. Generate a preview from the proxy; allow adjusting start/end.
-7. Obtain approval of the proposed clip or proceed under an explicit editorial approval policy. **(v1.1, R13)** This is the **selection gate** (`approval.kind = "clip_selection"`), distinct from the **publication gate** of step 13 (`approval.kind = "publication"`). The two are separate approval records, with an owner, date, and approved version. **(v1.2, D7)** An `editor` approves the selection; a `publisher` (or `admin`) approves publication (step 13). **[DECIDED] (v1.2, D47)** If a request generates intervals that substantially overlap an existing clip of the same source, the system warns and shows the existing clip before proceeding; it does not block.
+7. Obtain the editor's approval of the proposed clip; **(v1.2, D53)** this approval is always required, and no policy can skip it. **(v1.1, R13)** This is the **selection gate** (`approval.kind = "clip_selection"`), distinct from the **publication gate** of step 13 (`approval.kind = "publication"`). The two are separate approval records, with an owner, date, and approved version. **(v1.2, D7)** An `editor` approves the selection; a `publisher` (or `admin`) approves publication (step 13). **[DECIDED] (v1.2, D47)** If a request generates intervals that substantially overlap an existing clip of the same source, the system warns and shows the existing clip before proceeding; it does not block.
 8. Read the working master **only from the `master` role**, caching temporarily on the worker's local disk; **do not access `archive`**.
 9. Render a new clip master with FFmpeg at suitable quality and preserve a map of the intervals used (a single interval or an assembly of several).
 10. Register a **new derived asset**, with ID, version, master, and lineage.
@@ -266,10 +266,10 @@ ffmpeg -i input.mp4 \
   proxy.mp4
 ```
 
-Audio for transcription (generate directly from the best source):
+Audio for transcription (generate from the working master **(v1.2, D56)**):
 
 ```bash
-ffmpeg -i input.mp4 \
+ffmpeg -i master.mp4 \
   -vn -ac 1 -ar 16000 \
   -c:a libopus -b:a 24k \
   transcription.opus
@@ -465,7 +465,7 @@ Recommended fields: `id`, `name`, `version`, `description`, `inputs`, `trigger`,
       "type": "ai.transcribe",
       "typeVersion": 1,
       "parameters": {
-        "source": "${inputs.file}",
+        "source": "${nodes.compress.output.file}",
         "language": "pt"
       }
     },
@@ -487,8 +487,8 @@ Recommended fields: `id`, `name`, `version`, `description`, `inputs`, `trigger`,
     }
   ],
   "connections": {
-    "register": ["backup", "compress", "transcribe"],
-    "compress": ["store_master"],
+    "register": ["backup", "compress"],
+    "compress": ["store_master", "transcribe"],
     "transcribe": ["index"],
     "backup": ["catalog"],
     "store_master": ["catalog"],
@@ -502,7 +502,7 @@ Recommended fields: `id`, `name`, `version`, `description`, `inputs`, `trigger`,
 
 **(v1.1, R26) Differences between the example and §3.1 that the implementation must resolve:**
 
-- the `audio.extract` node (step 8) is missing between the source and `ai.transcribe`;
+- the `audio.extract` node (step 8) is missing between the working master and `ai.transcribe` **(v1.2, D56)**;
 - the key `originals/<id>/original.mp4` hardcodes the `.mp4` extension, but the raw file may be MOV/MKV/MXF, etc. The key must preserve the original extension (`original.<ext>`) and the version (§14.1);
 - the `catalog` node (MediaCMS, an optional connector **(v1.2, D24)**) must not be a precondition for `ready_for_clipping` (R11); the node that changes the state to `ready_for_clipping` is missing, and it must depend on `backup`, `store_master`, the proxy, and `index`.
 
@@ -1268,8 +1268,9 @@ The final UX must define uniform names (`connector`, `publishing`, `publish`) an
 
 ### 12.1 Daemon API [DECIDED] **(v1.2, D45)**
 
-Initial version `/api/v1` or versioned gRPC, covering:
+Initial version `/api/v1` **(v1.2, D54)** (the REST paths below are relative to this prefix) or versioned gRPC, covering:
 
+- `GET /workflows`: list permitted workflows **(v1.2, D59)**.
 - `POST /workflows/{id}/runs`: run a workflow.
 - `GET /jobs/{id}`: state, progress, result. **(v1.2, D11)** States include `needs_attention`.
 - `GET /jobs/{id}/events`: SSE streaming or equivalent.
@@ -1284,7 +1285,7 @@ Initial version `/api/v1` or versioned gRPC, covering:
 - **(v1.1, R41)** Endpoints were missing for operations the CLI already had: `GET /search` (lexical+semantic search, with optional per-asset filter), `GET /assets` (listing/filters), `GET /assets/{id}/versions`, `GET /approvals` and `GET /approvals/{id}`, `POST /jobs/{id}/pause` and `POST /jobs/{id}/resume`, `DELETE /publications/{id}` (withdrawal), `GET /events` and `GET /events/deliveries`, `GET|POST|DELETE /secrets` (metadata only; the value is never returned), `GET /clients` and `POST /clients/{id}/revoke`, `GET /audit`.
 
 - **(v1.2, D6, D12, D19, D11)** Tenant, pairing, budget, and resolution endpoints [DECIDED] (v1.2, D45): `GET /tenants`, `GET|POST /users` (tenant from the `Vidyom-Tenant` header, D32; role per tenant), `POST /pairing-codes` (admin) and `POST /devices/pair` (unauthenticated, one-time code), `GET /devices`, `POST /devices/{id}/revoke|rotate`, `GET|PUT /budget` and `POST /budget/override`, `PUT /assets/{id}/ai-processing` (consent record), `POST /jobs/{id}/resolve` (from `needs_attention`), `GET /audit/verify`.
-- **(v1.2, D6)** **Tenant scoping:** every request other than tenant and pairing management is scoped to a tenant (**(v1.2, D32) [DECIDED]** the `Vidyom-Tenant` header; paths stay tenant-free, for example `/v1/assets/ORI-001`) and authorized by the caller's role in that tenant; cross-tenant access returns `404`. **(v1.2, D32)** Tenant-scoped requests without the header are rejected, the header value is recorded in logs and audit, and the CLI sets it from the current tenant (`vidyom tenant use`).
+- **(v1.2, D6)** **Tenant scoping:** every request other than tenant and pairing management is scoped to a tenant (**(v1.2, D32) [DECIDED]** the `Vidyom-Tenant` header; paths stay tenant-free, for example `/api/v1/assets/ORI-001` **(v1.2, D54)**) and authorized by the caller's role in that tenant; cross-tenant access returns `404`. **(v1.2, D32)** Tenant-scoped requests without the header are rejected, the header value is recorded in logs and audit, and the CLI sets it from the current tenant (`vidyom tenant use`).
 - **(v1.2, D12)** The remote API is served over HTTPS (TLS 1.3) with per-device credentials; the local Unix socket serves same-host clients.
 - **(v1.2, D5)** Persistence behind the API (replacing PostgreSQL + pgvector of v1.1): one SQLite database file per tenant (assets, jobs, checkpoints, transcripts, FTS5 and sqlite-vec indexes, audit, encrypted secrets, outbox) plus a global `system.db` (tenants, users, roles, device credentials, plugin registry, wrapped tenant data keys). Only the daemon opens database files; workers use this API or the job queue, never the files. A repository layer keeps PostgreSQL possible later.
 
@@ -1330,7 +1331,7 @@ Authentication, authorization, idempotency keys, and an audit trail are mandator
   "transcript": {
     "format": "json+srt",
     "indexed": true,
-    "timestamp_basis": "source_original",
+    "timestamp_basis": "working_master",
     "engine": "faster-whisper/<model>",
     "embedding_model": "<model>@<version>"
   },
@@ -1342,7 +1343,7 @@ Authentication, authorization, idempotency keys, and an audit trail are mandator
 }
 ```
 
-The string `<real-hash-at-runtime>` is a didactic placeholder, not a valid SHA-256. **(v1.1, R6, R8, R21, R30)** Compared with v1.0, version, state flags, profile, models, and provenance were added; keys now include the version; the raw file keeps its original extension (`.mov` in the example). The `location` field (R30) was omitted here to shorten the example. **(v1.2, D6, D8)** `tenant_id`, `ai_processing` (default `local_only`) and `ai_consent` were added; when an admin allows external processing, `ai_consent` holds `{ "authorized_by": "<user>", "authorized_at": "<RFC 3339>", "scope": "asset|collection" }` (the consent record).
+The string `<real-hash-at-runtime>` is a didactic placeholder, not a valid SHA-256. **(v1.1, R6, R8, R21, R30)** Compared with v1.0, version, state flags, profile, models, and provenance were added; keys now include the version; the raw file keeps its original extension (`.mov` in the example). The `location` field (R30) was omitted here to shorten the example. **(v1.2, D6, D8)** `tenant_id`, `ai_processing` (default `local_only`) and `ai_consent` were added; when an admin allows external processing, `ai_consent` holds `{ "authorized_by": "<user>", "authorized_at": "<RFC 3339>", "scope": "asset|collection" }` (the consent record). **(v1.2, D21)** `timestamp_basis` is `working_master`, because transcripts use the master's timeline.
 
 ### 12.3 Clip example
 
@@ -1460,7 +1461,7 @@ ORI-001/
 
 ### 13.2 Public [DECIDED]
 
-- Separate public library built with **Next.js** **(v1.2, D34) [DECIDED]**: server rendering for SEO and API routes for semantic search over `public.db`, deployable on Vercel.
+- Separate public library built with **Next.js** **(v1.2, D34) [DECIDED]**: server rendering for SEO and API routes for semantic search over `public.db`, deployable on Vercel. **(v1.2, D58) [VALIDATE]** Whether BGE-M3 query embeddings on CPU fit the size and memory limits of the site's host (Vercel included), and how an updated `public.db` reaches it.
 - Brings together only **published and approved** assets, mainly edited videos and clips.
 - Embedded player or link to YouTube, Vimeo, or other destinations.
 - Search by topic, instructor, chapter, story, and spoken content.
@@ -1645,7 +1646,7 @@ vidyom/
 5. media and metadata appear in the tenant catalog and can be reviewed through the CLI with proxy links, and in MediaCMS when its optional connector is configured **(v1.2, D24)**;
 6. the job is observable through the CLI even after disconnection/reconnection;
 7. the asset only becomes `ready_for_clipping` when the mandatory conditions are met;
-8. **(v1.1)** the duration of the master, the proxy, and the ASR audio matches that of the raw file within tolerance (R10); **(v1.2, D21)** the tolerance is max(100 ms, 1 frame), and a source with variable frame rate or broken timestamps is normalized to constant frame rate in the master before transcription, so transcripts use the master's timeline;
+8. **(v1.1)** the duration of the master, the proxy, and the ASR audio matches that of the raw file within tolerance (R10); **(v1.2, D21)** the tolerance is max(100 ms, 1 frame), and a source with variable frame rate or broken timestamps is normalized to constant frame rate in the master before transcription, so transcripts use the master's timeline; **(v1.2, D56)** the ASR audio is always extracted from the master;
 9. **(v1.1)** with MediaCMS (optional connector) down, the asset still reaches `ready_for_clipping` and is left with `catalog_sync = failed` (R11, v1.2, D24).
 
 ### 15.2 E2E scenario — two clips on different days
@@ -1660,7 +1661,7 @@ vidyom/
 6. each clip can be published independently and appear in the public library after approval;
 7. no step of Workflow A for `ORI-001` needs to run again;
 8. **(v1.1)** IDs are allocated without collision even if the two requests run at the same time (R5). The numbers `CLIP-001`/`CLIP-002` are illustrative: if `CLIP-001` already exists (as in the example in §2.4), the new clips receive the next free numbers;
-9. **(v1.1)** an adjustment of the start/end after rendering produces `v2` of the clip without overwriting `v1` (R6).
+9. **(v1.1; v1.2, D35)** an adjustment of the start/end after a version is published produces `v2` of the clip without overwriting `v1`; before publication, the files of the version can be replaced in place.
 
 ### 15.3 Scenario — YouTube as the source
 
@@ -1721,7 +1722,7 @@ vidyom/
 - VideoVortex PoC with transcription, search, and clipping, verifying version/license capabilities and restrictions.
 - FFmpeg PoC for the working master from the raw file and a real clip test.
 - Validate integration with GCS, the client keyring, and the private Tailscale/NetBird mode.
-- **(v1.2, D5, D4, D13, D9)** Validation PoCs: sqlite-vec performance at tenant scale and Litestream with GCS; Redis AOF durability and reconciliation under crash tests; TPM/systemd-creds and KMS unsealing on the target hosts, and master key unsealing per platform (Keychain on macOS, DPAPI/TPM on Windows) **(v1.2, D41)**; AI performance on macOS without GPU in Docker **(v1.2, D41)**; accuracy, word timestamps and diarization of faster-whisper large-v3 on the target content.
+- **(v1.2, D5, D4, D13, D9)** Validation PoCs: sqlite-vec performance at tenant scale and Litestream with GCS; Redis AOF durability and reconciliation under crash tests; TPM/systemd-creds and KMS unsealing on the target hosts, and master key unsealing per platform (Keychain on macOS, DPAPI/TPM on Windows) **(v1.2, D41)**; AI performance on macOS without GPU in Docker **(v1.2, D41)**; accuracy, word timestamps and diarization of faster-whisper large-v3 on the target content; BGE-M3 query embeddings on CPU and `public.db` updates on the public site's host, Vercel included **(v1.2, D58)**.
 
 ### Phase 1 — Functional core and ingestion
 
@@ -1729,6 +1730,7 @@ vidyom/
 - **(v1.2, D5, D6, D4)** SQLite per tenant plus `system.db` (WAL, Litestream), multi-tenancy from the first release, and the Redis job queue with startup reconciliation; only the daemon opens the database files.
 - **(v1.2, D10, D41, D38)** Docker Compose deployment on Linux, macOS and Windows (daemon, workers with FFmpeg and the Python AI worker, Redis), with an optional Compose profile for Grafana, Loki and Tempo; the Go binaries are built for all three platforms and can still run natively (systemd on Linux).
 - **(v1.2, D12, D11)** HTTPS remote API with client pairing; node side-effect classes and the `needs_attention` job state.
+- **(v1.2, D13, D57)** Encrypted per-tenant secrets vault with master key unsealing.
 - **(v1.2, D20)** Release process: Semantic Versioning (`0.x` until stable), tags `vX.Y.Z`, GitHub Releases with CLI binaries, Docker images on GHCR, and `CHANGELOG.md`.
 - Minimal JSON workflow, `storage.put/get/verify`, `video.transcode`, `audio.extract`, `ai.transcribe`, `ai.index`.
 - GCS connector with `archive/master/proxy` and generation of portable metadata.
@@ -1757,16 +1759,24 @@ vidyom/
 ### Phase 4 — Plugins, hooks, and full observability
 
 - Isolated plugin runtime (JSON-RPC 2.0 over stdin/stdout, **v1.2, D3**), permissions manifest, registry.
-- Global/workflow/node hooks; persistent Event Bus.
+- Global/workflow/node hooks. **(v1.2, D57)** The persistent Event Bus moved to Phase 5.
 - OpenTelemetry, Loki, Prometheus, optional Tempo/Grafana, and sink interface.
 - **(v1.2, D25)** Publishing destinations after YouTube: Vimeo, PeerTube, and Instagram Reels (vertical clips reframed from the 4K master). Spotify is not planned; other destinations (for example Dailymotion) may be community connectors but are not on the roadmap.
 - Future connectors: S3, Dropbox, SFTP, Datadog, etc.
+
+### Phase 5 — Not yet defined (v1.2, D57)
+
+The scope and order of this phase are not defined yet (§17.2). The following capabilities are assigned to it:
+
+- Persistent Event Bus with transactional outbox (D4).
+- Monthly budgets and cost alerts per tenant (D19).
+- Append-only audit with hash chaining and daily export (D23).
 
 ---
 
 ## 17. Pending decisions and mandatory validations
 
-The definition conversation set out the architecture and the high-level interfaces. **(v1.2)** The maintainer decisions of 2026-11-08 (D1–D52, §21) resolved most of the items that were pending in v1.1. Items still open **have not yet been explicitly decided** and must not be silently filled in by the team.
+The definition conversation set out the architecture and the high-level interfaces. **(v1.2)** The maintainer decisions of 2026-11-08 and 2026-11-09 (D1–D59, §21) resolved most of the items that were pending in v1.1. Items still open **have not yet been explicitly decided** and must not be silently filled in by the team.
 
 ### 17.1 Resolved in v1.2
 
@@ -1797,7 +1807,7 @@ Numbering follows the v1.1 list.
 23. Timeline alignment: max(100 ms, 1 frame), constant frame rate normalization **(v1.2, D21)**.
 24. ID prefixes: `CLIP-` replaces `COR-`; other prefixes unchanged **(v1.2, D1)**.
 
-Also decided in v1.2: asset versions (D35), clips of clips (D36), approval timing (D37), observability stack (D38), and confirmation of the data model, media, auxiliary workflows, identity, workflows and API items that were [PROPOSED] (D39–D45), external edited videos out of the MVP (D50), review evidence (D51), publication states (D52); languages (D31), tenant header in the API (D32), public library framework (D34), job queue (D4), database (D5), release process (D20), audit (D23), private catalog (D24), and Rewind priority (D26).
+Also decided in v1.2: asset versions (D35), clips of clips (D36), approval timing (D37), observability stack (D38), and confirmation of the data model, media, auxiliary workflows, identity, workflows and API items that were [PROPOSED] (D39–D45), external edited videos out of the MVP (D50), review evidence (D51), publication states (D52); languages (D31), tenant header in the API (D32), public library framework (D34), job queue (D4), database (D5), release process (D20), audit (D23), private catalog (D24), Rewind priority (D26), selection approval (D53), API path prefix (D54), upload ID prefix (D55), ASR audio source (D56), roadmap placement of the vault, Event Bus, budgets and audit (D57), and the workflow listing endpoint (D59).
 
 ### 17.2 Still open
 
@@ -1806,6 +1816,7 @@ None of these should be decided silently.
 **Decisions**
 
 - Trademark check (INPI, USPTO, WIPO) for the name `Vidyom` **(v1.2, D28)**.
+- Scope and order of Phase 5 **(v1.2, D57)**.
 
 **Validations (proofs of concept)**
 
@@ -1816,10 +1827,11 @@ None of these should be decided silently.
 - AI performance on macOS without GPU in Docker (CPU or configured endpoint) (D41).
 - MediaCMS: API, externally stored proxies, double transcoding, one instance per tenant (D24).
 - VideoVortex: real APIs/CLI, license, synchronization with the tenant database.
-- Transcription: accuracy, word timestamps and diarization of faster-whisper large-v3 on the target content (D9).
+- Transcription: accuracy, word timestamps and diarization of faster-whisper large-v3 on the target content (D9), including the effect of extracting the audio from the working master instead of the raw file (D56).
 - Publishing APIs: YouTube, Vimeo, PeerTube and Instagram (OAuth, quotas, captions, retry reconciliation) (D25).
 - License compatibility of every dependency with Apache-2.0.
 - LGPD legal review of the deferred archive purge (D17).
+- Public library hosting: BGE-M3 query embeddings on CPU within the size and memory limits of the site's host (Vercel included), and how an updated `public.db` reaches it (D18, D34, D58).
 
 ---
 
@@ -1917,7 +1929,7 @@ This section is a verification index so the team does not lose decisions.
 | 86 | (v1.2, D38) Observability: OpenTelemetry; local JSONL logs and Prometheus endpoint by default; Loki, Tempo and Grafana as an optional Docker Compose profile; Datadog connector later | DECIDED (replaces the §10.2 proposal) |
 | 87 | (v1.2, D39) Asset states (R8); `published_file` not duplicated when identical to the master (R4); unified input URIs (R20) | DECIDED |
 | 88 | (v1.2, D40) Proxy H.264 720p and ASR audio Opus mono 16 kHz at 24–32 kbps, never upscaled; hook timeout 30 s with a configurable global ceiling; workers declare resources and the scheduler picks a compatible one; configurable retention of execution records | DECIDED |
-| 89 | (v1.2, D41) Whole project on one host with Linux, macOS or Windows; Docker Compose on all three; Go binaries built for all three; replaces "daemon initially on Linux" | DECIDED (AI on macOS without GPU, master key unsealing per platform: VALIDATE; same-host transport: PROPOSED) |
+| 89 | (v1.2, D41) Whole project on one host with Linux, macOS or Windows; Docker Compose on all three; Go binaries built for all three; replaces "daemon initially on Linux" | DECIDED (AI on macOS without GPU, master key unsealing per platform: VALIDATE; same-host transport: CONFIRMED by #97, v1.2) |
 | 90 | (v1.2, D42) `restore-archived.json` as an administrative operation; maintenance workflows `reindex-asset`, `refresh-publication`, `verify-storage`, `bulk-create-clips`; per-asset metadata export package | DECIDED |
 | 91 | (v1.2, D43) Description "Open-source AI-powered video workflow engine"; tagline "Preserve · Discover · Transform · Share"; README "Originally built for MapaDeva"; plugin manifest format (§7.6) | DECIDED |
 | 92 | (v1.2, D44) Workflow JSON model (§6.2); `approval.request` node (R25); event semantics (R35); operational retention (§10.4) | DECIDED |
@@ -1929,8 +1941,15 @@ This section is a verification index so the team does not lose decisions.
 | 98 | (v1.2, D50) Edited videos produced outside Vidyom are out of the MVP (R2 becomes FUTURE) | DECIDED |
 | 99 | (v1.2, D51) Review evidence: transcript excerpt, timestamps, confidence; ambiguous clips show alternatives side by side | DECIDED |
 | 100 | (v1.2, D52) Publication states add `scheduled` and `rejected_by_destination` | DECIDED |
+| 101 | (v1.2, D53) The editor's selection approval is always required; no policy can skip it | DECIDED |
+| 102 | (v1.2, D54) REST API paths use the `/api/v1` prefix | DECIDED |
+| 103 | (v1.2, D55) `UPL-` friendly ID prefix for resumable uploads | DECIDED |
+| 104 | (v1.2, D56) ASR audio is always extracted from the working master | DECIDED (effect on transcription accuracy: VALIDATE) |
+| 105 | (v1.2, D57) Secrets vault in Phase 1; Event Bus, budgets and audit go to Phase 5, not yet defined | DECIDED (Phase 5 scope: open) |
+| 106 | (v1.2, D58) Public library hosting added as a validation: query embeddings and `public.db` updates on the site's host | VALIDATE |
+| 107 | (v1.2, D59) `GET /workflows` added to the daemon API | DECIDED |
 
-**(v1.2)** Rows 49–100 record decisions D1–D52 of 2026-11-08 (§21). Rows 17, 28, 40 and 45 are kept for history and marked as superseded; row 42 is marked as confirmed. R2 is [FUTURE] (D50).
+**(v1.2)** Rows 49–100 record decisions D1–D52 of 2026-11-08, and rows 101–107 record decisions D53–D59 of 2026-11-09 (§21). Rows 17, 28, 40 and 45 are kept for history and marked as superseded; row 42 is marked as confirmed. R2 is [FUTURE] (D50).
 
 ---
 
@@ -2001,7 +2020,7 @@ Consistency and gap review performed on v1.0 (`spec/vidyom-specification-v1.0.md
 
 ## 21. Revision log v1.2
 
-Maintainer decisions of 2026-11-08 on the items that were pending in v1.1 (§17). Each decision is identified by its ID (D1–D52) and marked **(v1.2, Dn)** in the text; v1.1 passages and §20 are preserved as history.
+Maintainer decisions of 2026-11-08 (D1–D52) on the items that were pending in v1.1 (§17), and of 2026-11-09 (D53–D59) on inconsistencies found in v1.2. Each decision is identified by its ID and marked **(v1.2, Dn)** in the text; v1.1 passages and §20 are preserved as history.
 
 | # | Topic | Sections | Before (v1.1) | Decision (v1.2) |
 |---|---|---|---|---|
@@ -2045,7 +2064,7 @@ Maintainer decisions of 2026-11-08 on the items that were pending in v1.1 (§17)
 | D38 | Observability stack | §10.2 | JSONL + Loki, Prometheus, Tempo, Grafana [PROPOSED] | OpenTelemetry; local JSONL + Prometheus by default; Loki/Tempo/Grafana as an optional Compose profile; Datadog later |
 | D39 | Data model confirmations | §2.3, §2.5, §5.4 | [PROPOSED] (R4, R8, R20) | Decided: `published_file` without duplication, asset states, unified input URIs |
 | D40 | Media and execution confirmations | §4.1, §5.5, §7.4 | [PROPOSED] | Decided: proxy and ASR profiles, 30 s hook timeout, worker resource declaration, execution-record retention |
-| D41 | Single host on Linux, macOS or Windows | §5.1, §5.3, §9.1, §16, §17.2 | Daemon initially on Linux; Unix socket on Unix/macOS [PROPOSED] | Docker Compose on all three; Go binaries for all three; AI on macOS CPU/endpoint [VALIDATE]; per-platform master key unsealing [VALIDATE]; same-host transport [PROPOSED] |
+| D41 | Single host on Linux, macOS or Windows | §5.1, §5.3, §9.1, §16, §17.2 | Daemon initially on Linux; Unix socket on Unix/macOS [PROPOSED] | Docker Compose on all three; Go binaries for all three; AI on macOS CPU/endpoint [VALIDATE]; per-platform master key unsealing [VALIDATE]; same-host transport [PROPOSED]; **(D49)** now decided |
 | D42 | Auxiliary workflows | §3, §12.5 | [PROPOSED] | Decided: `restore-archived`, maintenance workflows, metadata export package |
 | D43 | Identity | §1.1, §7.6 | [PROPOSED] | Decided: description, tagline, README statement, plugin manifest format |
 | D44 | Workflows and events | §6.2, §6.3, §8, §10.4 | [PROPOSED] | Decided: JSON model, `approval.request` node, event semantics, operational retention |
@@ -2057,5 +2076,12 @@ Maintainer decisions of 2026-11-08 on the items that were pending in v1.1 (§17)
 | D50 | External edited videos | §2.1 | Declared lineage via `ingest-derived` (R2) [PROPOSED] | Out of the MVP; R2 becomes [FUTURE] |
 | D51 | Review evidence | §4 | Text, timestamps, confidence [PROPOSED] | Decided; ambiguous clips show alternatives side by side |
 | D52 | Publication states | §12.4 | Six states [PROPOSED] (R43) | Adds `scheduled` and `rejected_by_destination` |
+| D53 | Selection approval | §3.2 | Approval or "an explicit editorial approval policy" | The editor's approval is always required; no policy can skip it (consistent with D7 and D51) |
+| D54 | API path prefix | §12.1 | `/api/v1` and `/v1` both used | `/api/v1`; endpoint lists are relative to it |
+| D55 | Upload ID prefix | §2.3, §5.4 | `UPL-` used but not listed (R5, D39) | `UPL-` added to the prefix list |
+| D56 | ASR audio source | §3.1, §4.2, §6.3, §15.1, §17.2 | Best-quality file available | Always the working master, for an exact timeline (D21); the second audio compression is accepted, effect on accuracy [VALIDATE] |
+| D57 | Roadmap placement | §16, §17.2 | Vault in Phase 3; Event Bus in Phase 4; budgets and audit without a phase | Vault in Phase 1; Event Bus, budgets and audit in Phase 5, not yet defined; the scope of Phase 5 remains open |
+| D58 | Public library hosting | §13.2, §16, §17.2 | Not listed as a validation | [VALIDATE] query embeddings on CPU and `public.db` updates on the site's host, Vercel included |
+| D59 | Workflow listing | §12.1 | `GET /workflows` only on the website | Added to the daemon API |
 
-**New sections:** §17.1 and §17.2 (split of the pending items), rows 49–100 of §18, and this §21. Still open: the trademark check and the validations in §17.2.
+**New sections:** §17.1 and §17.2 (split of the pending items), Phase 5 in §16 (D57), rows 49–107 of §18, and this §21. Still open: the trademark check, the scope of Phase 5 (D57) and the validations in §17.2.

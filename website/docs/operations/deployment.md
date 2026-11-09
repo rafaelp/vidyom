@@ -9,7 +9,7 @@ sidebar_position: 1
 
 - **Decided:** Docker Compose is the supported MVP deployment. It runs the daemon (`vidyomd`), the workers (with FFmpeg and the Python AI worker packaged) and Redis, plus an optional Compose profile with Grafana, Loki and Tempo (see [observability](./observability.md)).
 - **Decided:** The whole project must be able to run on a single host running Linux, macOS or Windows. Docker Compose is the supported path on all three (Docker Desktop or WSL2 on macOS and Windows), and the Go binaries are built for all three. Docker on macOS has no GPU access, so local AI runs on CPU or uses a configured local or external endpoint. **Validate:** AI performance on macOS without a GPU.
-- **Proposed:** CLI-to-daemon transport on the same host is a Unix domain socket on Linux and HTTPS on loopback when the daemon runs inside Docker Desktop (macOS and Windows), because socket files cannot cross the VM boundary.
+- **Decided:** CLI-to-daemon transport on the same host is a Unix domain socket on Linux and HTTPS on loopback when the daemon runs inside Docker Desktop (macOS and Windows), because socket files cannot cross the VM boundary.
 - **Decided:** Redis is a required service. It is the job dispatch queue, with AOF persistence enabled. The tenant database stays the source of truth for job state.
 - **Decided:** Data lives in SQLite: one database file per tenant plus a global `system.db`. There is no PostgreSQL. Only the daemon opens database files; workers talk to it through its API or Redis.
 - **Decided:** Separate persistent object storage: `archive` and `master` roles initially mapped to Google Cloud Storage Archive and Standard. Each tenant has its own storage prefix, with an optional dedicated bucket and credentials.

@@ -21,7 +21,7 @@
     {"id":"saveProxy","type":"storage.put","typeVersion":1,
       "parameters":{"storage":"proxy","source":"${nodes.proxy.output.file}"}},
     {"id":"audio","type":"audio.extract","typeVersion":1,
-      "parameters":{"source":"${inputs.file}","profile":"speech-opus"}},
+      "parameters":{"source":"${nodes.master.output.file}","profile":"speech-opus"}},
     {"id":"transcript","type":"ai.transcribe","typeVersion":1,
       "parameters":{"source":"${nodes.audio.output.file}"}},
     {"id":"index","type":"ai.index","typeVersion":1,
@@ -30,8 +30,8 @@
       "parameters":{"assetId":"${nodes.register.output.id}","requires":["archive","master","proxy","transcript","index"]}}
   ],
   "connections": {
-    "register":["backup","master","proxy","audio"],
-    "master":["saveMaster"],
+    "register":["backup","master","proxy"],
+    "master":["saveMaster","audio"],
     "proxy":["saveProxy"],
     "audio":["transcript"],
     "transcript":["index"],

@@ -42,13 +42,13 @@ sidebar_position: 1
     {"id": "storeMaster", "type": "storage.put", "typeVersion": 1,
      "parameters": {"storage": "master", "source": "${nodes.compress.output.file}"}},
     {"id": "transcribe", "type": "ai.transcribe", "typeVersion": 1,
-     "parameters": {"source": "${inputs.file}", "language": "pt"}},
+     "parameters": {"source": "${nodes.compress.output.file}", "language": "pt"}},
     {"id": "index", "type": "ai.index", "typeVersion": 1,
      "parameters": {"transcript": "${nodes.transcribe.output}"}}
   ],
   "connections": {
-    "register": ["backup", "compress", "transcribe"],
-    "compress": ["storeMaster"],
+    "register": ["backup", "compress"],
+    "compress": ["storeMaster", "transcribe"],
     "transcribe": ["index"]
   },
   "settings": {"retry": 3, "resumeOnFailure": true}

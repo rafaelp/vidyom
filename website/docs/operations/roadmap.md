@@ -9,13 +9,13 @@ This is a **proposed sequencing plan**, not a commitment to particular dates or 
 
 ## Phase 0 — Contracts and feasibility
 
-Define canonical data model, JSON workflow schema, node and connector interfaces. Spike sqlite-vec at tenant scale, Litestream with GCS, Redis AOF reconciliation under crash tests, TPM/systemd-creds and KMS unsealing, VideoVortex indexing/clip boundaries, GCS behavior, YouTube API permissions, and faster-whisper large-v3 accuracy on the target content. MediaCMS proxy import is spiked only for the optional connector.
+Define canonical data model, JSON workflow schema, node and connector interfaces. Spike sqlite-vec at tenant scale, Litestream with GCS, Redis AOF reconciliation under crash tests, TPM/systemd-creds and KMS unsealing, VideoVortex indexing/clip boundaries, GCS behavior, YouTube API permissions, faster-whisper large-v3 accuracy on the target content, and BGE-M3 query embeddings and `public.db` updates on the public site's host. MediaCMS proxy import is spiked only for the optional connector.
 
 **Exit criteria:** reproducible proof of concept for a 10 GB recording; validated external assumptions and documented limitations.
 
 ## Phase 1 — Secure runtime + original ingest
 
-Implement `vidyom`, `vidyomd`, local worker, Docker Compose deployment, per-tenant SQLite databases plus `system.db`, Redis job queue with startup reconciliation, multi-tenancy (tenants, roles, storage prefixes, budgets), HTTPS with client pairing, the encrypted secrets vault with master key unsealing, GCS connector, FFmpeg transcode, faster-whisper transcription and search indexing (FTS5, sqlite-vec). The private catalog is the tenant database, reviewed through the CLI with proxy links. Build complete `ingest-original.json` and logs/health.
+Implement `vidyom`, `vidyomd`, local worker, Docker Compose deployment, per-tenant SQLite databases plus `system.db`, Redis job queue with startup reconciliation, multi-tenancy (tenants, roles, storage prefixes), HTTPS with client pairing, the encrypted secrets vault with master key unsealing, GCS connector, FFmpeg transcode, faster-whisper transcription and search indexing (FTS5, sqlite-vec). The private catalog is the tenant database, reviewed through the CLI with proxy links. Build complete `ingest-original.json` and logs/health.
 
 **Exit criteria:** restart-safe ingest, verified backup, permanent Standard master, searchable transcript and `ready_for_clipping` status.
 
@@ -41,6 +41,10 @@ After YouTube: Vimeo, PeerTube and Instagram Reels (vertical clips reframed from
 
 ## Phase 4 — Extensibility and production operations
 
-Plugin runtime, global/workflow/node hooks, durable Event Bus, observability fan-out and retries, distributed workers, more connectors, advanced CLI/MCP access and operational dashboards.
+Plugin runtime, global/workflow/node hooks, observability fan-out and retries, distributed workers, more connectors, advanced CLI/MCP access and operational dashboards.
 
-**Exit criteria:** a new workflow is composed from JSON; a new provider is installed without changing core workflows; a plugin reacts safely to lifecycle events.
+**Exit criteria:** a new workflow is composed from JSON; a new provider is installed without changing core workflows; a plugin reacts safely to lifecycle hooks.
+
+## Phase 5 — Not yet defined
+
+**Decided:** These capabilities belong to this phase, whose scope and order are an [open question](../reference/open-questions.md): the durable Event Bus, per-tenant budgets and cost alerts, and the hash-chained audit.

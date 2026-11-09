@@ -11,39 +11,39 @@ The daemon must expose a stable, versioned client API over local Unix domain soc
 
 | Method | Endpoint | Purpose |
 | --- | --- | --- |
-| `GET` | `/v1/health` | Health and readiness |
-| `GET` | `/v1/workflows` | List permitted workflows |
-| `POST` | `/v1/workflows/{id}/run` | Submit a version-pinned job |
-| `GET` | `/v1/jobs/{jobId}` | Current state and progress |
-| `GET` | `/v1/jobs/{jobId}/events` | Stream progress |
-| `POST` | `/v1/jobs/{jobId}/cancel` | Request cancellation |
-| `POST` | `/v1/jobs/{jobId}/resolve` | Resolve a `needs_attention` job |
-| `POST` | `/v1/pairing/codes` | Admin generates a one-time pairing code |
-| `POST` | `/v1/pairing/exchange` | Exchange a pairing code for a per-device credential |
-| `GET` | `/v1/devices` | List paired devices |
-| `DELETE` | `/v1/devices/{deviceId}` | Revoke a device credential |
-| `POST` | `/v1/devices/current/rotate` | Rotate the calling device credential |
-| `GET` | `/v1/tenants` | Tenants the caller belongs to |
-| `GET` | `/v1/budget` | Budget and usage of the active tenant |
-| `POST` | `/v1/assets/uploads` | Initiate resumable client upload |
-| `GET` | `/v1/assets/{assetId}` | Canonical metadata |
-| `GET` | `/v1/connectors` | Registered connector capabilities |
-| `GET` | `/v1/plugins` | Installed plugin metadata |
-| `GET` | `/v1/audit` | Authorized audit history |
+| `GET` | `/api/v1/health` | Health and readiness |
+| `GET` | `/api/v1/workflows` | List permitted workflows |
+| `POST` | `/api/v1/workflows/{id}/runs` | Submit a version-pinned job |
+| `GET` | `/api/v1/jobs/{jobId}` | Current state and progress |
+| `GET` | `/api/v1/jobs/{jobId}/events` | Stream progress |
+| `POST` | `/api/v1/jobs/{jobId}/cancel` | Request cancellation |
+| `POST` | `/api/v1/jobs/{jobId}/resolve` | Resolve a `needs_attention` job |
+| `POST` | `/api/v1/pairing-codes` | Admin generates a one-time pairing code |
+| `POST` | `/api/v1/devices/pair` | Exchange a pairing code for a per-device credential |
+| `GET` | `/api/v1/devices` | List paired devices |
+| `POST` | `/api/v1/devices/{deviceId}/revoke` | Revoke a device credential |
+| `POST` | `/api/v1/devices/{deviceId}/rotate` | Rotate a device credential |
+| `GET` | `/api/v1/tenants` | Tenants the caller belongs to |
+| `GET` | `/api/v1/budget` | Budget and usage of the active tenant |
+| `POST` | `/api/v1/assets/uploads` | Initiate resumable client upload |
+| `GET` | `/api/v1/assets/{assetId}` | Canonical metadata |
+| `GET` | `/api/v1/connectors` | Registered connector capabilities |
+| `GET` | `/api/v1/plugins` | Installed plugin metadata |
+| `GET` | `/api/v1/audit` | Authorized audit history |
 
 **Decided:** This endpoint list is the daemon API surface. It is **not yet implemented**, so none of these are live endpoints. API versioning must protect old CLI clients against silent behavioral changes; mutating requests use idempotency keys; every method enforces resource-level authorization.
 
 ## Tenant scoping
 
-**Decided:** Vidyom is multi-tenant, so every resource request runs in one tenant. The client sends the tenant in the `Vidyom-Tenant` header on every tenant-scoped request, and paths stay tenant-free (for example `/v1/assets/ORI-001`). The daemon rejects a tenant-scoped request without the header, records the header value in logs and audit, and checks that the caller's role in that tenant allows the operation. IDs such as `ORI-001` and `JOB-002` are only unique within a tenant, and a request can never read or write another tenant's data.
+**Decided:** Vidyom is multi-tenant, so every resource request runs in one tenant. The client sends the tenant in the `Vidyom-Tenant` header on every tenant-scoped request, and paths stay tenant-free (for example `/api/v1/assets/ORI-001`). The daemon rejects a tenant-scoped request without the header, records the header value in logs and audit, and checks that the caller's role in that tenant allows the operation. IDs such as `ORI-001` and `JOB-002` are only unique within a tenant, and a request can never read or write another tenant's data.
 
 ## Pairing
 
-**Decided:** Remote clients enroll through pairing. An admin creates a one-time code; the CLI exchanges it at `/v1/pairing/exchange` for a per-device credential that can be revoked and is rotated. **Proposed:** the exchange is the only unauthenticated mutating call, and it accepts each code once.
+**Decided:** Remote clients enroll through pairing. An admin creates a one-time code; the CLI exchanges it at `/api/v1/devices/pair` for a per-device credential that can be revoked and is rotated. **Proposed:** the exchange is the only unauthenticated mutating call, and it accepts each code once.
 
 ## Jobs that need attention
 
-**Decided:** A node with an `unsafe` side-effect class is never retried automatically. The job moves to the `needs_attention` state until a person resolves it, and `GET /v1/jobs/{jobId}` reports that state with the node and reason. Resolution options (**Proposed**) are to retry, skip or cancel.
+**Decided:** A node with an `unsafe` side-effect class is never retried automatically. The job moves to the `needs_attention` state until a person resolves it, and `GET /api/v1/jobs/{jobId}` reports that state with the node and reason. Resolution options (**Proposed**) are to retry, skip or cancel.
 
 ## Example job submission
 

@@ -11,7 +11,7 @@ The canonical catalog must outlive any individual vendor integration. **Decided:
 
 **Decided:** Each tenant has one SQLite database file holding its assets, jobs, checkpoints, transcripts, search indexes, audit log and encrypted secrets. A global `system.db` holds tenants, users, roles, device credentials, the plugin registry and wrapped tenant data keys. Full-text search uses FTS5 and vector search uses sqlite-vec. **Validate:** sqlite-vec has no approximate index yet, so asset-scoped search is the main path and tenant-wide semantic search must be load-tested. Databases run in WAL mode with continuous Litestream backup to the archive storage provider, and only the daemon opens them.
 
-**Decided:** Friendly IDs use the prefixes `ORI-`, `CLIP-`, `EDT-`, `JOB-`, `APR-`, `PUB-` and `CLIENT-`. Each tenant has its own sequence per prefix (at least 3 digits, never reused), so a friendly ID is resolved within the tenant given by the `Vidyom-Tenant` header. They are aliases for an immutable, globally unique ULID technical key, and storage paths follow the prefix (for example `clips/CLIP-001/v1/master.mp4`).
+**Decided:** Friendly IDs use the prefixes `ORI-`, `CLIP-`, `EDT-`, `JOB-`, `APR-`, `PUB-`, `CLIENT-` and `UPL-`. Each tenant has its own sequence per prefix (at least 3 digits, never reused), so a friendly ID is resolved within the tenant given by the `Vidyom-Tenant` header. They are aliases for an immutable, globally unique ULID technical key, and storage paths follow the prefix (for example `clips/CLIP-001/v1/master.mp4`).
 
 ## Asset states
 

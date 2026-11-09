@@ -30,7 +30,7 @@ These numbers are **illustrative**, not guaranteed quality or compression target
 
 ## Timeline alignment
 
-**Decided:** The master, the proxy and the ASR audio must match the raw file's duration within max(100 ms, 1 frame). Sources with variable frame rate or broken timestamps are normalized to constant frame rate in the master before transcription, and transcripts use the master's timeline.
+**Decided:** The master, the proxy and the ASR audio must match the raw file's duration within max(100 ms, 1 frame). Sources with variable frame rate or broken timestamps are normalized to constant frame rate in the master before transcription, and transcripts use the master's timeline. The ASR audio is always extracted from the master, so it has exactly that timeline.
 
 ## FFmpeg examples
 
@@ -44,10 +44,10 @@ ffmpeg -i original.mp4 \
   preview.mp4
 ```
 
-Extract speech audio **directly from the best available source**, not by re-encoding an already compressed proxy:
+Extract speech audio **from the master**, never by re-encoding the proxy:
 
 ```bash
-ffmpeg -i original.mp4 -vn -ac 1 -ar 16000 \
+ffmpeg -i master.mp4 -vn -ac 1 -ar 16000 \
   -c:a libopus -b:a 24k speech.opus
 ```
 

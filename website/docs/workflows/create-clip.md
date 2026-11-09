@@ -44,7 +44,7 @@ Before render, verify source state `ready_for_clipping` and working master avail
 
 ## Approval and retention
 
-**Decided:** Approval has two levels. An `editor` approves the clip selection (`approval.request` of kind `clip_selection`); a `publisher` or `admin` approves publication later (kind `publication`, see [publication](./publication.md)). A workflow can tighten this rule through `approvers`, never loosen it.
+**Decided:** Approval has two levels. An `editor` approves the clip selection (`approval.request` of kind `clip_selection`); a `publisher` or `admin` approves publication later (kind `publication`, see [publication](./publication.md)). A workflow can tighten this rule through `approvers`, never loosen it. The editor's selection approval is always required, and no policy can skip it.
 
 **Decided:** The master of a clip is archived when its selection is approved. Rejected or never-approved renders stay only in the `master` role and expire after 30 days (configurable per tenant).
 

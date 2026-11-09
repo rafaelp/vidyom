@@ -50,7 +50,7 @@ Provider remote IDs are independent of canonical asset IDs. Uploads must be resu
 
 **Decided:** Transcripts are private by default. A transcript or its captions reach the public library or a destination only together with an approved public video. Editors can mark sensitive segments (for example names, health or minors); marked segments are excluded from `public.db` and from public captions.
 
-**Decided:** Per tenant, the daemon exports a read-only `public.db` (SQLite) containing only approved public records and their embeddings, and ships it to the public site's host. The site queries it and computes query embeddings on CPU for semantic search. The daemon is never exposed publicly.
+**Decided:** Per tenant, the daemon exports a read-only `public.db` (SQLite) containing only approved public records and their embeddings, and ships it to the public site's host. The site queries it and computes query embeddings on CPU for semantic search. The daemon is never exposed publicly. **Validate:** whether query embeddings fit the size and memory limits of the site's host (Vercel included), and how an updated `public.db` reaches it.
 
 ## Withdrawal and deletion
 

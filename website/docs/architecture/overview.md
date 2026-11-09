@@ -50,7 +50,7 @@ flowchart TB
 
 ## Remote access
 
-**Decided:** The remote API is HTTPS (TLS 1.3). An admin generates a one-time pairing code and the CLI exchanges it for a per-device credential that is revocable and rotated. The local Unix socket remains for same-host use on Linux (**Proposed:** HTTPS on loopback when the daemon runs inside Docker Desktop on macOS or Windows). SSH tunneling is available only for host operators, and binding only to a private interface (Tailscale/NetBird) remains supported with the same fail-closed rules.
+**Decided:** The remote API is HTTPS (TLS 1.3). An admin generates a one-time pairing code and the CLI exchanges it for a per-device credential that is revocable and rotated. The local Unix socket remains for same-host use on Linux, with HTTPS on loopback when the daemon runs inside Docker Desktop on macOS or Windows. SSH tunneling is available only for host operators, and binding only to a private interface (Tailscale/NetBird) remains supported with the same fail-closed rules.
 
 The daemon operates even when no CLI is connected. Every submitted command producing work returns a `job_id` promptly. Clients may attach to stream logs; disconnecting does not cancel work. Recovery uses persisted checkpoints and idempotency rather than assuming exactly-once execution.
 

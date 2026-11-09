@@ -25,7 +25,7 @@ sidebar_position: 2
 
 ## Asset lineage
 
-For example, an original yoga class `ORI-001` can produce `CLIP-001` and `CLIP-002` on different days. Each clip stores its parent ID, time ranges, render provenance, independent master, backup receipt, status, and publication records. Multiple clips can point to the same source; a clip may contain multiple ordered segments. **Decided:** Friendly IDs use `CLIP-` for clips (the immutable technical key is a ULID), alongside `ORI-`, `EDT-`, `JOB-`, `APR-`, `PUB-` and `CLIENT-`.
+For example, an original yoga class `ORI-001` can produce `CLIP-001` and `CLIP-002` on different days. Each clip stores its parent ID, time ranges, render provenance, independent master, backup receipt, status, and publication records. Multiple clips can point to the same source; a clip may contain multiple ordered segments. **Decided:** Friendly IDs use `CLIP-` for clips (the immutable technical key is a ULID), alongside `ORI-`, `EDT-`, `JOB-`, `APR-`, `PUB-`, `CLIENT-` and `UPL-`.
 
 ## Definition of ready for clipping
 
