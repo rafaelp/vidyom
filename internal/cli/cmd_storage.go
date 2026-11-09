@@ -265,7 +265,7 @@ func (a *app) publishCommand() *cobra.Command {
 	)
 	publish := &cobra.Command{
 		Use:   "publish ID --to DESTINATION[,DESTINATION]",
-		Short: "Request publication of an asset; a publisher approves it before anything goes out",
+		Short: "Request publication of an asset; it goes public only after a publisher approves it",
 		Args:  exactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateRef("asset", args[0]); err != nil {

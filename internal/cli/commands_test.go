@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rafaelp/vidyom/internal/cli"
 	"github.com/rafaelp/vidyom/internal/contract/api"
+	"github.com/rafaelp/vidyom/internal/contract/domain"
 )
 
 // commandCase is one command, what it must send, and nothing else about its output:
@@ -241,6 +243,62 @@ func TestEveryCommandInHumanAndJSONForm(t *testing.T) {
 	sort.Strings(missing)
 	if len(missing) > 0 {
 		t.Errorf("routes with no command: %v", missing)
+	}
+}
+
+// Commands with their own scenarios elsewhere, each with a --json run below.
+var scenarioCommands = map[string]bool{
+	"vidyom server add": true, "vidyom server pair": true, "vidyom server use": true,
+	"vidyom server list": true, "vidyom server remove": true, "vidyom tenant use": true,
+	"vidyom original import": true, "vidyom asset upload": true, "vidyom clip approve": true,
+	"vidyom help": true,
+}
+
+// A new command must join the table or a scenario, so --json stays universal.
+func TestEveryCommandIsExercised(t *testing.T) {
+	covered := map[string]bool{}
+	for _, tc := range commandCases(t) {
+		line := "vidyom " + strings.Join(tc.args, " ")
+		for _, leaf := range cli.LeafCommands() {
+			if line == leaf || strings.HasPrefix(line, leaf+" ") {
+				covered[leaf] = true
+			}
+		}
+	}
+	for _, leaf := range cli.LeafCommands() {
+		if !covered[leaf] && !scenarioCommands[leaf] {
+			t.Errorf("no test runs %q", leaf)
+		}
+	}
+}
+
+func TestScenarioCommandsSpeakJSON(t *testing.T) {
+	h := newHarness(t)
+	h.useTenant("acme")
+	h.installSamples()
+	h.srv.EnableUploads(4096)
+	h.srv.JSON(api.RouteDevicesPair, 201, api.DeviceCredentialResponse{Device: domain.Device{ID: "CLIENT-007"}, Token: "vdm_fictional"})
+	h.srv.JSON(api.RouteApprovalsList, 200, api.List[domain.Approval]{Items: []domain.Approval{sampleApproval(domain.ApprovalPublication)}})
+	h.srv.JSON(api.RouteApprovalsApprove, 200, sampleApproval(domain.ApprovalPublication))
+	upload := fileWith(t, "class.mp4", []byte("fictional media"))
+	imported := fileWith(t, "other.mp4", []byte("other fictional media"))
+
+	for _, command := range [][]string{
+		{"server", "add", "extra", "--socket", h.socket},
+		{"server", "pair", "extra", "--code", "CODE"},
+		{"server", "list"},
+		{"server", "use", "test"},
+		{"tenant", "use", "acme"},
+		{"asset", "upload", upload},
+		{"original", "import", imported},
+		{"clip", "approve", "CLIP-001"},
+		{"server", "remove", "extra"},
+	} {
+		h.mustRun(append(command, "--json")...)
+		assertJSONOutput(t, h.stdout.String(), false)
+		if strings.Contains(h.stdout.String(), "vdm_fictional") {
+			t.Errorf("%v printed the credential", command)
+		}
 	}
 }
 

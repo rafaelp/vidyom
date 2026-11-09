@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -346,6 +347,8 @@ func (s *Server) ServeTLSConfig(cfg *tls.Config) (string, string) {
 	}
 	srv := httptest.NewUnstartedServer(s.mux)
 	srv.TLS = cfg
+	// Refused handshakes are what several tests are about.
+	srv.Config.ErrorLog = log.New(io.Discard, "", 0)
 	srv.StartTLS()
 	s.addCloser(srv.Close)
 	return srv.URL, Fingerprint(cfg.Certificates[0].Certificate[0])
