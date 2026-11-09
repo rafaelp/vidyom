@@ -1,4 +1,7 @@
-// Package daemon: daemon lifecycle and fail-closed listeners (§9.3, I19).
+// Package daemon runs vidyomd: configuration, fail-closed listeners (§9.3, I19,
+// I133–I137), the master key check (D13), lifecycle, service.Doctor and the logic
+// of `vidyomd init`.
 //
-// Owner: component api (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Every component arrives through Deps, as contract types. cmd/vidyomd/wire.go
+// assembles them; this package imports no other component's implementation.
 package daemon

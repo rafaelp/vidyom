@@ -324,14 +324,15 @@ func bearerToken(r *http.Request) (string, bool) {
 func (s *server) credentials(c *call) (security.Credentials, error) {
 	token, ok := bearerToken(c.r)
 	if !ok {
-		s.countAuthFailure(c)
+		s.countAuthFailure("malformed_credential")
 		return security.Credentials{}, errs.New(errs.CodeUnauthenticated, "malformed Authorization header; expected a bearer token")
 	}
 	return security.Credentials{BearerToken: token, PeerUID: c.conn.PeerUID, RemoteAddr: c.conn.RemoteAddr}, nil
 }
 
-func (s *server) countAuthFailure(c *call) {
-	s.metrics.Add(telemetry.AuthFailures, 1, telemetry.Labels{"route": c.route.Name})
+// countAuthFailure counts refusals the authenticator never sees; it counts the rest.
+func (s *server) countAuthFailure(reason string) {
+	s.metrics.Add(telemetry.AuthFailures, 1, telemetry.Labels{"reason": reason, telemetry.LabelTenant: telemetry.SystemTenant})
 }
 
 func (s *server) authenticate(c *call) error {
@@ -352,7 +353,7 @@ func (s *server) authenticate(c *call) error {
 
 	if c.route.Auth == api.AuthWorker {
 		if creds.BearerToken == "" {
-			s.countAuthFailure(c)
+			s.countAuthFailure("missing_credential")
 			return errs.New(errs.CodeUnauthenticated, "a worker token is required")
 		}
 		name, err := s.d.Authenticator.AuthenticateWorker(c.ctx, creds)
@@ -365,7 +366,7 @@ func (s *server) authenticate(c *call) error {
 	}
 
 	if creds.BearerToken == "" && creds.PeerUID == nil {
-		s.countAuthFailure(c)
+		s.countAuthFailure("missing_credential")
 		return errs.New(errs.CodeUnauthenticated, "a device credential is required")
 	}
 	p, err := s.d.Authenticator.Authenticate(c.ctx, creds)
@@ -445,7 +446,7 @@ func (s *server) checkPermission(c *call, perm domain.Permission) error {
 	if c.scope.Principal.SystemAdmin {
 		return nil
 	}
-	s.metrics.Add(telemetry.AuthzDenials, 1, telemetry.Labels{"route": c.route.Name})
+	s.metrics.Add(telemetry.AuthzDenials, 1, telemetry.Labels{"permission": string(perm), telemetry.LabelTenant: telemetry.SystemTenant})
 	return errs.Forbidden(string(perm)).With("hint", "send "+api.HeaderTenant+" with a tenant you administer")
 }
 
