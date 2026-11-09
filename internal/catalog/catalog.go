@@ -191,6 +191,10 @@ func (s *Service) Update(ctx context.Context, scope service.Scope, ref id.Ref, r
 			a.Collection = *req.Collection
 			changes["collection"] = a.Collection
 		}
+		if req.Speaker != nil && *req.Speaker != a.Speaker {
+			a.Speaker, publicEdit = *req.Speaker, true
+			changes["speaker"] = a.Speaker
+		}
 		if len(changes) == 0 {
 			out = a
 			return nil

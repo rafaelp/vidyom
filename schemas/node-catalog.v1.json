@@ -607,6 +607,10 @@
           "collection": {
             "type": "string"
           },
+          "speaker": {
+            "type": "string",
+            "description": "Speaker or instructor (§3.1). A derivative with none takes its source's (I281)."
+          },
           "visibility": {
             "enum": [
               "private",

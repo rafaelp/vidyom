@@ -171,7 +171,7 @@ func newWriter(ctx context.Context, tx *sql.Tx) (*writer, error) {
 		sql string
 	}{
 		{&w.video_, `INSERT INTO videos (public_id, title, description, kind, category, language, speaker, tags, duration_seconds, published_at, thumbnail_url, source_group)
-			VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?)`},
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`},
 		{&w.destination, `INSERT OR IGNORE INTO destinations (public_id, destination, url, embed_url, supports_timestamps) VALUES (?, ?, ?, ?, ?)`},
 		{&w.chapter, `INSERT INTO chapters (public_id, position, title, start_seconds, end_seconds, summary) VALUES (?, ?, ?, ?, ?, ?)`},
 		{&w.segment, `INSERT INTO transcript_segments (public_id, position, start_seconds, end_seconds, text) VALUES (?, ?, ?, ?, ?)`},
@@ -202,7 +202,7 @@ func (w *writer) video(ctx context.Context, v *video) error {
 		return fmt.Errorf("encode tags: %w", err)
 	}
 	a := v.asset
-	if _, err := w.video_.ExecContext(ctx, v.publicID, v.title, v.description, string(a.Kind), a.Category, a.Language,
+	if _, err := w.video_.ExecContext(ctx, v.publicID, v.title, v.description, string(a.Kind), a.Category, a.Language, a.Speaker,
 		tags, a.DurationSeconds, v.publishedAt.UTC().Format(time.RFC3339), v.thumbnail, v.sourceGroup); err != nil {
 		return fmt.Errorf("write a public.db video: %w", err)
 	}

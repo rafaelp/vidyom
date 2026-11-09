@@ -155,12 +155,12 @@ func (r assetRepo) Create(ctx context.Context, a domain.Asset) error {
 				ulid, friendly_id, kind, category, title, description, tags, collection, visibility,
 				ai_processing, ai_consent, ai_policy_source, status, current_version,
 				master_available, backup_verified, proxy_available, timeline_validated, catalog_sync,
-				duration_seconds, language, parent_ulid, lineage, created_at, updated_at, deleted_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				duration_seconds, language, parent_ulid, lineage, created_at, updated_at, deleted_at, speaker)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			string(a.ULID), string(a.ID), string(a.Kind), a.Category, a.Title, a.Description, tags, a.Collection, string(a.Visibility),
 			string(processing), consentJSON, string(source), string(a.Status), a.CurrentVersion,
 			boolInt(a.MasterAvailable), boolInt(a.BackupVerified), boolInt(a.ProxyAvailable), boolInt(a.TimelineValidated), string(a.CatalogSync),
-			a.DurationSeconds, a.Language, parent, lineage, timeText(a.CreatedAt), timeText(a.UpdatedAt), timeArg(a.DeletedAt))
+			a.DurationSeconds, a.Language, parent, lineage, timeText(a.CreatedAt), timeText(a.UpdatedAt), timeArg(a.DeletedAt), a.Speaker)
 		if err != nil {
 			return mapErr(err)
 		}
@@ -218,7 +218,7 @@ const assetSelect = `SELECT a.rowid, a.friendly_id, a.ulid, a.kind, a.category, 
 	a.ai_processing, a.ai_consent, a.status, a.current_version,
 	a.master_available, a.backup_verified, a.proxy_available, a.timeline_validated, a.catalog_sync,
 	a.duration_seconds, a.language, COALESCE((SELECT p.friendly_id FROM assets p WHERE p.ulid = a.parent_ulid), ''), a.lineage,
-	a.created_at, a.updated_at, a.deleted_at
+	a.created_at, a.updated_at, a.deleted_at, a.speaker
 	FROM assets a`
 
 func (r assetRepo) scanRow(s scanner) (int64, domain.Asset, error) {
@@ -231,7 +231,7 @@ func (r assetRepo) scanRow(s scanner) (int64, domain.Asset, error) {
 		&a.AIProcessing, jsonCol{&a.AIConsent}, &a.Status, &a.CurrentVersion,
 		&master, &backup, &proxy, &timeline, &a.CatalogSync,
 		&a.DurationSeconds, &a.Language, &a.ParentAssetID, jsonCol{&a.Lineage},
-		reqTime{&a.CreatedAt}, reqTime{&a.UpdatedAt}, nullTime{&a.DeletedAt})
+		reqTime{&a.CreatedAt}, reqTime{&a.UpdatedAt}, nullTime{&a.DeletedAt}, &a.Speaker)
 	a.TenantID = r.tenant
 	a.MasterAvailable = master != 0
 	a.BackupVerified = backup != 0
@@ -424,11 +424,11 @@ func (r assetRepo) Update(ctx context.Context, a domain.Asset) error {
 		}
 		_, err = q.ExecContext(ctx, `UPDATE assets SET category = ?, title = ?, description = ?, tags = ?, collection = ?, visibility = ?,
 				status = ?, current_version = ?, master_available = ?, backup_verified = ?, proxy_available = ?, timeline_validated = ?,
-				catalog_sync = ?, duration_seconds = ?, language = ?, parent_ulid = ?, lineage = ?, updated_at = ?
+				catalog_sync = ?, duration_seconds = ?, language = ?, parent_ulid = ?, lineage = ?, updated_at = ?, speaker = ?
 			WHERE ulid = ?`,
 			a.Category, a.Title, a.Description, tags, a.Collection, string(a.Visibility),
 			string(a.Status), a.CurrentVersion, boolInt(a.MasterAvailable), boolInt(a.BackupVerified), boolInt(a.ProxyAvailable), boolInt(a.TimelineValidated),
-			string(a.CatalogSync), a.DurationSeconds, a.Language, parent, lineage, timeText(r.now()), key.ulid)
+			string(a.CatalogSync), a.DurationSeconds, a.Language, parent, lineage, timeText(r.now()), a.Speaker, key.ulid)
 		if err != nil {
 			return mapErr(err)
 		}

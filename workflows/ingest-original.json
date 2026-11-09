@@ -27,6 +27,10 @@
     },
     "collection": {
       "type": "string"
+    },
+    "speaker": {
+      "type": "string",
+      "description": "Speaker or instructor (§3.1 step 1)."
     }
   },
   "nodes": [
@@ -40,7 +44,8 @@
         "category": "${inputs.category}",
         "description": "${inputs.description}",
         "language": "${inputs.language}",
-        "collection": "${inputs.collection}"
+        "collection": "${inputs.collection}",
+        "speaker": "${inputs.speaker}"
       }
     },
     {

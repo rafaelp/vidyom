@@ -30,6 +30,7 @@ type ingestFlags struct {
 	version  string
 	title    string
 	category string
+	speaker  string
 	inputs   []string
 	chunk    int64
 }
@@ -39,6 +40,7 @@ func (f *ingestFlags) add(cmd *cobra.Command, workflowHelp string) {
 	cmd.Flags().StringVar(&f.version, "workflow-version", "", "workflow version (default: latest)")
 	cmd.Flags().StringVar(&f.title, "title", "", "title (default: the file's name)")
 	cmd.Flags().StringVar(&f.category, "type", "", "category of the original, such as yoga_class")
+	cmd.Flags().StringVar(&f.speaker, "speaker", "", "speaker or instructor")
 	cmd.Flags().StringArrayVar(&f.inputs, "input", nil, "other workflow input, key=value; repeatable")
 	cmd.Flags().Int64Var(&f.chunk, "chunk-bytes", 0, "requested chunk size; the server may adjust it")
 }
@@ -125,6 +127,9 @@ func ingestInputs(flags ingestFlags, specs map[string]wfdef.InputSpec, baseName 
 	if flags.category != "" {
 		inputs["category"] = flags.category
 	}
+	if flags.speaker != "" {
+		inputs["speaker"] = flags.speaker
+	}
 	return inputs, nil
 }
 
@@ -179,8 +184,8 @@ func (a *app) ingestClientFile(cmd *cobra.Command, path string, flags ingestFlag
 		if inputs, err = ingestInputs(flags, specs, filepath.Base(abs)); err != nil {
 			return err
 		}
-	} else if flags.title != "" || flags.category != "" || len(flags.inputs) > 0 {
-		return usagef("--title, --type and --input need --workflow")
+	} else if flags.title != "" || flags.category != "" || flags.speaker != "" || len(flags.inputs) > 0 {
+		return usagef("--title, --type, --speaker and --input need --workflow")
 	}
 
 	client, err := a.api()

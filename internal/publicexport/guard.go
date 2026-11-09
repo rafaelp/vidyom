@@ -45,7 +45,7 @@ func guardVideo(ctx context.Context, store repo.TenantRepos, v *video) string {
 		return true
 	}
 
-	texts := []string{v.title, v.description, v.asset.Category, v.asset.Language}
+	texts := []string{v.title, v.description, v.asset.Category, v.asset.Language, v.asset.Speaker}
 	texts = append(texts, v.tags...)
 	for _, c := range v.chapters {
 		texts = append(texts, c.Title, c.Summary)

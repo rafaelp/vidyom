@@ -199,6 +199,7 @@ func register(ctx context.Context, env node.DaemonEnv, in node.Input) (node.Resu
 		Description  string              `json:"description"`
 		Language     string              `json:"language"`
 		Collection   string              `json:"collection"`
+		Speaker      string              `json:"speaker"`
 		Visibility   domain.Visibility   `json:"visibility"`
 		AIProcessing domain.AIProcessing `json:"aiProcessing"`
 		Lineage      *lineageParam       `json:"lineage"`
@@ -228,6 +229,7 @@ func register(ctx context.Context, env node.DaemonEnv, in node.Input) (node.Resu
 		Description:    p.Description,
 		Language:       p.Language,
 		Collection:     p.Collection,
+		Speaker:        p.Speaker,
 		Visibility:     domain.VisibilityPrivate,
 		AIProcessing:   p.AIProcessing,
 		Status:         domain.AssetRegistered,
@@ -271,6 +273,9 @@ func register(ctx context.Context, env node.DaemonEnv, in node.Input) (node.Resu
 		}
 		if asset.Collection == "" {
 			asset.Collection = parent.Collection
+		}
+		if asset.Speaker == "" {
+			asset.Speaker = parent.Speaker
 		}
 	}
 	err := store.InTx(ctx, func(tx repo.TenantRepos) error {

@@ -84,7 +84,7 @@ func assetLines(w io.Writer, asset domain.Asset) {
 		kv("id", string(asset.ID)), kv("ulid", string(asset.ULID)), kv("kind", string(asset.Kind)),
 		kv("title", asset.Title), kv("status", string(asset.Status)), kv("visibility", string(asset.Visibility)),
 		kv("version", asset.CurrentVersion), kv("category", asset.Category), kv("collection", asset.Collection),
-		kv("tags", strings.Join(asset.Tags, ", ")), kv("duration", duration), kv("language", asset.Language),
+		kv("speaker", asset.Speaker), kv("tags", strings.Join(asset.Tags, ", ")), kv("duration", duration), kv("language", asset.Language),
 		kv("ai processing", string(asset.AIProcessing)),
 		kv("master available", yesNo(asset.MasterAvailable)), kv("backup verified", yesNo(asset.BackupVerified)),
 		kv("proxy available", yesNo(asset.ProxyAvailable)), kv("timeline validated", yesNo(asset.TimelineValidated)),
@@ -108,6 +108,7 @@ func (a *app) assetCommand() *cobra.Command {
 		tags           []string
 		title, descr   string
 		category, coll string
+		speaker        string
 		yes            bool
 		transcriptVer  string
 		sensitiveVer   string
@@ -163,8 +164,11 @@ func (a *app) assetCommand() *cobra.Command {
 			if flags.Changed("collection") {
 				update.Collection = &coll
 			}
+			if flags.Changed("speaker") {
+				update.Speaker = &speaker
+			}
 			if update == (api.UpdateAssetRequest{}) {
-				return usagef("nothing to change: give --title, --description, --tags, --category or --collection")
+				return usagef("nothing to change: give --title, --description, --tags, --category, --collection or --speaker")
 			}
 			asset, err := invoke[domain.Asset](cmd.Context(), a, apiclient.Call{Route: api.RouteAssetsUpdate, Path: apiclient.PathParam("id", args[0]), Body: update})
 			if err != nil {
@@ -178,6 +182,7 @@ func (a *app) assetCommand() *cobra.Command {
 	updateCmd.Flags().StringSliceVar(&tags, "tags", nil, "tags, comma separated")
 	updateCmd.Flags().StringVar(&category, "category", "", "category")
 	updateCmd.Flags().StringVar(&coll, "collection", "", "collection")
+	updateCmd.Flags().StringVar(&speaker, "speaker", "", "speaker or instructor")
 
 	lineage := &cobra.Command{
 		Use:   "lineage ID",

@@ -217,6 +217,7 @@ type Asset struct {
 	Description    string       `json:"description,omitempty"`
 	Tags           []string     `json:"tags,omitempty"`
 	Collection     string       `json:"collection,omitempty"`
+	Speaker        string       `json:"speaker,omitempty"` // speaker or instructor (§3.1, I281)
 	Visibility     Visibility   `json:"visibility"`
 	AIProcessing   AIProcessing `json:"ai_processing"`
 	AIConsent      *AIConsent   `json:"ai_consent"`

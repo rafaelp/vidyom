@@ -181,6 +181,7 @@ type UpdateAssetRequest struct {
 	Tags        *[]string `json:"tags,omitempty"`
 	Category    *string   `json:"category,omitempty"`
 	Collection  *string   `json:"collection,omitempty"`
+	Speaker     *string   `json:"speaker,omitempty"`
 }
 
 // LineageResponse answers GET /assets/{id}/lineage.
