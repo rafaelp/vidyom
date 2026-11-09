@@ -638,6 +638,105 @@ func TestSecretsService(t *testing.T) {
 	}
 }
 
+// The existence checks happen in the transaction that writes (§9.1).
+func TestConcurrentAddsLeaveOneWinner(t *testing.T) {
+	f := setup(t, "acme")
+	svc := f.vault.Secrets()
+	scope := service.Scope{Tenant: "acme", Principal: domain.Principal{Email: "a@example.com"}}
+	const n = 8
+	results := make(chan error, n)
+	for i := range n {
+		go func() {
+			_, err := svc.Put(ctx, scope, api.PutSecretRequest{Name: "same", Location: domain.SecretServer, Value: string(rune('a' + i))})
+			results <- err
+		}()
+	}
+	wins := 0
+	for range n {
+		err := <-results
+		if err == nil {
+			wins++
+		} else if !errs.IsCode(err, errs.CodeConflict) {
+			t.Fatal(err)
+		}
+	}
+	if wins != 1 {
+		t.Fatalf("%d adds won", wins)
+	}
+}
+
+func TestRotateKeepsMetadataAndNeverRecreates(t *testing.T) {
+	f := setup(t, "acme")
+	svc := f.vault.Secrets()
+	scope := service.Scope{Tenant: "acme", Principal: domain.Principal{Email: "a@example.com"}}
+	created, err := svc.Put(ctx, scope, api.PutSecretRequest{Name: "del", Location: domain.SecretDelegated, Value: "one", TTLSeconds: 3600})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := service.Scope{Tenant: "acme", Principal: domain.Principal{Email: "b@example.com"}}
+	rotated, err := svc.Rotate(ctx, other, "del", api.RotateSecretRequest{Value: "two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rotated.Location != domain.SecretDelegated || rotated.CreatedBy != "a@example.com" || rotated.ExpiresAt == nil || !rotated.ExpiresAt.Equal(*created.ExpiresAt) || rotated.RotatedAt == nil {
+		t.Fatalf("rotated = %+v", rotated)
+	}
+	if err := svc.Delete(ctx, scope, "del"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Rotate(ctx, scope, "del", api.RotateSecretRequest{Value: "three"}); !errs.IsCode(err, errs.CodeNotFound) {
+		t.Fatalf("rotate after delete: %v", err)
+	}
+	if _, err := svc.Rotate(ctx, scope, "../bad", api.RotateSecretRequest{Value: "x"}); !errs.IsCode(err, errs.CodeInvalidArgument) {
+		t.Fatalf("bad name: %v", err)
+	}
+	list, err := svc.List(ctx, scope)
+	if err != nil || len(list) != 0 {
+		t.Fatalf("list = %+v, %v", list, err)
+	}
+}
+
+func TestRewrapIsAudited(t *testing.T) {
+	f := setup(t, "acme")
+	if err := f.vault.EnsureDataKey(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.vault.RewrapAll(ctx, staticKey{key: key(9)}); err != nil {
+		t.Fatal(err)
+	}
+	e := f.audit.entries[len(f.audit.entries)-1]
+	if e.Action != "vault.rewrap" || e.TenantID != "" || e.Details["tenants"] != 1 {
+		t.Fatalf("entry = %+v", e)
+	}
+}
+
+// A key created during a re-wrap ends up under the new master, whichever order they ran
+// in, so nothing is left needing the old one.
+func TestKeysCreatedDuringARewrapOpen(t *testing.T) {
+	f := setup(t, "acme", "beta", "gamma", "delta")
+	done := make(chan error, 3)
+	for _, tn := range []domain.TenantID{"beta", "gamma", "delta"} {
+		go func() { done <- f.vault.EnsureDataKey(ctx, tn) }()
+	}
+	if err := f.vault.RewrapAll(ctx, staticKey{key: key(9)}); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	restarted, err := New(f.stores.System, f.stores.Tenants, staticKey{key: key(9)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tn := range []domain.TenantID{"beta", "gamma", "delta"} {
+		if _, err := restarted.CacheKey(ctx, tn); err != nil {
+			t.Fatalf("%s: %v", tn, err)
+		}
+	}
+}
+
 func TestSecretTestReportsAnExpiredOne(t *testing.T) {
 	f := setup(t, "acme")
 	svc := f.vault.Secrets()

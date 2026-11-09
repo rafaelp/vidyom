@@ -206,18 +206,20 @@ func secretAAD(tenant domain.TenantID, name string, keyVersion int) string {
 
 // ---- Data keys ----
 
-// newDataKey wraps a fresh data key as the tenant's active version.
+// newDataKey wraps a fresh data key as the tenant's active version. The read lock spans
+// the wrap and the write, so RewrapAll cannot finish in between and leave this key under
+// a master key that is on its way out.
 func (v *Vault) newDataKey(ctx context.Context, tenant domain.TenantID, version int) ([]byte, error) {
-	master, err := v.masterKey()
-	if err != nil {
-		return nil, err
-	}
-	defer wipe(master)
 	dataKey := make([]byte, MasterKeySize)
 	if _, err := rand.Read(dataKey); err != nil {
 		return nil, fmt.Errorf("generate data key: %w", err)
 	}
-	wrapped, err := seal(master, dataKey, dekAAD(tenant, version))
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	if v.master == nil {
+		return nil, errs.New(errs.CodeSealed, "the vault is sealed")
+	}
+	wrapped, err := seal(v.master, dataKey, dekAAD(tenant, version))
 	if err != nil {
 		return nil, fmt.Errorf("wrap data key: %w", err)
 	}
@@ -316,9 +318,24 @@ func (v *Vault) decrypt(tenant domain.TenantID, name string, version int, dataKe
 	return plain, nil
 }
 
-// Put encrypts and stores a value. Replacing an existing secret keeps its creation
-// metadata and sets rotated_at.
-func (v *Vault) Put(ctx context.Context, tenant domain.TenantID, meta domain.SecretMeta, value []byte) error {
+// putMode says what must be true of the existing record, checked in the transaction
+// that writes, so two callers cannot both pass the check.
+type putMode int
+
+const (
+	putUpsert putMode = iota
+	putCreate         // refuse an existing name
+	putRotate         // refuse a missing name, and keep its location and expiry
+)
+
+func validateValue(value []byte) error {
+	if len(value) == 0 || len(value) > MaxSecretBytes {
+		return errs.Newf(errs.CodeInvalidArgument, "a secret's value must be 1 to %d bytes", MaxSecretBytes)
+	}
+	return nil
+}
+
+func validateMeta(meta domain.SecretMeta) error {
 	if err := validateSecretName(meta.Name); err != nil {
 		return err
 	}
@@ -333,8 +350,21 @@ func (v *Vault) Put(ctx context.Context, tenant domain.TenantID, meta domain.Sec
 	default:
 		return errs.Newf(errs.CodeInvalidArgument, "unknown secret location %q", meta.Location)
 	}
-	if len(value) == 0 || len(value) > MaxSecretBytes {
-		return errs.Newf(errs.CodeInvalidArgument, "a secret's value must be 1 to %d bytes", MaxSecretBytes)
+	return nil
+}
+
+// Put encrypts and stores a value. Replacing an existing secret keeps its creation
+// metadata and sets rotated_at.
+func (v *Vault) Put(ctx context.Context, tenant domain.TenantID, meta domain.SecretMeta, value []byte) error {
+	if err := validateMeta(meta); err != nil {
+		return err
+	}
+	return v.store(ctx, tenant, meta, value, putUpsert)
+}
+
+func (v *Vault) store(ctx context.Context, tenant domain.TenantID, meta domain.SecretMeta, value []byte, mode putMode) error {
+	if err := validateValue(value); err != nil {
+		return err
 	}
 	store, err := v.tenants.ForTenant(ctx, tenant)
 	if err != nil {
@@ -349,30 +379,39 @@ func (v *Vault) Put(ctx context.Context, tenant domain.TenantID, meta domain.Sec
 	if err != nil {
 		return fmt.Errorf("encrypt secret: %w", err)
 	}
-	meta.TenantID = tenant
 	now := v.clock().UTC()
 	return store.InTx(ctx, func(tx repo.TenantRepos) error {
+		out := meta
+		out.TenantID = tenant
 		existing, err := tx.Secrets().Get(ctx, meta.Name)
 		switch {
 		case err == nil:
-			meta.CreatedAt = existing.Meta.CreatedAt
-			if meta.CreatedBy == "" {
-				meta.CreatedBy = existing.Meta.CreatedBy
+			if mode == putCreate {
+				return errs.Newf(errs.CodeConflict, "secret %s already exists: rotate it instead", meta.Name)
 			}
-			if meta.RotatedAt == nil {
-				meta.RotatedAt = &now
+			if mode == putRotate {
+				out = existing.Meta
+				out.TenantID = tenant
 			}
-			if meta.LastUsedAt == nil {
-				meta.LastUsedAt = existing.Meta.LastUsedAt
+			out.CreatedAt = existing.Meta.CreatedAt
+			if out.CreatedBy == "" {
+				out.CreatedBy = existing.Meta.CreatedBy
+			}
+			out.RotatedAt = &now
+			if out.LastUsedAt == nil {
+				out.LastUsedAt = existing.Meta.LastUsedAt
 			}
 		case errs.IsCode(err, errs.CodeNotFound):
-			if meta.CreatedAt.IsZero() {
-				meta.CreatedAt = now
+			if mode == putRotate {
+				return err
+			}
+			if out.CreatedAt.IsZero() {
+				out.CreatedAt = now
 			}
 		default:
 			return err
 		}
-		return tx.Secrets().Put(ctx, repo.SecretRecord{Meta: meta, Ciphertext: ciphertext, KeyVersion: version})
+		return tx.Secrets().Put(ctx, repo.SecretRecord{Meta: out, Ciphertext: ciphertext, KeyVersion: version})
 	})
 }
 
@@ -527,7 +566,8 @@ func (v *Vault) RotateDataKey(ctx context.Context, tenant domain.TenantID) error
 
 // RewrapAll re-wraps every tenant's data keys with a new master key, in one system.db
 // transaction, then switches to it in memory. The operator changes the configured
-// provider before the next start (D13).
+// provider before the next start (D13). Holding the lock from before listing tenants
+// means a tenant created meanwhile waits and wraps its key with the new master.
 func (v *Vault) RewrapAll(ctx context.Context, newMaster security.MasterKeyProvider) error {
 	if newMaster == nil {
 		return errs.New(errs.CodeInvalidArgument, "no new master key provider")
@@ -537,12 +577,12 @@ func (v *Vault) RewrapAll(ctx context.Context, newMaster security.MasterKeyProvi
 		return err
 	}
 	defer wipe(next)
-	current, err := v.masterKey()
-	if err != nil {
-		return err
-	}
-	defer wipe(current)
 
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.master == nil {
+		return errs.New(errs.CodeSealed, "the vault is sealed")
+	}
 	tenants := map[domain.TenantID]bool{}
 	withDB, err := v.tenants.Tenants(ctx)
 	if err != nil {
@@ -558,11 +598,6 @@ func (v *Vault) RewrapAll(ctx context.Context, newMaster security.MasterKeyProvi
 	for _, t := range registered {
 		tenants[t.ID] = true
 	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.master == nil {
-		return errs.New(errs.CodeSealed, "the vault is sealed")
-	}
 	err = v.system.InTx(ctx, func(tx repo.SystemRepos) error {
 		for tenant := range tenants {
 			keys, err := tx.WrappedKeys().List(ctx, tenant)
@@ -570,7 +605,7 @@ func (v *Vault) RewrapAll(ctx context.Context, newMaster security.MasterKeyProvi
 				return err
 			}
 			for _, k := range keys {
-				dataKey, err := unseal(current, k.Wrapped, dekAAD(tenant, k.Version))
+				dataKey, err := unseal(v.master, k.Wrapped, dekAAD(tenant, k.Version))
 				if err != nil {
 					return errs.Wrap(errs.CodeSealed, err, "a tenant data key does not open with the current master key")
 				}
@@ -593,6 +628,14 @@ func (v *Vault) RewrapAll(ctx context.Context, newMaster security.MasterKeyProvi
 	wipe(v.master)
 	v.master = append([]byte(nil), next...)
 	v.provider = newMaster
+	if v.auditor != nil {
+		return v.auditor.Record(ctx, security.AuditEntry{
+			Principal: domain.Principal{Method: domain.AuthSystem},
+			Action:    "vault.rewrap",
+			Result:    "allowed",
+			Details:   map[string]any{"provider": newMaster.Name(), "sealing": string(newMaster.Sealing()), "tenants": len(tenants)},
+		})
+	}
 	return nil
 }
 

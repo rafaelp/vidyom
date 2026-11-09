@@ -43,18 +43,6 @@ func (s secretService) List(ctx context.Context, scope service.Scope) ([]domain.
 }
 
 func (s secretService) Put(ctx context.Context, scope service.Scope, req api.PutSecretRequest) (domain.SecretMeta, error) {
-	if err := validateSecretName(req.Name); err != nil {
-		return domain.SecretMeta{}, err
-	}
-	store, err := s.v.tenants.ForTenant(ctx, scope.Tenant)
-	if err != nil {
-		return domain.SecretMeta{}, err
-	}
-	if _, err := store.Secrets().Get(ctx, req.Name); err == nil {
-		return domain.SecretMeta{}, errs.Newf(errs.CodeConflict, "secret %s already exists: rotate it instead", req.Name)
-	} else if !errs.IsCode(err, errs.CodeNotFound) {
-		return domain.SecretMeta{}, err
-	}
 	meta := domain.SecretMeta{Name: req.Name, Location: req.Location, CreatedBy: scope.Principal.Actor()}
 	switch {
 	case req.Location == domain.SecretDelegated:
@@ -71,7 +59,10 @@ func (s secretService) Put(ctx context.Context, scope service.Scope, req api.Put
 		expires := s.v.clock().UTC().Add(time.Duration(req.TTLSeconds) * time.Second)
 		meta.ExpiresAt = &expires
 	}
-	if err := s.v.Put(ctx, scope.Tenant, meta, []byte(req.Value)); err != nil {
+	if err := validateMeta(meta); err != nil {
+		return domain.SecretMeta{}, err
+	}
+	if err := s.v.store(ctx, scope.Tenant, meta, []byte(req.Value), putCreate); err != nil {
 		return domain.SecretMeta{}, err
 	}
 	if err := s.audit(ctx, scope, "secret.add", domain.PermSecretWrite, req.Name, map[string]any{"location": string(req.Location)}); err != nil {
@@ -124,15 +115,12 @@ func (s secretService) Test(ctx context.Context, scope service.Scope, name strin
 }
 
 // Rotate replaces a value under the active data key. The name, location and expiry
-// stay (§9.1).
+// stay (§9.1). A secret deleted meanwhile stays deleted.
 func (s secretService) Rotate(ctx context.Context, scope service.Scope, name string, req api.RotateSecretRequest) (domain.SecretMeta, error) {
-	existing, err := s.meta(ctx, scope, name)
-	if err != nil {
+	if err := validateSecretName(name); err != nil {
 		return domain.SecretMeta{}, err
 	}
-	now := s.v.clock().UTC()
-	existing.RotatedAt = &now
-	if err := s.v.Put(ctx, scope.Tenant, existing, []byte(req.Value)); err != nil {
+	if err := s.v.store(ctx, scope.Tenant, domain.SecretMeta{Name: name}, []byte(req.Value), putRotate); err != nil {
 		return domain.SecretMeta{}, err
 	}
 	if err := s.audit(ctx, scope, "secret.rotate", domain.PermSecretWrite, name, nil); err != nil {
