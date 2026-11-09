@@ -177,12 +177,7 @@ func (w *worker) drain() {
 func (w *worker) register(ctx context.Context) (workerproto.RegisterResponse, error) {
 	backoff := time.Second
 	for {
-		resp, err := w.cfg.Coordinator.Register(ctx, workerproto.RegisterRequest{
-			WorkerID:  w.cfg.WorkerID,
-			Pools:     w.cfg.Pools,
-			Resources: w.cfg.Resources,
-			Version:   w.cfg.Version,
-		})
+		resp, err := w.cfg.Coordinator.Register(ctx, w.registration())
 		if err == nil {
 			if resp.ProtocolVersion != 0 && resp.ProtocolVersion != workerproto.ProtocolVersion {
 				return resp, fmt.Errorf("workers: the daemon speaks worker protocol %d, this worker speaks %d", resp.ProtocolVersion, workerproto.ProtocolVersion)
@@ -201,6 +196,15 @@ func (w *worker) register(ctx context.Context) (workerproto.RegisterResponse, er
 			return resp, ctx.Err()
 		}
 		backoff = min(backoff*2, w.cfg.RetryMax)
+	}
+}
+
+func (w *worker) registration() workerproto.RegisterRequest {
+	return workerproto.RegisterRequest{
+		WorkerID:  w.cfg.WorkerID,
+		Pools:     w.cfg.Pools,
+		Resources: w.cfg.Resources,
+		Version:   w.cfg.Version,
 	}
 }
 
@@ -245,7 +249,15 @@ func (w *worker) heartbeatLoop(ctx context.Context) {
 			Running:  w.runningCount(),
 			DiskMB:   disk,
 		})
-		if err != nil && ctx.Err() == nil {
+		switch {
+		case err == nil || ctx.Err() != nil:
+		case errs.IsCode(err, errs.CodeNotFound):
+			// The daemon lost this worker, and without a registration it refuses leases
+			// with 409 (I154). Registering again heals it.
+			if _, err := w.cfg.Coordinator.Register(ctx, w.registration()); err != nil && ctx.Err() == nil {
+				w.cfg.Logger.Warn("registering again failed", "error", errs.Public(err).Message)
+			}
+		default:
 			w.cfg.Logger.Warn("worker heartbeat failed", "error", errs.Public(err).Message)
 		}
 	}

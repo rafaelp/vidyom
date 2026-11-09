@@ -147,12 +147,20 @@ func (n putNode) Execute(ctx context.Context, env node.Env, in node.Input) (node
 		return node.Result{}, nodeutil.Classify(err)
 	}
 	existing, err := storage.Stat(ctx, p.Key)
-	switch {
-	case err == nil && existing.SHA256 == sum && existing.SizeBytes == size:
-		env.Logger().Info("the object is already stored with this checksum", "key", p.Key)
-		return node.JSONResult(stored(p.Storage, existing, p.VerifyChecksum, origin.Profile))
-	case err != nil && !errs.IsCode(err, errs.CodeNotFound):
+	if err != nil && !errs.IsCode(err, errs.CodeNotFound) {
 		return node.Result{}, nodeutil.Classify(err)
+	}
+	if err == nil && existing.SHA256 == sum && existing.SizeBytes == size {
+		// With verifyChecksum the record alone is not enough: this asks the driver, which
+		// on gcs still reads nothing (I186). A failed check writes the object again.
+		res, verifyErr := storage.Verify(ctx, p.Key, sum)
+		switch {
+		case !p.VerifyChecksum, verifyErr == nil && res.OK:
+			env.Logger().Info("the object is already stored with this checksum", "key", p.Key)
+			return node.JSONResult(stored(p.Storage, existing, p.VerifyChecksum, origin.Profile))
+		case verifyErr != nil && !errs.IsCode(verifyErr, errs.CodeCapabilityUnsupported):
+			return node.Result{}, nodeutil.Classify(verifyErr)
+		}
 	}
 	f, err := os.Open(input.Path)
 	if err != nil {

@@ -432,11 +432,19 @@ type aiEnv struct {
 var _ node.AIEnv = aiEnv{}
 
 func (a aiEnv) params() connector.AIParams {
-	p := connector.AIParams{Tenant: a.lease.TenantID, Daemon: a.deps.AIWorker}
+	p := connector.AIParams{Tenant: a.lease.TenantID, Daemon: a.deps.AIWorker, Secrets: noSecrets{}}
 	if a.lease.AI != nil {
 		p.AI = *a.lease.AI
 	}
 	return p
+}
+
+// noSecrets answers any credential request of an AI connector: this pool holds none,
+// since the AI worker is local and external endpoints run in the daemon (I7, I197).
+type noSecrets struct{}
+
+func (noSecrets) ResolveSecret(context.Context, string) ([]byte, error) {
+	return nil, errs.New(errs.CodeForbidden, "pool ai holds no credentials")
 }
 
 // Transcriber opens the configured transcription driver (I197).

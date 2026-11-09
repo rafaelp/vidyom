@@ -26,6 +26,7 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/jobqueue"
 	"github.com/rafaelp/vidyom/internal/contract/node"
+	"github.com/rafaelp/vidyom/internal/contract/telemetry"
 	"github.com/rafaelp/vidyom/internal/contract/version"
 	"github.com/rafaelp/vidyom/internal/workers"
 	"github.com/rafaelp/vidyom/internal/workers/client"
@@ -43,6 +44,10 @@ var wireRegistries func(node.Registrar, connector.Registrar) error
 // wireQueue opens the job queue, whose implementation belongs to another component
 // (I180). wire.go sets it in init(). The returned function releases the queue.
 var wireQueue func(ctx context.Context, redis config.Redis) (jobqueue.Queue, func(), error)
+
+// wireMetrics optionally gives the worker a metrics exporter. It stays nil until
+// wire.go sets it, and the worker then records nothing.
+var wireMetrics func(ctx context.Context, observability config.Observability) (telemetry.Metrics, func(), error)
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
@@ -307,6 +312,14 @@ func run(args []string, stderr io.Writer) int {
 	}
 	defer closeQueue()
 	cfg.Queue = queue
+	if wireMetrics != nil {
+		metrics, closeMetrics, err := wireMetrics(ctx, daemonConfig.Observability)
+		if err != nil {
+			return fail("start the metrics exporter: %v", err)
+		}
+		defer closeMetrics()
+		cfg.Metrics = metrics
+	}
 
 	if err := workers.Run(ctx, cfg, nodes); err != nil {
 		return fail("%v", err)

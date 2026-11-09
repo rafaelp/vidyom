@@ -99,6 +99,7 @@ func TestPutVerifiesWithoutReadingTheArchiveBack(t *testing.T) {
 }
 
 func TestPutRetrySkipsTheUpload(t *testing.T) {
+	// The retry's check counts as verify, so it is still not a media read (I188).
 	h := workertest.New(t)
 	src := scratchFile(t, h, "raw.mov", "raw")
 	params := map[string]any{"storage": "archive", "source": src, "key": "k", "verifyChecksum": true}
@@ -115,6 +116,23 @@ func TestPutRetrySkipsTheUpload(t *testing.T) {
 	}
 	if puts != 1 {
 		t.Fatalf("%d writes for one object", puts)
+	}
+}
+
+// A retry that finds a damaged object of the same size must not call it verified.
+func TestPutRetryRewritesADamagedObject(t *testing.T) {
+	h := workertest.New(t)
+	src := scratchFile(t, h, "raw.mov", "raw recording")
+	params := map[string]any{"storage": "master", "source": src, "key": "k", "verifyChecksum": true}
+	h.MustRun(ctx, nodeOf(t, "storage.put"), "n", params)
+	stored := filepath.Join(h.Root, "roles", "master", "acme", "k")
+	if err := os.WriteFile(stored, []byte("RAW RECORDING"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.MustRun(ctx, nodeOf(t, "storage.put"), "n", params)
+	data, err := os.ReadFile(stored)
+	if err != nil || string(data) != "raw recording" {
+		t.Fatalf("%q %v", data, err)
 	}
 }
 

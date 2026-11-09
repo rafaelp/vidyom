@@ -61,6 +61,7 @@ type fakeDaemon struct {
 
 	registerErr  error
 	registerResp workerproto.RegisterResponse
+	heartbeatErr error
 	down         bool
 	done         chan string
 	finished     map[string]bool
@@ -170,6 +171,10 @@ func (d *fakeDaemon) serve(route string, w http.ResponseWriter, r *http.Request)
 		var req workerproto.HeartbeatRequest
 		_ = json.Unmarshal(body, &req)
 		d.heartbeats = append(d.heartbeats, req)
+		if d.heartbeatErr != nil {
+			writeError(w, d.heartbeatErr)
+			return
+		}
 		writeJSON(w, struct{}{})
 	case api.RouteWorkerLease:
 		tk, ok := d.tasks[taskID]

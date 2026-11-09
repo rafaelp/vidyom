@@ -58,7 +58,11 @@ func (w *worker) handle(d jobqueue.Delivery, pool node.Pool) {
 		slog.Int("attempt", lease.Attempt),
 		slog.String("trace_id", lease.TraceID),
 	)
-	run := &taskRun{worker: w, delivery: d, pool: pool, lease: lease, logger: logger, buffer: buffer}
+	internal := w.cfg.Logger.With(
+		"tenant_id", string(lease.TenantID), "job_id", string(lease.JobID),
+		"node_id", lease.NodeID, "node_type", lease.NodeType, "trace_id", lease.TraceID,
+	)
+	run := &taskRun{worker: w, delivery: d, pool: pool, lease: lease, logger: logger, internal: internal, buffer: buffer}
 	run.execute()
 }
 
@@ -80,7 +84,10 @@ type taskRun struct {
 	delivery jobqueue.Delivery
 	pool     node.Pool
 	lease    workerproto.Lease
+	// logger also feeds the job's stream, which clients read. internal does not: only
+	// it may carry an internal cause or FFmpeg's stderr (I190).
 	logger   *slog.Logger
+	internal *slog.Logger
 	buffer   *lineBuffer
 }
 
@@ -120,7 +127,7 @@ func (t *taskRun) execute() {
 	stopHeartbeat := t.heartbeat(ctx, cancel, desc, env)
 
 	started := w.cfg.Now()
-	result, execErr := safeExecute(ctx, n, nodeEnv, node.Input{
+	result, execErr := safeExecute(ctx, t.internal, n, nodeEnv, node.Input{
 		Parameters:     t.lease.Parameters,
 		Attempt:        t.lease.Attempt,
 		IdempotencyKey: t.lease.IdempotencyKey,
@@ -142,8 +149,11 @@ func (t *taskRun) execute() {
 		w.cfg.Metrics.Add(telemetry.NodeFailures, 1, telemetry.Labels{
 			"node_type": t.lease.NodeType, "tenant_id": string(t.lease.TenantID),
 		})
-		t.logger.Error("node failed", "error", execErr)
-		t.fail(failureFor(execErr, cause))
+		failure := failureFor(execErr, cause)
+		t.internal.Error("node failed", "code", failure.Code, "cause", execErr)
+		t.logger.Error("node failed", "code", failure.Code, "reason", failure.Message)
+		t.flushLogs()
+		t.fail(failure)
 		return
 	}
 	t.complete(result, env)
@@ -173,10 +183,10 @@ func isContextError(err error) bool {
 
 // safeExecute turns a node's panic into a failure, so one bad node cannot take the
 // other tasks of this worker down with it.
-func safeExecute(ctx context.Context, n node.Node, env node.Env, in node.Input) (result node.Result, err error) {
+func safeExecute(ctx context.Context, internal *slog.Logger, n node.Node, env node.Env, in node.Input) (result node.Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			env.Logger().Error("node panicked", "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+			internal.Error("node panicked", "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
 			err = errs.New(errs.CodeInternal, "the node crashed")
 		}
 	}()

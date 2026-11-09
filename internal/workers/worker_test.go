@@ -61,6 +61,8 @@ type rig struct {
 	stop     context.CancelFunc
 	done     chan error
 	logs     *syncBuffer
+
+	accessLog string
 }
 
 type syncBuffer struct {
@@ -113,8 +115,20 @@ func newRig(t *testing.T) *rig {
 			Logger:            slog.New(slog.NewJSONHandler(buf, nil)),
 		},
 	}
+	r.accessLog = filepath.Join(root, "access.jsonl")
+	params, err := json.Marshal(map[string]any{"accessLog": r.accessLog})
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage := map[domain.StorageRole]config.StorageUsage{
+		domain.RoleArchive: config.UsageBackupOnly,
+		domain.RoleMaster:  config.UsageOperational,
+		domain.RoleProxy:   config.UsageOperational,
+	}
 	for _, role := range domain.StorageRoles {
-		daemon.roles[role] = config.StorageInstance{Driver: local.Driver, Root: filepath.Join(root, "roles", string(role)), Usage: config.UsageOperational}
+		daemon.roles[role] = config.StorageInstance{
+			Driver: local.Driver, Root: filepath.Join(root, "roles", string(role)), Usage: usage[role], Parameters: params,
+		}
 	}
 	return r
 }
@@ -220,6 +234,59 @@ func TestRegisterDeclaresResources(t *testing.T) {
 		r.daemon.with(func() { n = len(r.daemon.heartbeats) })
 		return n > 0
 	})
+}
+
+// I154: a daemon that lost this worker answers not_found, and refuses leases until the
+// worker registers again.
+func TestRegistersAgainWhenTheDaemonForgets(t *testing.T) {
+	r := newRig(t)
+	r.start()
+	eventually(t, "registration", func() bool {
+		var n int
+		r.daemon.with(func() { n = len(r.daemon.registers) })
+		return n == 1
+	})
+	r.daemon.with(func() { r.daemon.heartbeatErr = errs.NotFound("worker") })
+	eventually(t, "a second registration", func() bool {
+		var n int
+		r.daemon.with(func() { n = len(r.daemon.registers) })
+		return n >= 2
+	})
+}
+
+// I190: the job's stream, which clients read, gets no internal cause and no stack.
+func TestInternalCausesStayOutOfTheJobStream(t *testing.T) {
+	r := newRig(t)
+	const secret = "/data/acme/private-title-of-a-recording.mp4: Invalid data"
+	r.registry.RegisterNode(script("test.fail", false, func(context.Context, node.Env, node.Input) (node.Result, error) {
+		return node.Result{}, errs.Wrap(errs.CodeFailedPrecondition, errors.New(secret), "the media tool could not process this file")
+	}))
+	r.registry.RegisterNode(script("test.panic", false, func(context.Context, node.Env, node.Input) (node.Result, error) {
+		panic(secret)
+	}))
+	failing, _ := r.submit("n1", "test.fail", nil)
+	panicking, _ := r.submit("n2", "test.panic", nil)
+	r.start()
+	r.daemon.waitDone(t, failing)
+	r.daemon.waitDone(t, panicking)
+	r.daemon.with(func() {
+		for _, taskID := range []string{failing, panicking} {
+			for _, line := range r.daemon.logs[taskID] {
+				if strings.Contains(line.Message, "private-title") || strings.Contains(line.Message, "goroutine") {
+					t.Errorf("the job's stream got an internal cause: %s", line.Message)
+				}
+			}
+			if strings.Contains(r.daemon.failed[taskID].Message, "private-title") {
+				t.Errorf("the failure record got an internal cause: %+v", r.daemon.failed[taskID])
+			}
+		}
+		if len(r.daemon.logs[failing]) == 0 || !strings.Contains(r.daemon.logs[failing][0].Message, "could not process") {
+			t.Errorf("the job's stream lacks the public reason: %+v", r.daemon.logs[failing])
+		}
+	})
+	if !strings.Contains(r.logs.String(), "private-title") {
+		t.Error("the worker's own log lost the cause")
+	}
 }
 
 func TestCompleteThenAck(t *testing.T) {
