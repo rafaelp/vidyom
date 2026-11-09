@@ -30,7 +30,7 @@ Every route of `api.Routes` goes through one chain. Order matters because it dec
 3. **Authentication** by `Route.Auth`. `none`: skip. `worker`: `Authenticator.AuthenticateWorker`. `user`: `Authenticator.Authenticate` with the bearer token, the Unix peer UID and the remote address. A failure answers `401` and counts in `vidyom_auth_failures_total`. Requests with no credential at all are refused without calling the authenticator.
 4. **Tenant** by `Route.Tenant` (D32). `required` without the header answers `400 tenant_required`; a malformed slug answers `400 invalid_argument`; `none` ignores the header. `Authorizer.Resolve` turns no-membership into `404`, so a foreign tenant is indistinguishable from a missing one (§12.1).
 5. **Permission.** `Authorizer.Require` with `Route.Permission` when set. A denial answers `403`, counts in `vidyom_authz_denials_total`, and on a mutating route writes an audit record with result `denied`.
-6. **Idempotency.** On tenant-scoped mutations with a key: same key and same request replays the stored response, same key with a different request answers `409 idempotency_mismatch`, a concurrent duplicate waits for the first. Only `2xx` responses are remembered.
+6. **Idempotency.** Tenant-scoped mutations require a key, with the exceptions of I122. Same key and same request replays the stored response, same key with a different request answers `409 idempotency_mismatch`, a concurrent duplicate waits for the first. Only `2xx` responses are remembered.
 7. **Audit.** On mutations, one record with result `allowed` is written **before** the handler runs; a failure aborts the request, so no mutation can happen unaudited. A non-`2xx` outcome adds a record with result `failed`.
 8. **Handler** with a `service.Scope`. Coded errors become `{"error": {...}}` through `errs.Public`; uncoded errors become a generic `internal` and are logged with the request ID.
 
@@ -101,7 +101,7 @@ Tenant isolation comes from the per-tenant repository plus the validated slug in
 - **Before any bind:** configuration valid, required dependencies present, data directory locked, master key unsealed through `security.MasterKeyProvider`. Sealed or absent means exit non-zero with no listener (D13).
 - **Unix socket.** Default mode `0600`, parent directory `0700`. A parent writable by others, a non-socket at the path, or a live daemon at the path aborts startup. A stale socket is replaced. Peer UID comes from `SO_PEERCRED` on Linux and `LOCAL_PEERCRED` on macOS, attached per connection. On platforms without peer credentials the socket listener is refused.
 - **HTTPS.** TLS 1.3 minimum, no plaintext path. Exactly one of `bind` (an IP literal) or `interface`. A missing or down interface aborts. `0.0.0.0` and `::` need `allowPublic` and `mode: files`. `mode: auto` only on loopback, with a self-signed certificate kept in the data directory and its fingerprint reported through pairing. `clientCAFile` turns on mTLS.
-- **Docker Desktop (D49).** Inside a container, loopback cannot receive a port published by Docker, so a dedicated rule is needed for HTTPS on host loopback; decided in the decisions log.
+- **Docker Desktop (D49).** Inside a container, loopback cannot receive a port published by Docker, so `loopbackPublished` allows `mode: auto` on a private interface address, published by Compose on host loopback only (I133).
 - **Runtime.** Any `Serve` failure stops the daemon with an error rather than running on the remaining listeners.
 
 ## 8. Daemon lifecycle
@@ -112,17 +112,17 @@ Order: validate → lock → unseal → preflight hooks → bind listeners → s
 
 ## 9. `vidyomd` commands
 
-- `vidyomd init --tenant T --admin E [--config-dir D] [--worker-token-file F] [--generate-master-key P] [--json]`: per I10 and I17. Refuses an initialized data directory. Prints one pairing code once.
+- `vidyomd init --tenant T --admin E [--config-dir D] [--worker-token-file F] [--generate-master-key P] [--json]`: per I10, I17 and I138. Refuses an initialized data directory. Prints one pairing code once.
 - `vidyomd start [--config-dir D] [--detach]`. `--detach` re-executes itself in a new session with logs redirected and waits for a readiness pipe, so a daemon that failed closed makes the parent exit non-zero with the reason. A pid file records the running daemon.
 - `vidyomd version`.
 
-Configuration: `<config-dir>/daemon.json` (I34), strictly decoded so a misspelled key fails closed. `--config-dir`, then `VIDYOM_CONFIG_DIR`, are required; there is no implicit location.
+Configuration: `<config-dir>/daemon.json` (I34), strictly decoded so a misspelled key fails closed. `--config-dir`, then `VIDYOMD_CONFIG_DIR`, are required; there is no implicit location (I138).
 
 ## 10. `service.Doctor`
 
 Implemented in `internal/daemon`, because it asks both the listeners and the services.
 
-- No filter: reachability, version, sealing level, data directories writable, queue reachable.
+- No filter: everything the caller may see (I128). Any authenticated principal gets reachability and version; a system admin or tenant `admin` also gets the sections below.
 - `security`: sealing level (`warn` for `file` and `dev`), socket and data directory modes, TLS mode and certificate expiry, mTLS.
 - `network`: each listener and whether it is public, interface state, Redis, AI worker.
 - `storage`: each role through `Storages.List` and `Test` for the header's tenant, free space on the local volumes.
@@ -152,9 +152,9 @@ Real services are not imported. Replacing the fakes is `integration`'s work in `
 
 ## 13. Dependencies on other components
 
-- `core`: `security.Authenticator`, `Authorizer`, `Auditor`, `repo.TenantStores`, bootstrap for `init`, master key provider format. Faked in tests.
+- `core`: `security.Authenticator`, `Authorizer`, `Auditor` (empty tenant goes to its system chain), `repo.TenantStores`, bootstrap for `init`, master key provider format. Faked in tests.
 - `engine`: `service.Workflows`, `Jobs`, `Approvals`, `Events`, `Introspection`, `workerproto.Coordinator`, workflow input names for `delete-asset` and `restore-archived`.
-- `media`: `service.Storages`; the spool path convention of I20 for reading `upload:` inputs.
+- `media`: `service.Storages`; `upload:` inputs arrive at workers as `upload:<ULID>` (I131), and `OpenInput` enforces `ingestRoots` again.
 - `cli`: the upload protocol and SSE as its plan describes them.
 - `integration`: `wire.go`, Compose publishing rule for D49.
 
