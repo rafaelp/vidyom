@@ -23,10 +23,12 @@ const (
 	HeaderTenant         = "Vidyom-Tenant" // D32
 	HeaderRequestID      = "Vidyom-Request-Id"
 	HeaderIdempotencyKey = "Idempotency-Key"
-	HeaderTraceParent    = "traceparent"
-	HeaderUploadOffset   = "Upload-Offset"   // I20
-	HeaderUploadChecksum = "Upload-Checksum" // "sha256 <base64>", I20
-	HeaderLastEventID    = "Last-Event-ID"   // SSE resume, I3
+	// HeaderIdempotencyReplayed is "true" on a response replayed from a stored key.
+	HeaderIdempotencyReplayed = "Idempotency-Replayed"
+	HeaderTraceParent         = "traceparent"
+	HeaderUploadOffset        = "Upload-Offset"   // I20
+	HeaderUploadChecksum      = "Upload-Checksum" // "sha256 <base64>", I20
+	HeaderLastEventID         = "Last-Event-ID"   // SSE resume, I3
 )
 
 // TenantScope says whether a route needs the Vidyom-Tenant header (D32). A

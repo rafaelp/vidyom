@@ -29,6 +29,7 @@ const (
 	CodeCapabilityUnsupported Code = "capability_unsupported"
 	CodeForbiddenStorageRole  Code = "forbidden_storage_role"
 	CodeOutputTooLarge        Code = "output_too_large"
+	CodePayloadTooLarge       Code = "payload_too_large"
 	CodeGone                  Code = "gone"
 	CodeRateLimited           Code = "rate_limited"
 	CodeTimeout               Code = "timeout"
@@ -56,7 +57,7 @@ func HTTPStatus(c Code) int {
 		return http.StatusConflict
 	case CodeGone:
 		return http.StatusGone
-	case CodeOutputTooLarge:
+	case CodeOutputTooLarge, CodePayloadTooLarge:
 		return http.StatusRequestEntityTooLarge
 	case CodeValidationFailed, CodeCapabilityUnsupported:
 		return http.StatusUnprocessableEntity

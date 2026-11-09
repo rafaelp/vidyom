@@ -18,6 +18,13 @@ import (
 
 // Daemon is <config-dir>/daemon.json.
 type Daemon struct {
+	// ConfigDir is the directory daemon.json was read from, which also holds
+	// tenants/<tenant>/ (I34). Set when loading; never read from the file.
+	ConfigDir string `json:"-"`
+	// Bootstrapping is set by `vidyomd init` for its wiring only, so that a normal
+	// start can refuse a data directory that was never initialized (I138).
+	Bootstrapping bool `json:"-"`
+
 	DataDir    string `json:"dataDir"`    // holds system.db and tenants/ (§14.1)
 	CacheDir   string `json:"cacheDir"`   // worker cache root (D22)
 	SpoolDir   string `json:"spoolDir"`   // upload spool, shared with workers (I20)
@@ -56,7 +63,11 @@ type HTTPSListener struct {
 	Interface   string `json:"interface,omitempty"`
 	Port        int    `json:"port"`
 	AllowPublic bool   `json:"allowPublic,omitempty"` // required for 0.0.0.0 or ::
-	TLS         TLS    `json:"tls"`
+	// LoopbackPublished states that this listener sits on a private container
+	// address that Docker publishes only on the host's loopback (D49, I133). It
+	// allows TLS mode "auto" on that address, and never on a public one.
+	LoopbackPublished bool `json:"loopbackPublished,omitempty"`
+	TLS               TLS  `json:"tls"`
 }
 
 // TLSMode selects certificate handling (I18).

@@ -398,6 +398,19 @@ type StorageRestoreRequest struct {
 	Confirm bool               `json:"confirm,omitempty"`
 }
 
+// StorageRestorePreview answers POST /storages/restore with confirm unset: what the
+// restore would read, so the cost is shown before confirming (§3.3, I132). Nothing
+// has started. EstimateMinor is absent when the tenant has no cost table entry.
+type StorageRestorePreview struct {
+	ConfirmRequired bool               `json:"confirm_required"`
+	AssetID         id.Friendly        `json:"asset_id"`
+	To              domain.StorageRole `json:"to"`
+	ArchiveBytes    int64              `json:"archive_bytes"`
+	EstimateMinor   *int64             `json:"estimate_minor,omitempty"`
+	Currency        string             `json:"currency,omitempty"`
+	Note            string             `json:"note,omitempty"`
+}
+
 // ---- Secrets ----
 
 // PutSecretRequest stores a server or delegated secret. The CLI reads the value
