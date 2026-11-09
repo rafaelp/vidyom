@@ -31,7 +31,7 @@ type Uploads struct {
 	failNext  []func(w http.ResponseWriter, r *http.Request) bool
 	completes int
 	creates   int
-	OnChunk   func(received int64) // called after each accepted chunk
+	onChunk   func(received int64)
 }
 
 type fakeUpload struct {
@@ -48,6 +48,13 @@ func (s *Server) EnableUploads(chunkBytes int64) *Uploads {
 	s.Handle(api.RouteUploadsComplete, u.complete)
 	s.Handle(api.RouteUploadsAbort, u.abort)
 	return u
+}
+
+// OnChunk sets a function called after each accepted chunk, outside the fake's lock.
+func (u *Uploads) OnChunk(f func(received int64)) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.onChunk = f
 }
 
 // FailNextChunk makes the next chunk request run f; f returns true when it wrote an
@@ -220,20 +227,23 @@ func (u *Uploads) patch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	u.mu.Lock()
-	defer u.mu.Unlock()
 	up := u.byID[r.PathValue("id")]
 	if up == nil {
+		u.mu.Unlock()
 		WriteError(w, errs.NotFound("upload"))
 		return
 	}
 	if offset != up.record.ReceivedBytes {
-		w.Header().Set(api.HeaderUploadOffset, strconv.FormatInt(up.record.ReceivedBytes, 10))
-		WriteError(w, errs.Newf(errs.CodeConflict, "wrong offset, the current one is %d", up.record.ReceivedBytes).With("offset", up.record.ReceivedBytes))
+		current := up.record.ReceivedBytes
+		u.mu.Unlock()
+		w.Header().Set(api.HeaderUploadOffset, strconv.FormatInt(current, 10))
+		WriteError(w, errs.Newf(errs.CodeConflict, "wrong offset, the current one is %d", current).With("offset", current))
 		return
 	}
 	if want := r.Header.Get(api.HeaderUploadChecksum); want != "" {
 		sum := sha256.Sum256(body)
 		if want != "sha256 "+base64.StdEncoding.EncodeToString(sum[:]) {
+			u.mu.Unlock()
 			WriteError(w, errs.New(errs.CodeValidationFailed, "chunk checksum mismatch"))
 			return
 		}
@@ -242,10 +252,12 @@ func (u *Uploads) patch(w http.ResponseWriter, r *http.Request) {
 	up.record.ReceivedBytes = int64(len(up.data))
 	u.received += int64(len(body))
 	u.chunks++
-	w.Header().Set(api.HeaderUploadOffset, strconv.FormatInt(up.record.ReceivedBytes, 10))
+	received, onChunk := up.record.ReceivedBytes, u.onChunk
+	u.mu.Unlock()
+	w.Header().Set(api.HeaderUploadOffset, strconv.FormatInt(received, 10))
 	w.WriteHeader(http.StatusNoContent)
-	if u.OnChunk != nil {
-		u.OnChunk(up.record.ReceivedBytes)
+	if onChunk != nil {
+		onChunk(received)
 	}
 }
 

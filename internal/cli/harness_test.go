@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,12 +32,50 @@ import (
 // TestMain lets the test binary stand in for the vidyom binary, so a real process can
 // be killed mid-transfer. It never uses the real OS keyring.
 func TestMain(m *testing.M) {
+	if os.Getenv("VIDYOM_CLI_FAKE_SSH") == "1" {
+		fakeSSHForward()
+	}
 	if os.Getenv("VIDYOM_CLI_HELPER") == "1" {
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 		os.Exit(cli.Run(ctx, os.Args[1:], cli.Options{Keyring: newMemoryKeyring()}))
 	}
 	os.Exit(m.Run())
+}
+
+// fakeSSHForward stands in for `ssh -N -L local:remote`.
+func fakeSSHForward() {
+	cmdArgs := os.Args[1:]
+	var forward string
+	for i, arg := range cmdArgs {
+		if arg == "-L" && i+1 < len(cmdArgs) {
+			forward = cmdArgs[i+1]
+		}
+	}
+	local, remote, ok := strings.Cut(forward, ":")
+	if !ok {
+		os.Exit(2)
+	}
+	listener, err := net.Listen("unix", local)
+	if err != nil {
+		os.Exit(3)
+	}
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			os.Exit(0)
+		}
+		go func() {
+			defer conn.Close()
+			upstream, err := net.Dial("unix", remote)
+			if err != nil {
+				return
+			}
+			defer upstream.Close()
+			go func() { _, _ = io.Copy(upstream, conn) }()
+			_, _ = io.Copy(conn, upstream)
+		}()
+	}
 }
 
 // memoryKeyring is the fake keyring: tests never touch the real one.

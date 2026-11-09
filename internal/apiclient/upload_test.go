@@ -231,15 +231,15 @@ func TestUploadResumeAcrossRunsReusesUploadAndHash(t *testing.T) {
 
 	// First run stops after two chunks, as if the process died.
 	ctx, cancel := context.WithCancel(context.Background())
-	env.uploads.OnChunk = func(received int64) {
+	env.uploads.OnChunk(func(received int64) {
 		if received >= testChunk*2 {
 			cancel()
 		}
-	}
+	})
 	if _, err := env.client.Upload(ctx, opts); !errors.Is(err, context.Canceled) {
 		t.Fatalf("first run: %v", err)
 	}
-	env.uploads.OnChunk = nil
+	env.uploads.OnChunk(nil)
 
 	// Second run: nothing is hashed again and nothing is sent twice.
 	hashed := false
@@ -336,11 +336,11 @@ func TestUploadChangedFileStartsOver(t *testing.T) {
 	path, _ := fixture(t, testChunk*2)
 	opts := env.options(path)
 	ctx, cancel := context.WithCancel(context.Background())
-	env.uploads.OnChunk = func(int64) { cancel() }
+	env.uploads.OnChunk(func(int64) { cancel() })
 	if _, err := env.client.Upload(ctx, opts); !errors.Is(err, context.Canceled) {
 		t.Fatalf("first run: %v", err)
 	}
-	env.uploads.OnChunk = nil
+	env.uploads.OnChunk(nil)
 
 	changed := bytes.Repeat([]byte("x"), testChunk+9)
 	if err := os.WriteFile(path, changed, 0o600); err != nil {
