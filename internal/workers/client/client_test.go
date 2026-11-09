@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/rafaelp/vidyom/internal/contract/api"
+	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
 	"github.com/rafaelp/vidyom/internal/contract/workerproto"
 	"github.com/rafaelp/vidyom/internal/workers/client"
@@ -126,6 +127,45 @@ func TestErrorsKeepTheirCodes(t *testing.T) {
 		if !errs.IsCode(err, c.want) {
 			t.Errorf("%d %q: %v, want %s", c.status, c.body, err, c.want)
 		}
+	}
+}
+
+// A lease can carry a whole node output in its parameters, up to the 32 MiB cap (I35).
+func TestLargeLeaseArrivesWhole(t *testing.T) {
+	transcript := strings.Repeat("x", domain.MaxNodeOutputBytes)
+	params, err := json.Marshal(map[string]string{"transcript": transcript})
+	if err != nil {
+		t.Fatal(err)
+	}
+	daemon := unixServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(workerproto.Lease{TaskID: "t", Parameters: params})
+	}))
+	cl, err := client.New(client.Options{Daemon: daemon, Token: []byte(token)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := cl.Lease(context.Background(), "t", workerproto.LeaseRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lease.Parameters) != len(params) {
+		t.Fatalf("got %d bytes of %d", len(lease.Parameters), len(params))
+	}
+}
+
+func TestOversizedResponseIsNotMistakenForAnOutage(t *testing.T) {
+	block := strings.Repeat("x", 1<<20)
+	daemon := unixServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		for range 2*domain.MaxNodeOutputBytes>>20 + 2 {
+			_, _ = w.Write([]byte(block))
+		}
+	}))
+	cl, err := client.New(client.Options{Daemon: daemon, Token: []byte(token)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.Lease(context.Background(), "t", workerproto.LeaseRequest{}); !errs.IsCode(err, errs.CodeInternal) {
+		t.Fatalf("%v", err)
 	}
 }
 

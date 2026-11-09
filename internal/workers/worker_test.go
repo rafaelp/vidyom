@@ -25,6 +25,7 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/workerproto"
 	"github.com/rafaelp/vidyom/internal/workers"
 	"github.com/rafaelp/vidyom/internal/workers/ffmpeg"
+	"github.com/rafaelp/vidyom/internal/workers/ffmpeg/fixture"
 )
 
 // testNode is a scriptable node.
@@ -383,6 +384,93 @@ func TestCompleteGoneAcksAndDrops(t *testing.T) {
 	})
 	r.start()
 	eventually(t, "the ack", func() bool { return r.queue.isAcked(taskID) })
+}
+
+// Only a commit or a 410 may ack (jobqueue.Queue.Ack). The engine answers 410 for its
+// own missing tasks, so a 404 is a misrouted request, and the result is still wanted.
+func TestCompleteNotFoundIsRetriedNotAcked(t *testing.T) {
+	r := newRig(t)
+	r.registry.RegisterNode(script("test.ok", false, ok))
+	taskID, tk := r.submit("n1", "test.ok", nil)
+	r.daemon.with(func() {
+		tk.completeErrors = []error{errs.NotFound("route"), errs.NotFound("route"), nil}
+	})
+	r.start()
+	r.daemon.waitDone(t, taskID)
+	r.daemon.completion(t, taskID)
+	eventually(t, "the ack", func() bool { return r.queue.isAcked(taskID) })
+	r.daemon.with(func() {
+		if r.daemon.calls["worker.tasks.complete"] != 3 {
+			t.Errorf("%d deliveries", r.daemon.calls["worker.tasks.complete"])
+		}
+	})
+}
+
+// A result the daemon keeps refusing must not hold a slot forever, or get acked.
+func TestDeliveryGivesUpWithoutAckingAndFreesTheSlot(t *testing.T) {
+	r := newRig(t)
+	r.cfg.DaemonOutageLimit = 100 * time.Millisecond
+	r.cfg.Resources.MaxConcurrency = 1
+	r.registry.RegisterNode(script("test.ok", false, ok))
+	stuck, tk := r.submit("stuck", "test.ok", nil)
+	r.daemon.with(func() {
+		tk.completeErrors = make([]error, 100000)
+		for i := range tk.completeErrors {
+			tk.completeErrors[i] = errs.New(errs.CodeInternal, "poisoned")
+		}
+	})
+	next, _ := r.submit("next", "test.ok", nil)
+	r.start()
+	r.daemon.waitDone(t, next)
+	r.daemon.completion(t, next)
+	if r.queue.isAcked(stuck) {
+		t.Fatal("an undelivered result was acked")
+	}
+}
+
+// Plaintext inputs must not outlive the node while a report waits out an outage.
+func TestPlaintextInputsGoBeforeRedelivery(t *testing.T) {
+	fixture.Require(t)
+	r := newRig(t)
+	var inputPath atomic.Pointer[string]
+	r.registry.RegisterNode(script("test.input", false, func(ctx context.Context, env node.Env, _ node.Input) (node.Result, error) {
+		st, err := env.Storage(ctx, domain.RoleMaster)
+		if err != nil {
+			return node.Result{}, err
+		}
+		if _, err := st.Put(ctx, "m", strings.NewReader("master bytes"), connector.PutOptions{}); err != nil {
+			return node.Result{}, err
+		}
+		input, err := env.OpenInput(ctx, "storage://master/m")
+		if err != nil {
+			return node.Result{}, err
+		}
+		inputPath.Store(&input.Path)
+		return node.JSONResult(map[string]any{})
+	}))
+	taskID, tk := r.submit("n1", "test.input", nil)
+	r.daemon.with(func() {
+		tk.completeErrors = make([]error, 100000)
+		for i := range tk.completeErrors {
+			tk.completeErrors[i] = errs.New(errs.CodeUnavailable, "restarting")
+		}
+	})
+	r.start()
+	eventually(t, "a refused delivery", func() bool {
+		var n int
+		r.daemon.with(func() { n = r.daemon.calls["worker.tasks.complete"] })
+		return n > 0
+	})
+	got := inputPath.Load()
+	if got == nil {
+		t.Fatal("the node did not run")
+	}
+	if _, err := os.Stat(*got); !os.IsNotExist(err) {
+		t.Fatalf("the plaintext input is still there during re-delivery: %v", err)
+	}
+	if r.queue.isAcked(taskID) {
+		t.Fatal("acked before a commit")
+	}
 }
 
 func TestLeaseOutcomes(t *testing.T) {

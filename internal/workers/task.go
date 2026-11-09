@@ -135,6 +135,9 @@ func (t *taskRun) execute() {
 	})
 	stopHeartbeat()
 	t.flushLogs()
+	// Plaintext inputs go now, not after re-delivery, which can last a daemon outage.
+	usage := env.Usage()
+	env.Close()
 	w.cfg.Metrics.Observe(telemetry.NodeDuration, w.cfg.Now().Sub(started).Seconds(), telemetry.Labels{
 		"node_type": t.lease.NodeType, "tenant_id": string(t.lease.TenantID),
 	})
@@ -156,7 +159,7 @@ func (t *taskRun) execute() {
 		t.fail(failure)
 		return
 	}
-	t.complete(result, env)
+	t.complete(result, usage)
 }
 
 // failureFor maps a node's error to what the daemon needs (D11), using only public
@@ -267,7 +270,7 @@ func (t *taskRun) flushLogs() {
 	}
 }
 
-func (t *taskRun) complete(result node.Result, env *TaskEnv) {
+func (t *taskRun) complete(result node.Result, usage []domain.UsageRecord) {
 	switch {
 	case result.Suspend != nil:
 		t.fail(workerproto.FailRequest{Code: string(errs.CodeInternal), Message: "a worker-pool node cannot suspend"})
@@ -283,7 +286,7 @@ func (t *taskRun) complete(result node.Result, env *TaskEnv) {
 	req := workerproto.CompleteRequest{
 		LeaseID: t.lease.LeaseID,
 		Output:  output,
-		Usage:   append(result.Usage, env.Usage()...),
+		Usage:   append(result.Usage, usage...),
 		Tools:   result.Tools,
 	}
 	t.deliver("complete", func(ctx context.Context) error {
@@ -303,9 +306,14 @@ func (t *taskRun) reportError(err error) {
 }
 
 // deliver repeats a report until the daemon has committed it, and only then acks
-// (I4). Gone means someone else owns the task now: ack and drop.
+// (I4). Gone means someone else owns the task: ack and drop. Nothing else may ack,
+// so a 404, which the engine never answers for a task of its own, is a misrouted
+// request worth another try. After DaemonOutageLimit the report is abandoned and the
+// entry stays pending, so a poisoned task cannot hold a slot forever: the lease then
+// expires, and the daemon decides.
 func (t *taskRun) deliver(what string, call func(ctx context.Context) error) {
 	w := t.worker
+	deadline := w.cfg.Now().Add(w.cfg.DaemonOutageLimit)
 	backoff := time.Second
 	for {
 		err := call(w.reportCtx)
@@ -314,21 +322,25 @@ func (t *taskRun) deliver(what string, call func(ctx context.Context) error) {
 			w.ack(t.pool, t.delivery)
 			return
 		case w.reportCtx.Err() != nil:
-			t.logger.Warn("worker stopping before the daemon acknowledged a result", "report", what)
+			t.internal.Warn("worker stopping before the daemon acknowledged a result", "report", what)
 			return
 		}
 		switch errs.CodeOf(err) {
-		case errs.CodeGone, errs.CodeNotFound:
-			t.logger.Info("the daemon no longer wants this result", "report", what, "error", errs.Public(err).Message)
+		case errs.CodeGone:
+			t.internal.Info("the daemon no longer wants this result", "report", what, "error", errs.Public(err).Message)
 			w.ack(t.pool, t.delivery)
 			return
 		case errs.CodeInvalidArgument, errs.CodeConflict, errs.CodeFailedPrecondition, errs.CodeOutputTooLarge, errs.CodeValidationFailed:
 			// No retry can change the answer. The entry stays pending, and the daemon's
 			// reconciliation decides.
-			t.logger.Error("the daemon refused a result", "report", what, "error", errs.Public(err).Message)
+			t.internal.Error("the daemon refused a result", "report", what, "error", errs.Public(err).Message)
 			return
 		}
-		t.logger.Warn("result not delivered yet", "report", what, "error", errs.Public(err).Message)
+		if w.cfg.Now().After(deadline) {
+			t.internal.Error("giving up on delivering a result; the entry stays pending", "report", what, "error", errs.Public(err).Message)
+			return
+		}
+		t.internal.Warn("result not delivered yet", "report", what, "error", errs.Public(err).Message)
 		if !sleep(w.reportCtx, backoff) {
 			return
 		}

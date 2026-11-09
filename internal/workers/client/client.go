@@ -25,14 +25,18 @@ import (
 	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/api"
+	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
 	"github.com/rafaelp/vidyom/internal/contract/workerproto"
 )
 
 const (
 	defaultTimeout = 2 * time.Minute
-	maxResponse    = 8 << 20
-	unixHost       = "vidyomd"
+	// maxResponse bounds what the daemon can make a worker hold. A lease's parameters
+	// can carry a whole node output, such as a transcript, up to the 32 MiB cap (I35),
+	// and JSON escaping can swell it.
+	maxResponse = 2*domain.MaxNodeOutputBytes + 1<<20
+	unixHost    = "vidyomd"
 )
 
 // Options configures a Client.
@@ -180,12 +184,15 @@ func (c *Client) call(ctx context.Context, routeName, taskID string, in, out any
 		return errs.Wrap(errs.CodeUnavailable, err, "the daemon is unreachable")
 	}
 	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		return errs.Wrap(errs.CodeUnavailable, err, "the daemon's response was cut off")
+	}
+	if len(data) > maxResponse {
+		return errs.New(errs.CodeInternal, "the daemon's response exceeds what a worker accepts")
 	}
 	if resp.StatusCode >= 300 {
 		return decodeError(resp.StatusCode, data)
