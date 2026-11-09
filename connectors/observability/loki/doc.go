@@ -1,4 +1,6 @@
-// Package loki: the Loki log sink (§7.4).
+// Package loki is the Loki log sink (§7.4): JSON over Loki's HTTP push API, gzipped,
+// with low-cardinality stream labels (I276).
 //
-// Owner: component extensibility (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Tested only against a local mock of the push API (I12). No real Loki is contacted
+// by the tests.
 package loki
