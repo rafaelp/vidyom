@@ -307,7 +307,7 @@ func editorial(lines []line, request, workingTitle, transcript string) map[strin
 		lines = []line{{text: transcript}}
 	}
 	return map[string]any{
-		"title":       "[mock] " + title,
+		"title":       "[mock] " + strings.TrimPrefix(title, "[mock] "),
 		"description": "[mock] Draft description, for review.",
 		"tags":        topWords(lines, 3),
 	}

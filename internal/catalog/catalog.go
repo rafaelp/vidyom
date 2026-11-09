@@ -220,6 +220,17 @@ func (s *Service) Update(ctx context.Context, scope service.Scope, ref id.Ref, r
 			return err
 		}
 		if publicEdit && isPublic {
+			// The export takes a public video's title and description from its newest
+			// publication, so this publisher's decision has to reach those records too.
+			for _, publication := range a.Publications {
+				if !publication.IsPublic() {
+					continue
+				}
+				publication.Title, publication.Description = a.Title, a.Description
+				if err := tx.Publications().Update(ctx, publication); err != nil {
+					return err
+				}
+			}
 			if err := emitPublicUpdates(ctx, tx, scope, a, "metadata_changed", now); err != nil {
 				return err
 			}
