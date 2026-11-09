@@ -11,11 +11,15 @@ Scope of this file: everything the `media` component delivers, in all phases, pe
 | `internal/workers/client/` | HTTP client of `/api/v1/worker/...`, implementing `workerproto.Coordinator` over Unix socket or HTTPS |
 | `internal/workers/cache/` | Per-tenant encrypted cache (D22, I39) |
 | `internal/workers/ffmpeg/` | `ffmpeg` and `ffprobe` runners (argv only, never a shell), probe, VFR and timestamp detection, encode argument builders, timeline tolerance |
-| `internal/workers/workertest/` | Test helpers shared by the node packages: real `node.Env` on a temp tree with the `local` driver, fixture generators |
+| `internal/workers/provenance/` | Origin sidecars of scratch files (I185), file hashing |
+| `internal/workers/nodeutil/` | What the media node packages share: catalog descriptors, error classification, atomic publish, content types |
+| `internal/workers/ffmpeg/fixture/` | Test media generated with FFmpeg under a temp directory |
+| `internal/workers/workertest/` | Test harness shared by the node packages: real `node.Env` on a temp tree with the `local` driver, every run checked against the catalog |
 | `connectors/storage/local/` | `local` driver (I9) with access log |
 | `connectors/storage/gcs/` | `gcs` driver (§7.2), tested against `fake-gcs-server` |
 | `connectors/storage/resolver/` | `connector.StorageResolver` and `service.Storages` |
 | `connectors/storage/storagetest/` | Conformance suite every storage driver runs |
+| `connectors/storage/internal/storageutil/` | What the drivers share: namespaces, capability maps, reader wrappers |
 | `nodes/storage/` | `storagenodes.Register`: `storage.put`, `get`, `verify`, `delete`, `copy` |
 | `nodes/video/` | `videonodes.Register`: `video.probe`, `transcode`, `validate_timeline`, `preview`, `cut`, `thumbnail` |
 | `nodes/audio/` | `audionodes.Register`: `audio.extract` |
@@ -167,10 +171,11 @@ Contract additions, each its own `contract:` commit: `jobqueue.NodeTypeScratchCl
 
 ### Needs from other components, for `integration`
 
-- `engine`: enqueue `ScratchCleanupPointer` at terminal job states; fill `Lease.ScratchJobs` for child jobs; fill `Lease.AI`.
-- `api` or `engine`: rewrite `upload:UPL-nnn` to the ULID form on accepting a run (I183).
-- `cmd/vidyom-worker/wire.go`: set both `wireRegistries` and `wireQueue`.
+- `engine`: enqueue `ScratchCleanupPointer` when a job ends; fill `Lease.ScratchJobs` for child jobs; fill `Lease.AI` (its I153 covers all three).
+- `api`: rewrite `upload:UPL-nnn` to the ULID form on accepting a run (its I131).
+- `cmd/vidyom-worker/wire.go`: set `wireRegistries` and `wireQueue`; `wireMetrics` is optional.
 - Tenant `storages.json` must declare `usage: operational` on `master` and `proxy` (I187).
+- The catalog's `requirements` make the daemon refuse a lease to a worker with less (`engine`'s I154): `video.transcode` asks for 4 cores, 4 GiB and 20 GiB of disk, so a small host declares more with `--cpu-cores`, `--memory-mb` and `--disk-mb`, or waits forever on `409`.
 
 ## 7. Tests
 

@@ -9,14 +9,14 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 ### I180. The worker gets its queue through a second seam
 
 - **Choice.** `workers.Config` takes a `jobqueue.Queue`. `cmd/vidyom-worker/main.go` declares, beside `wireRegistries`, `var wireQueue func(ctx context.Context, redis config.Redis) (jobqueue.Queue, func(), error)`. Both seams exit with a clear "not wired" error while nil. `integration` sets both in `wire.go`.
-- **Why.** The master plan's section 9 lists `queue.NewRedis` under `engine`, and section 8 forbids importing it from `media`. Reimplementing Redis reads here would couple two components to a stream entry format the contract does not fix. Only `wire.go` may import across components.
+- **Why.** The master plan's section 9 lists `queue.NewRedis` under `engine`, and section 8 forbids importing it from `media`. Reimplementing Redis reads here would couple two components to a stream entry format the contract does not fix. Only `wire.go` may import across components. A third seam, `wireMetrics`, is optional: left nil, the worker records no metrics, and everything else works.
 - **Revisit if.** The stream entry format moves into `internal/contract/jobqueue`; a built-in consumer could then remove the seam.
 
 ### I181. Scratch cleanup: a cleanup pointer at job end, an idle reaper as the net, plaintext copies at task end
 
 - **Choice.** Three layers.
   1. **Task end.** Plaintext copies of cached objects, the only plaintext of a cached master, live in a hidden per-task directory and are removed when the task ends, whatever the outcome.
-  2. **Job end.** Additive `jobqueue.NodeTypeScratchCleanup` and `jobqueue.ScratchCleanupPointer(tenant, job, at)`. `engine` enqueues that pointer when a job reaches a terminal state. A worker reading it removes `<scratch>/<tenant>/<job-ulid>/` and acks, with no lease, because no result needs committing and no parameter travels. Tenant and ULID are validated before any path is built.
+  2. **Job end.** Additive `jobqueue.NodeTypeScratchCleanup` and `jobqueue.ScratchCleanupPointer(tenant, job, at)`. `engine` enqueues that pointer when a job ends (I153: on `completed` and `cancelled`; a `failed` job keeps its files for `job retry`). A worker reading it removes `<scratch>/<tenant>/<job-ulid>/` and acks, with no lease, because no result needs committing and no parameter travels. Tenant and ULID are validated before any path is built.
   3. **Net.** Every worker reaps job directories idle for 7 days (`--scratch-max-idle`), so a lost pointer (Redis emptied) or an unwired daemon cannot fill the disk. A lease touches its job's directory, so running jobs are never reaped.
 - **Why.** I45 gives cleanup to `media`, and D22 asks for deletion at job end, but `workerproto` has no job-end signal and the daemon never touches scratch (I5). A pointer needs one line in `engine`, no new route, and fits "Redis holds pointers only". Seven days matches D22's idle period. The only scratch file a long approval wait keeps is the preview: `video.cut` reads the master after the gate, so a reaped preview loses the file shown in review and nothing else.
 - **Revisit if.** Workers run on several hosts with no shared volume (I5's Future case), or jobs legitimately resume from scratch after more than 7 days.
@@ -29,7 +29,7 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 
 ### I183. `upload:` references reach workers as ULIDs
 
-- **Choice.** The spool is named by ULID (I20) and workers have no database, so a worker resolves `upload:<ulid>` at `<spool>/<tenant>/<ulid>`. For `upload:UPL-nnn` it looks for a same-named link in the tenant's spool and otherwise fails with `failed_precondition`, naming what is missing. The daemon must rewrite `upload:UPL-nnn` to the ULID form when it accepts a run, exactly as it canonicalizes `server:` paths (R20), or link the friendly name on completion.
+- **Choice.** The spool is named by ULID (I20) and workers have no database, so a worker resolves `upload:<ulid>` at `<spool>/<tenant>/<ulid>`. For `upload:UPL-nnn` it looks for a same-named link in the tenant's spool and otherwise fails with `failed_precondition`, naming what is missing. The daemon rewrites `upload:UPL-nnn` to the ULID form when it accepts a run, as it canonicalizes `server:` paths (R20, `api`'s I131).
 - **Why.** The mapping lives only in the tenant database. A new worker route would be heavier than one rewrite in the code that already loads the upload record to validate it.
 - **Revisit if.** Workers stop sharing the spool volume.
 
@@ -40,7 +40,9 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
   - `complete` and `fail` are re-delivered with capped backoff until acknowledged or the worker shuts down. `410` means another owner: ack and drop.
   - The heartbeat's cancel flag cancels the node's context only when its descriptor has `SupportsAbort`. Otherwise the node finishes (D11). A cancelled node is reported with `Code: "cancelled"`, not retryable.
   - Graceful shutdown waits `--shutdown-grace` (default 30 s), then cancels nodes and reports `unavailable`, retryable.
-  - Stale claiming skips tasks running here. Claiming uses twice the lease period as minimum idle, and a live lease elsewhere answers through the daemon.
+  - Stale claiming takes batches of 16, so entries of long tasks cannot hide a dead consumer's, and skips tasks running here. Claiming uses twice the lease period as minimum idle, and a live lease elsewhere answers through the daemon.
+  - A node heartbeat answered `not_found` means the daemon lost this worker (`engine`'s I154), so it registers again.
+  - The job's stream, which clients read, gets a failure's public reason only. The internal cause and a panic's stack go to the worker's own log (I190).
 - **Why.** §1.1 step 13 kills `vidyomd` during a transcode. Self-fencing on a heartbeat timeout would throw away a long transcode because of a short daemon restart, while the daemon's lease check is what actually prevents a double commit.
 - **Revisit if.** Workers run across a network that can partition them from the daemon while another worker still reaches it: a wasted duplicate run is then possible, still never a double commit.
 
@@ -118,7 +120,7 @@ Decisions the `media` component took to fill gaps, in the format of [`docs/decis
 
 ### I189. Cache format and defaults
 
-- **Choice.** `<cache-dir>/<tenant>/<entry-id>.vcache`. Entry ID: HMAC-SHA-256 under the tenant key of role, key and origin SHA-256. Format: magic and version, random 32-byte salt, sealed header (role, key, origin SHA-256, size), then 1 MiB chunks in AES-256-GCM under a key from HKDF-SHA-256 (tenant key, salt, `"vidyom-cache-file-v1"`). The nonce holds the chunk index and a final flag, and the AAD binds the magic and salt, so a truncated, reordered or foreign file fails. Last use is the file's modification time, touched on every reuse, so sweeps need no key. Defaults: 7 idle days (`cacheIdleDays`, D22), 50 GiB per tenant (`cacheMaxBytes`). A failed checksum or authentication on reuse deletes the entry and downloads again.
+- **Choice.** `<cache-dir>/<tenant>/<entry-id>.vcache`. Entry ID: HMAC-SHA-256 under the tenant key of role, key and origin SHA-256. Format: magic and version, random 32-byte salt, sealed header (role, key, origin SHA-256), then 1 MiB chunks in AES-256-GCM under a key from HKDF-SHA-256 (tenant key, salt, `"vidyom-cache-file-v1"`). The nonce holds the chunk index and a final flag, and the AAD binds the magic and salt, so a truncated, reordered or foreign file fails. Last use is the file's modification time, touched on every reuse, so sweeps need no key. Defaults: 7 idle days (`cacheIdleDays`, D22), 50 GiB per tenant (`cacheMaxBytes`). A failed checksum or authentication on reuse deletes the entry and downloads again.
 - **Why.** I39 fixes AES-256-GCM chunks and gives each lease only its tenant's key. Plaintext must exist for FFmpeg, which is why reuse writes a task-scoped copy (I181) and hashes it while decrypting: "checksum on every reuse" (D22) then costs no extra read. D22 sets the idle period and leaves the size to configuration; 50 GiB holds a few dozen long masters.
 - **Limit.** The scratch volume holds plaintext while a task or job runs. Encrypting that volume is a deployment choice.
 - **Revisit if.** Tenants need different maximums: `CacheMaxBytes` would become per-tenant configuration.
