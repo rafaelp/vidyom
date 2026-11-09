@@ -68,8 +68,6 @@ type Server struct {
 	// empty Token accepts any request, which is how the Unix socket's peer identity
 	// looks from the client.
 	Token string
-	// RecordChunkBodies keeps PATCH bodies in Calls; off by default to save memory.
-	RecordChunkBodies bool
 }
 
 // New builds a server with every route answering 501 not_implemented until a test
@@ -97,7 +95,7 @@ func (s *Server) Close() {
 
 func (s *Server) serve(route api.Route, w http.ResponseWriter, req *http.Request) {
 	var body []byte
-	if route.Name != api.RouteUploadsChunk || s.RecordChunkBodies {
+	if route.Name != api.RouteUploadsChunk { // chunk bodies are the upload fake's
 		body, _ = io.ReadAll(req.Body)
 		req.Body = io.NopCloser(bytes.NewReader(body))
 	}

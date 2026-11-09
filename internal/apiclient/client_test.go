@@ -209,7 +209,7 @@ func TestAllFollowsCursors(t *testing.T) {
 	c := newUnixClient(t, srv, "acme")
 	list, err := apiclient.All[domain.Job](context.Background(), c, apiclient.Call{
 		Route: api.RouteJobsList, Query: apiclient.Query(api.JobQuery{Status: domain.JobRunning}),
-	}, 0)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,6 +471,18 @@ func TestDialFailureIsClear(t *testing.T) {
 	defer c.Close()
 	err = c.Do(context.Background(), apiclient.Call{Route: api.RouteHealth}, nil)
 	if !errs.IsCode(err, errs.CodeUnavailable) || !strings.Contains(err.Error(), "/nonexistent/vidyomd.sock") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestTransportErrorsDoNotRepeatTheQuery(t *testing.T) {
+	c, err := apiclient.New(apiclient.Options{Endpoint: apiclient.Endpoint{Kind: apiclient.KindUnix, Socket: "/nonexistent/vidyomd.sock"}, Tenant: "acme"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	err = c.Do(context.Background(), apiclient.Call{Route: api.RouteSearch, Query: apiclient.Query(api.SearchQuery{Q: "private words"})}, nil)
+	if err == nil || strings.Contains(err.Error(), "private") {
 		t.Fatalf("err = %v", err)
 	}
 }

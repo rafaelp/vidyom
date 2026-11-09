@@ -147,8 +147,10 @@ type harness struct {
 	env      map[string]string
 	stdin    string
 	terminal bool
-	password func() ([]byte, error)
-	now      time.Time
+	// stderrTerminal turns on progress output.
+	stderrTerminal bool
+	password       func() ([]byte, error)
+	now            time.Time
 
 	stdout, stderr bytes.Buffer
 }
@@ -171,7 +173,7 @@ func (h *harness) options(ctx context.Context) cli.Options {
 		Getenv:           func(k string) string { return h.env[k] },
 		Now:              func() time.Time { return h.now },
 		StdinIsTerminal:  func() bool { return h.terminal },
-		StderrIsTerminal: func() bool { return false },
+		StderrIsTerminal: func() bool { return h.stderrTerminal },
 		ReadPassword: func(context.Context) ([]byte, error) {
 			if h.password == nil {
 				return nil, errors.New("no terminal in this test")

@@ -215,6 +215,29 @@ func TestAssetUploadWithWorkflowAndServerFlag(t *testing.T) {
 	}
 }
 
+func TestUploadShowsProgressOnATerminalOnly(t *testing.T) {
+	h := newHarness(t)
+	h.useTenant("acme")
+	h.installSamples()
+	h.srv.EnableUploads(4096)
+	path, _ := uploadFixture(t, "class.mp4", 4096*2)
+	h.mustRun("asset", "upload", path)
+	if strings.Contains(h.stderr.String(), "uploading") {
+		t.Fatalf("no progress when stderr is not a terminal: %q", h.stderr.String())
+	}
+	h.stderrTerminal = true
+	path, _ = uploadFixture(t, "other.mp4", 4096*2)
+	h.mustRun("asset", "upload", path)
+	assertContains(t, h.stderr.String(), "hashing", "uploading", "100.0%")
+
+	path, _ = uploadFixture(t, "third.mp4", 4096*2)
+	stdout := h.mustRun("asset", "upload", path, "--json")
+	if strings.Contains(h.stderr.String(), "uploading") {
+		t.Fatalf("--json keeps stderr clean: %q", h.stderr.String())
+	}
+	decodeJSON(t, stdout)
+}
+
 func TestUploadRetriesAreVisibleAndSucceed(t *testing.T) {
 	h := newHarness(t)
 	h.useTenant("acme")

@@ -200,6 +200,33 @@ func TestImplicitLocalServerUsesTheSocket(t *testing.T) {
 	assertContains(t, h.mustRun("server", "list"), "local", h.socket)
 }
 
+func TestImplicitServerBecomesRealWhenItHoldsState(t *testing.T) {
+	h := newHarness(t)
+	h.srv.JSON(api.RouteTenantsList, 200, api.List[api.TenantInfo]{Items: []api.TenantInfo{{Tenant: domain.Tenant{ID: "acme"}}}})
+	h.mustRun("tenant", "use", "acme")
+	assertContains(t, h.config(), `"current_server": "local"`, `"tenant": "acme"`, h.socket)
+	h.srv.JSON(api.RouteJobsList, 200, api.List[domain.Job]{})
+	h.mustRun("job", "list")
+	if call, _ := h.srv.Last(api.RouteJobsList); call.Header.Get(api.HeaderTenant) != "acme" {
+		t.Fatalf("tenant = %q", call.Header.Get(api.HeaderTenant))
+	}
+}
+
+func TestNoSocketAndNoServerIsClear(t *testing.T) {
+	h := newHarness(t)
+	h.env["VIDYOM_SOCKET"] = ""
+	h.srv.JSON(api.RouteHealth, 200, api.HealthResponse{Status: "ok"})
+	// On this host the default socket simply is not there.
+	if code := h.run("daemon", "health"); code != 1 {
+		t.Fatalf("exit %d", code)
+	}
+	assertContains(t, h.stderr.String(), "cannot reach the daemon")
+	if code := h.run("job", "list", "--server", "absent"); code != 1 {
+		t.Fatalf("exit %d", code)
+	}
+	assertContains(t, h.stderr.String(), `no server named "absent"`)
+}
+
 func TestUnreachableDaemonIsClear(t *testing.T) {
 	h := newHarness(t)
 	h.env["VIDYOM_SOCKET"] = filepath.Join(h.dir, "absent.sock")

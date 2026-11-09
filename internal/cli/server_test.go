@@ -90,6 +90,9 @@ func TestPairingWithoutKeyringFailsClearlyAndKeepsTheCode(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	assertContains(t, h.stderr.String(), "no usable OS keyring", "plaintext")
+	if strings.Count(h.stderr.String(), "no usable OS keyring") != 1 {
+		t.Errorf("said twice: %s", h.stderr.String())
+	}
 	if len(h.srv.Calls(api.RouteDevicesPair)) != 0 {
 		t.Fatal("the code must not be spent when the credential could not be stored")
 	}
@@ -148,6 +151,18 @@ func TestRemoteWithoutKeyringFailsClearly(t *testing.T) {
 	addRemote(t, h)
 	h.keyring.getErr = security.ErrKeyringUnavailable
 	if code := h.run("job", "list", "--tenant", "acme"); code != 1 {
+		t.Fatalf("exit %d", code)
+	}
+	assertContains(t, h.stderr.String(), "no usable OS keyring")
+	if strings.Contains(h.stderr.String(), "server pair") {
+		t.Fatalf("pairing would fail the same way: %s", h.stderr.String())
+	}
+	if len(h.srv.Calls()) != 0 {
+		t.Fatal("nothing may be sent")
+	}
+
+	// The JSON form carries the same text: the cause is not serialized.
+	if code := h.run("job", "list", "--tenant", "acme", "--json"); code != 1 {
 		t.Fatalf("exit %d", code)
 	}
 	assertContains(t, h.stderr.String(), "no usable OS keyring")

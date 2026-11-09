@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/rafaelp/vidyom/internal/contract/errs"
+	"github.com/rafaelp/vidyom/internal/contract/security"
 )
 
 // emit writes a result: its JSON form with --json, or the human form.
@@ -70,7 +71,13 @@ func (a *app) printError(coded *errs.Error, hint string) {
 	}
 	message := coded.Message
 	if cause := errors.Unwrap(coded); cause != nil {
-		message += ": " + cause.Error()
+		// A local cause helps here, and only a server's errors arrive without one. The
+		// contract's keyring errors already start with the message.
+		if detail := cause.Error(); strings.Contains(detail, message) {
+			message = detail
+		} else {
+			message += ": " + detail
+		}
 	}
 	fmt.Fprintf(a.stderr(), "error: %s\n", clean(message))
 	if hint != "" {
@@ -87,6 +94,9 @@ func (a *app) hintFor(coded *errs.Error) string {
 	case errs.CodeTenantRequired:
 		return "select one with 'vidyom tenant use <tenant>', or pass --tenant"
 	case errs.CodeUnauthenticated:
+		if strings.Contains(coded.Message, security.ErrKeyringUnavailable.Error()) {
+			return "" // pairing would fail the same way; the message says what is missing
+		}
 		if name, _, _, err := a.resolveServer(); err == nil {
 			return fmt.Sprintf("pair this client with 'vidyom server pair %s --code <one-time-code>'; an admin creates the code with 'vidyom device pairing-code create'", name)
 		}

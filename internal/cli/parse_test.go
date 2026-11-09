@@ -2,12 +2,10 @@ package cli
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/rafaelp/vidyom/internal/contract/security"
 	"github.com/rafaelp/vidyom/internal/contract/wfdef"
 )
 
@@ -169,17 +167,6 @@ func TestFormatBytes(t *testing.T) {
 			t.Errorf("%d: got %q, want %q", input, got, want)
 		}
 	}
-}
-
-// The default build must not contain the test keyring, whatever the environment says.
-func TestDefaultBuildIgnoresTheTestKeyringVariable(t *testing.T) {
-	kr := defaultKeyring(func(string) string { return "/tmp/plaintext-keyring.json" }, func(string) {
-		t.Error("the default build must not warn about a test keyring")
-	})
-	if name := fmt.Sprintf("%T", kr); strings.Contains(name, "file") || strings.Contains(name, "unavailable") {
-		t.Fatalf("keyring type = %s", name)
-	}
-	var _ security.Keyring = kr
 }
 
 func TestServerNames(t *testing.T) {

@@ -75,31 +75,32 @@ Decisions of the `cli` component, numbered from its range `I160–I179` (master 
 
 ### I171. Open points in the contract, decided on the client side
 
-The contract leaves these open. The CLI takes this position and is lenient where it costs nothing. **`integration` should check them against `api`.**
+The contract leaves these open. The CLI takes this position and is lenient where it costs nothing. They were checked once against `api`'s real handler with an uncommitted test (real pipeline and upload service, small fake services), because a component's committed tests may not import another's implementation; `integration` covers them for good.
 
 - `since` parameters: `24h` and `7d` become RFC 3339 timestamps on the client, RFC 3339 passes through.
-- List routes decode `{items, next_cursor}` per I15, and also a bare array, since several service methods return slices.
-- `PATCH /uploads/{id}` reads the new offset from the `Upload-Offset` header, then from `received_bytes` in a JSON body, then from `GET /uploads/{id}`. A `409` always re-reads the offset through `GET`.
-- `POST /storages/restore` is two-phase: first `confirm: false`, expecting the cost either in a 2xx body or in a coded error's details; then, after a confirmation or `--yes`, `confirm: true`. If the first answer already carries a job, it is reported as such and no second request is sent.
+- List routes decode `{items, next_cursor}` per I15 and I125, and also a bare array.
+- `PATCH /uploads/{id}` reads the new offset from the `Upload-Offset` header, then from `received_bytes` in a JSON body, then from `GET /uploads/{id}`. A `409` always re-reads the offset through `GET`. A chunk answered `422` (digest mismatch, I130) is resent. A `complete` refused with `details.offset` goes back to sending from there.
+- `GET /health` may answer `503` with the same body (`api`'s handler does), so `daemon health` can still say which component is down.
+- `POST /storages/restore` is two-phase, as `api` landed it (I132): first `confirm: false`, which answers `api.StorageRestorePreview` and starts nothing, then, after a confirmation or `--yes`, `confirm: true`. Without a terminal and without `--yes`, `--json` prints the preview and the command fails, so a script sees the cost. Each phase has its own idempotency key, because they are different requests.
 - `GET /doctor` without `check` means all checks. `POST /assets/{id}/export` takes an empty object. Query names come from the contract's `json` tags through one encoder.
 - Field names follow the contract where I20's prose differs (`size_bytes`, not `size`).
 - **Revisit if.** `api` lands something else; these are all on one small surface.
 
 ### I172. Upload checkpoints
 
-- **Choice.** One file per (server, tenant, absolute path) under `<config-dir>/uploads/`, with the upload ID, the idempotency key, size, modification time and SHA-256, and no file content. Reuse needs size and modification time to match; the hash is reused then, because hashing 10 GB on every resume is minutes of work and `complete` verifies it on the server anyway. A changed file aborts the old upload and starts a new one. The checkpoint is removed only after the workflow was accepted, or after `complete` when no workflow was asked for. An expired or failed upload restarts once, then fails. Retry budget: 8 attempts without progress, exponential backoff from 1 s to 30 s with jitter, `Retry-After` honored, and any progress resets the budget. Chunk size comes from the server, capped at 256 MiB to bound memory.
+- **Choice.** One file per (server, tenant, absolute path) under `<config-dir>/uploads/`, with the upload ID, the idempotency key, size, modification time and SHA-256, and no file content. Reuse needs size and modification time to match; the hash is reused then, because hashing 10 GB on every resume is minutes of work and `complete` verifies it on the server anyway. A changed file aborts the old upload and starts a new one. The checkpoint is removed only after the workflow was accepted, or after `complete` when no workflow was asked for. An expired or failed upload restarts once, then fails. Retry budget: 8 attempts without progress, exponential backoff from 1 s to 30 s with jitter, `Retry-After` honored up to 5 minutes, and only an accepted chunk resets the budget. Chunk size comes from the server, capped at 256 MiB to bound memory. One `PATCH` may take 15 minutes before it counts as failed, and `complete` two hours, because the server hashes the whole file.
 - **Why.** §5.4 asks for checkpoint and checksum. Keeping the checkpoint until the run is accepted is what makes a kill at any step safe (I170).
 - **Revisit if.** Parallel chunks are added (I20).
 
 ### I173. Input references and typed inputs
 
-- **Choice.** `original import <path>` and `asset upload <path>` are always client files, and a name like `server:/x` is looked up as a local file. `--server-path` sends `server:<abs>`. For `workflow run` and `node run`, values are coerced by the workflow's declared `InputSpec`: `GET /workflows/{id}`, or the file itself. `file` inputs go through `domain.ParseUserInputURI`, so a bare absolute path becomes `server:` (R20), a relative path is an error, and `scratch://` is refused. `number`, `boolean`, `array` and `object` parse as JSON. Undeclared inputs are sent as strings, and the server validates them. `--type` maps to the `category` input of §6.3, and the title defaults to the file's name. The workflow is fetched before any upload starts.
+- **Choice.** `original import <path>` and `asset upload <path>` are always client files, and a name like `server:/x` is looked up as a local file. `--server-path` sends `server:<abs>`. Whether a server path is absolute is judged by its shape, not by this client's operating system, because a Windows client names paths on a Linux server. For `workflow run`, values are coerced by the workflow's declared `InputSpec`: `GET /workflows/{id}`, or the file itself. `file` inputs go through `domain.ParseUserInputURI`, so a bare absolute path becomes `server:` (R20), a relative path is an error, and `scratch://` is refused. `number`, `boolean`, `array` and `object` parse as JSON. Undeclared inputs are sent as strings, and the server validates them. `--type` maps to the `category` input of §6.3, and the title defaults to the file's name. The workflow is fetched before any upload starts.
 - **Why.** R20 is explicit about each case. Coercion lets `--input count=3` satisfy a `number` input without a second flag.
 - **Revisit if.** `engine`'s `ingest-original` renames an input.
 
 ### I174. Reattaching and interruption
 
-- **Choice.** Streams reconnect forever with `Last-Event-ID` and 1–10 s backoff, including through daemon restarts, with a note on stderr; a `4xx` other than `408` and `429` stops them. Silence for 45 s, three keep-alive periods, drops the connection. Ctrl+C cancels only the stream, prints that the job keeps running and how to reattach, and exits `130`. The second Ctrl+C kills the process at once. Streams use GET only.
+- **Choice.** Streams reconnect forever with `Last-Event-ID` and 1–10 s backoff, including through daemon restarts, with a note on stderr; a `4xx` other than `408` and `429`, a `501` and any TLS failure stop them. Silence for 45 s, three keep-alive periods, drops the connection, and a server that accepts a stream and answers nothing for a minute counts as a lost connection. A delay a server asks for extends the backoff, capped at 5 minutes. Ctrl+C cancels only the stream, prints that the job keeps running and how to reattach, and exits `130`. The second Ctrl+C kills the process at once. A no-echo prompt restores the terminal itself on interruption. Streams use GET only.
 - **Why.** §5.2 and §5.5: clients connect, disconnect and reconnect, and Ctrl+C disconnects.
 - **Revisit if.** Someone needs a bounded wait; `--timeout` on `attach` is additive.
 

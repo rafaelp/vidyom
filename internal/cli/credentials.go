@@ -72,7 +72,7 @@ func (a *app) probeKeyring() error {
 // keyringError keeps the clear message of the contract (§15.6).
 func keyringError(err error) error {
 	if errors.Is(err, security.ErrKeyringUnavailable) {
-		return errs.Wrap(errs.CodeFailedPrecondition, err, "cannot use the OS keyring")
+		return errs.Wrap(errs.CodeFailedPrecondition, err, security.ErrKeyringUnavailable.Error())
 	}
 	return errs.Wrap(errs.CodeInternal, err, "keyring operation failed")
 }

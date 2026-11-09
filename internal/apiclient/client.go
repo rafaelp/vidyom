@@ -99,9 +99,6 @@ func New(opts Options) (*Client, error) {
 // Close releases the transport, including an SSH tunnel.
 func (c *Client) Close() error { return c.transport.close() }
 
-// Endpoint returns what this client connects to.
-func (c *Client) Endpoint() Endpoint { return c.opts.Endpoint }
-
 // Tenant returns the tenant sent on tenant-scoped routes.
 func (c *Client) Tenant() string { return c.opts.Tenant }
 
@@ -311,8 +308,8 @@ func Items[T any](ctx context.Context, c *Client, call Call) (api.List[T], error
 	return list, nil
 }
 
-// All follows cursors until the list ends or limit items were read (0: no limit).
-func All[T any](ctx context.Context, c *Client, call Call, limit int) (api.List[T], error) {
+// All follows cursors to the end of the list.
+func All[T any](ctx context.Context, c *Client, call Call) (api.List[T], error) {
 	var out api.List[T]
 	query := url.Values{}
 	for k, v := range call.Query {
@@ -326,11 +323,6 @@ func All[T any](ctx context.Context, c *Client, call Call, limit int) (api.List[
 		}
 		out.Items = append(out.Items, page.Items...)
 		if page.NextCursor == "" {
-			return out, nil
-		}
-		if limit > 0 && len(out.Items) >= limit {
-			out.Items = out.Items[:limit]
-			out.NextCursor = page.NextCursor
 			return out, nil
 		}
 		query = cloneValues(query)
@@ -428,6 +420,12 @@ func (c *Client) transportError(ctx context.Context, err error) error {
 	}
 	if tlsErr := classifyTLS(err); tlsErr != nil {
 		return tlsErr
+	}
+	// http.Client wraps errors with the full URL, query included. The endpoint is
+	// enough, and search terms have no place in an error message.
+	var withURL *url.Error
+	if errors.As(err, &withURL) {
+		err = withURL.Err
 	}
 	return errs.Wrap(errs.CodeUnavailable, err, fmt.Sprintf("cannot reach the daemon at %s", c.opts.Endpoint.Display()))
 }

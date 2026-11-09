@@ -180,7 +180,7 @@ func fetchList[T any](ctx context.Context, a *app, call apiclient.Call, f *listF
 	}
 	var list api.List[T]
 	if f != nil && f.all {
-		list, err = apiclient.All[T](ctx, client, call, 0)
+		list, err = apiclient.All[T](ctx, client, call)
 	} else {
 		list, err = apiclient.Items[T](ctx, client, call)
 	}

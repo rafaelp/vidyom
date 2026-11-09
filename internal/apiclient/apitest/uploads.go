@@ -27,7 +27,6 @@ type Uploads struct {
 	byKey     map[string]string
 	chunk     int64
 	received  int64 // bytes accepted across all uploads, duplicates would inflate it
-	chunks    int
 	failNext  []func(w http.ResponseWriter, r *http.Request) bool
 	completes int
 	creates   int
@@ -251,7 +250,6 @@ func (u *Uploads) patch(w http.ResponseWriter, r *http.Request) {
 	up.data = append(up.data, body...)
 	up.record.ReceivedBytes = int64(len(up.data))
 	u.received += int64(len(body))
-	u.chunks++
 	received, onChunk := up.record.ReceivedBytes, u.onChunk
 	u.mu.Unlock()
 	w.Header().Set(api.HeaderUploadOffset, strconv.FormatInt(received, 10))
