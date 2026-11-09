@@ -20,6 +20,7 @@ import (
 	"github.com/rafaelp/vidyom/connectors/publishing/mock"
 	"github.com/rafaelp/vidyom/connectors/publishing/resolver"
 	"github.com/rafaelp/vidyom/connectors/publishing/vimeo"
+	"github.com/rafaelp/vidyom/connectors/publishing/youtube"
 	"github.com/rafaelp/vidyom/internal/contract/config"
 	"github.com/rafaelp/vidyom/internal/contract/connector"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
@@ -121,6 +122,7 @@ type harness struct {
 	storages map[domain.StorageRole]*memStorage
 	embedder connector.Embedder
 	exporter Exporter
+	secrets  map[string][]byte
 	logBuf   *bytes.Buffer
 
 	mu     sync.Mutex
@@ -134,6 +136,17 @@ type tenants struct{ h *harness }
 
 func (t tenants) TenantConfig(context.Context, domain.TenantID) (config.Tenant, error) {
 	return t.h.cfg, nil
+}
+
+// vault is the tenant vault's answer to a credentialsRef.
+type vault struct{ h *harness }
+
+func (v vault) ResolveSecret(_ context.Context, ref string) ([]byte, error) {
+	value, ok := v.h.secrets[ref]
+	if !ok {
+		return nil, errs.NotFound("secret")
+	}
+	return value, nil
 }
 
 type keyProvider struct{}
@@ -155,6 +168,7 @@ func newHarness(t *testing.T) *harness {
 		library:  t.TempDir(),
 		reads:    map[domain.StorageRole][]string{},
 		logBuf:   &bytes.Buffer{},
+		secrets:  map[string][]byte{},
 	}
 	h.storages = map[domain.StorageRole]*memStorage{
 		domain.RoleMaster:  {role: domain.RoleMaster, objects: map[string]string{masterKey: masterBytes}, h: h},
@@ -162,13 +176,14 @@ func newHarness(t *testing.T) *harness {
 		domain.RoleArchive: {role: domain.RoleArchive, objects: map[string]string{masterKey: masterBytes}, h: h},
 	}
 	mock.Register(h.registry)
+	youtube.Register(h.registry)
 	vimeo.Register(h.registry)
 	catalogpublic.Register(h.registry)
 	mediacms.Register(h.registry)
 	h.setMockParams(map[string]any{})
 	h.cfg.Publishing.Defaults.RequireApproval = true
 	h.setLibrary()
-	h.resolver = resolver.New(h.registry, tenants{h}, nil)
+	h.resolver = resolver.New(h.registry, tenants{h}, func(domain.TenantID) connector.SecretResolver { return vault{h} })
 	h.exporter = publicexport.New(publicexport.Options{DataDir: h.dataDir, Keys: keyProvider{}})
 	Register(h.nodes, Options{
 		Exporter: exporterFunc(func(ctx context.Context, r publicexport.Request) (publicexport.Result, error) {
@@ -376,6 +391,11 @@ func (h *harness) publicDB() string {
 	return filepath.Join(h.library, string(tenantID), "public.db")
 }
 
+// freshResolver forgets open connectors, as a restarted daemon has.
+func freshResolver(h *harness) *resolver.Resolver {
+	return resolver.New(h.registry, tenants{h}, func(domain.TenantID) connector.SecretResolver { return vault{h} })
+}
+
 // prepared runs publish.prepare with the seeded approval.
 func (h *harness) prepared() prepareOutput {
 	h.t.Helper()
@@ -479,7 +499,7 @@ func (e *env) LLM(context.Context, domain.Asset) (connector.LLM, error) {
 	panic("publishing nodes never call an LLM")
 }
 
-func (e *env) Secrets() connector.SecretResolver { return nil }
+func (e *env) Secrets() connector.SecretResolver { return vault{e.h} }
 
 // ioReader names the reader parameter of the connector's upload methods.
 type ioReader = io.Reader
