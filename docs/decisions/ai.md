@@ -34,7 +34,7 @@ Component decisions for the first executable version, numbered `I200`–`I219` p
 
 - **Choice.** Strategy name `sentence-window-30-60s-overlap15@1`, stored per vector.
   - Sentences end at `.`, `!`, `?`, `…` and their CJK and Arabic forms followed by a space or the end of text. Timing comes from word timestamps; without them, proportional to characters inside the segment.
-  - A window closes at the last sentence that keeps it under 60 s once it holds at least 30 s, and it closes earlier only when the next sentence would pass 60 s.
+  - A window grows sentence by sentence until it reaches 45 s, the middle of the range, or until the next sentence would pass 60 s.
   - The next window starts at the sentence whose start is closest to 15% of the closed window's span before its end, always at least one sentence further on, so chunking terminates.
   - A sentence over 60 s, common in unpunctuated ASR output, is split at word boundaries, or proportionally when there are no words, into pieces of up to 45 s.
   - A tail under 30 s starts earlier when earlier sentences exist, so it reaches 30 s. A recording under 30 s gets one short window. A silence that makes 30 s impossible yields a short window: spans never pass 60 s.
@@ -71,9 +71,9 @@ Component decisions for the first executable version, numbered `I200`–`I219` p
 
 ### I208. The effective policy is read from the store
 
-- **Choice.** `ai.analyze`, `ai.find_segment` and `ai.editorial` read the asset from the tenant store, never trusting parameters, and compute the effective policy: `external_allowed` when the asset, or its collection, is `external_allowed` **and** carries a consent record. Otherwise `local_only`, including for unknown values. They pass that to `env.LLM`, then check `Class()` again: on `local_only`, an endpoint not exactly `local` is treated as absent and nothing is sent. `ai.transcribe`, in pool `ai` with no store, uses its `aiProcessing` parameter under the same fail-closed reading.
-- **Why.** D8: "an admin can mark a collection or an asset", with a consent record. A missing record means the authorization cannot be shown, so it counts as not given. The second check keeps D8 from depending on one implementation of `env.LLM`.
-- **Revisit if.** An asset must be able to opt out of its collection's permission; the model has no explicit per-asset `local_only` today, since it is also the default.
+- **Choice.** `ai.analyze`, `ai.find_segment` and `ai.editorial` read the asset from the tenant store, never trusting parameters. The effective policy is `external_allowed` only when the stored `ai_processing` says so **and** a consent record is present. Anything else, including unknown values, is `local_only`. They pass that to `env.LLM`, then check `Class()` again: on `local_only`, an endpoint not exactly `local` is treated as absent and nothing is sent. `ai.transcribe`, in pool `ai` with no store, uses its `aiProcessing` parameter under the same fail-closed reading. The stored column already is the effective answer, collection included, with an asset-level decision winning (`core`'s I104), so this component does not look at the collection.
+- **Why.** D8 asks for a consent record, and a missing one means the authorization cannot be shown, so it counts as not given. The second check keeps D8 from depending on one implementation of `env.LLM`.
+- **Revisit if.** `core`'s I104 changes where the effective policy lives.
 
 ### I209. Endpoint hardening in the OpenAI-compatible driver
 
@@ -113,17 +113,17 @@ Component decisions for the first executable version, numbered `I200`–`I219` p
 ### I212. Search details under I43
 
 - **Choice.**
-  - User text never reaches FTS5 as syntax: it is split into Unicode word tokens, each double-quoted, joined with `OR`, at most 32 tokens. BM25 ranks passages with more of the words higher.
+  - Retrieval passes user text as it is, cut to its first 32 words. `core` tokenizes and quotes it, so it cannot be FTS5 syntax (`core`'s I106).
   - Limits default to 20, at most 100. Each list fetches `3 × limit` before fusion.
   - Hybrid degrades to lexical, reporting `mode: "lexical"`, when no embedder is usable or its model is not the active one. `mode=semantic` answers `unavailable` in the same case.
-  - Hits from a non-current version, or a deleted asset, are dropped, because their timeline is not the asset's current one.
-  - Vector hits with `Score <= 0` are dropped, reading `Score` as cosine similarity.
+  - Vector hits with `Score <= 0` are dropped; `Score` is cosine similarity.
+  - The repository already limits hits to current versions of live assets (`core`'s I106). `ai.find_segment` still filters on the version it read, because its transcript is that version's timeline.
 - **Why.** Fusion uses ranks only, so the only effect of `Score` is this floor. It lets the fake embedder's orthogonal vectors count as no match. A mixed query would break R18, so a query vector of another model is never used, even if that makes search lexical during a model switch.
 - **Revisit if.** Load tests (D5) set other limits.
 
 ### I213. Who swaps the active embedding model
 
-- **Choice.** `ai.index` sets the active model when none exists. When it indexes vectors of another model, it stores them beside the old ones and then checks every asset holding vectors of the active model at its current version. Once all also hold the new model, it swaps with `SetActiveModel` and removes the old vectors with `DeleteModel`.
+- **Choice.** The first model written to a tenant becomes active in the repository (`core`'s I106). When `ai.index` indexes vectors of another model, it stores them beside the old ones and then checks every asset holding vectors of the active model at its current version. Once all also hold the new model, it swaps with `SetActiveModel` and removes the old vectors with `DeleteModel`.
 - **Why.** D15 says the new index replaces the old one only when complete, and `reindex-asset` works one asset at a time, so the last asset finishes the job. The check costs one walk of the tenant's assets, and only while models differ. Vectors can always be rebuilt from the stored transcript.
 - **Revisit if.** Tenants with many assets make the walk slow; a counter can replace it.
 

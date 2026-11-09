@@ -71,8 +71,7 @@ Flow through `ingest-original`: `ai.transcribe` (scratch audio from the master) 
 - `ChunkTranscript`: greedy windows of 30–60 s at sentence boundaries, next window starts where overlap is closest to 15%, sentences over 60 s are split at word or proportional boundaries, the tail is merged so it is not under 30 s when the recording allows it. Chapters with a summary become `chapter`-level chunks. Strategy name stored per vector: `sentence-window-30-60s-overlap15@1`.
 - `Redact`: removes sensitive intervals from a transcript. With words, only overlapping words go; without words, the whole overlapping segment goes (fail closed). Used before any external LLM call and by `ai.export_transcript`.
 - `Fuse`: reciprocal rank fusion, `k = 60`, keyed on asset, version, level and rounded interval (I43).
-- `Search`: `service.Search`, modes `hybrid`, `lexical`, `semantic`. Hybrid degrades to lexical with the mode reported when no usable embedder or active model exists. Only vectors of the active model are searched (R18). Hits from non-current versions are dropped because their timelines differ.
-- FTS5 query building: user text is tokenized and quoted, so it can never be FTS5 syntax.
+- `Search`: `service.Search`, modes `hybrid`, `lexical`, `semantic`. Hybrid degrades to lexical with the mode reported when no usable embedder or active model exists. Only vectors of the active model are searched (R18). `core` keeps hits to current versions and makes user text safe for FTS5 (`core`'s I106).
 
 ### Phase D: story detection, analysis, editorial (roadmap phase 2)
 
@@ -80,7 +79,7 @@ Flow through `ingest-original`: `ai.transcribe` (scratch audio from the master) 
 - Modes: `complete_story`, `short` (fits `targetDurationSeconds`), `best_moments` (several disjoint intervals in one candidate, an assembly).
 - Evidence: excerpt taken from the transcript, never from LLM text; timestamps; confidence; rationale. Ambiguity rule in I205. Output also states `method` (`llm` or `retrieval`), so the approval shows how the proposal was made.
 - The `asset` parameter is reduced to its reference and the asset is re-read from the store; fields in the parameter are ignored, so a workflow cannot widen the AI policy (I208). No hit at all fails the node (I211).
-- D8: the effective policy comes from the stored asset and collection, never from node parameters. An endpoint not classified `local` on `local_only` content is treated as absent, even if `env.LLM` returned it. D30: redaction before any non-local endpoint.
+- D8: the effective policy comes from the stored asset, never from node parameters (`core`'s I104 keeps the column effective). An endpoint not classified `local` on `local_only` content is treated as absent, even if `env.LLM` returned it. D30: redaction before any non-local endpoint.
 - `Analyze`: transcript blocks → summary, chapters, tags, stories; blocks merged; LLM output validated and clamped. No allowed endpoint or a failed endpoint gives `available: false` with a reason (I28, I206).
 - `Editorial`: title, description, tags, with the fallback of I28.
 
