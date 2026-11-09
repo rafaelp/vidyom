@@ -68,6 +68,7 @@ Decided design choices that are easy to get wrong (details in spec v1.2 §21):
 - Dark-mode overrides must use the `html[data-theme='dark']` selector; plain `[data-theme='dark']` loses to Infima's defaults.
 - The navbar uses `img/vidyom-logo.png` and, in dark mode, `img/vidyom-logo-dark.png` (light wordmark).
 - In React pages, reference static assets through `useBaseUrl`, because `baseUrl` is configurable via `DOCS_BASE_URL`.
+- Mermaid diagrams render through `@docusaurus/theme-mermaid`; their brand colors are the `--mm-*` variables in `custom.css`. Keep the `d3` overrides in `website/package.json` (see `website/README.md`, Dependency notes) unless you verify that hovering diagram nodes logs no errors.
 
 ## Git
 
