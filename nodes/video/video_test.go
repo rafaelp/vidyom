@@ -201,7 +201,8 @@ func TestAutoMasterOf2160pIsHEVCAt2160p(t *testing.T) {
 	}
 	h := workertest.New(t)
 	root := withServerRoot(t, h)
-	raw := fixture.Video(t, root, fixture.Spec{Seconds: 0.4, Width: 3840, Height: 2160, Rate: "5", NoAudio: true})
+	// Three frames: libx265 sometimes gives the first packet of a shorter stream a garbage DTS (I296).
+	raw := fixture.Video(t, root, fixture.Spec{Seconds: 0.6, Width: 3840, Height: 2160, Rate: "5", NoAudio: true})
 	out := h.MustRun(ctx, nodeOf(t, "video.transcode"), "master", map[string]any{"source": "server:" + raw, "profile": "auto:master"})
 	if out.Field("profile") != "master-2160p-hevc@1" || out.Number("height") != 2160 {
 		t.Fatalf("%+v", out.Output)

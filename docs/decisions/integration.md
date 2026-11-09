@@ -138,3 +138,9 @@ Checked `docs/plans/integration.md` against master plan sections 1.1 and 10 and 
 - **Choice.** Two fixes came from the first real run, and neither could have come from the fake engine. `asr` pins `av<16`, because `faster-whisper` 1.2 passes an argument that PyAV 16 and later refuse. `storyProposals` stops merging touching hits unless both lists found them: on a paraphrase, fused scores differ only by rank, so `clusterScoreShare` never separated anything, and windows chained into one proposal of 137 s for a 33 s story. The real engine now logs a failure's cause, which the client never sees.
 - **Why.** The fake engine shares words with every query, so hits were always corroborated, and it never touches PyAV.
 - **Revisit if.** Editors prefer a longer proposal over several short ones when no LLM is configured.
+
+### I296. HEVC of one or two frames is a known limit
+
+- **Choice.** `TestAutoMasterOf2160pIsHEVCAt2160p` uses three frames instead of two, and the product does not work around the cause. A one- or two-frame source on the HEVC profile can fail its transcode, as a permanent error that a rerun usually clears. The failing first packet has `pts` 0 and a `dts` such as `-17592186048512` where a healthy run has 0, and the rate falls to none of 600 at three frames or with `bframes=0`. The values fit an uninitialized value in x265's B-frame delay, but x265's source was not read, so that part is a reading of the evidence. The numbers are in `docs/status.md`.
+- **Why.** Sources this short do not occur in real use: only sources of 1440p or more take this profile, and one frame of video is not a recording. A branch to set `bframes=0` by frame count would exist only for them.
+- **Revisit if.** Short clips cut from 4K masters ever hit it, or a later x265 changes the behavior.

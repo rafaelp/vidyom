@@ -76,15 +76,18 @@ Every result here is from the last run on this machine, at the commit that added
 
 The suite natively ran on macOS arm64 only. Linux has run only as the containers of `make e2e-compose`, on arm64. **`.github/workflows/ci.yml` has never run**, because nothing has been pushed.
 
-**Reliability under load** (I292). The failures reported from the parallel stage were traced and fixed in `internal/plugins`, `connectors/storage/local` and `internal/observability`. `internal/workers`' earlier failures did not come back in any run here, and are not claimed fixed. Three `go test -count=3 ./...` running at once, 9 full passes, gave one failure:
+**Reliability under load** (I292). The failures reported from the parallel stage were traced and fixed in `internal/plugins`, `connectors/storage/local`, `internal/observability` and `nodes/video`. `internal/workers`' earlier failures did not come back in any run here, and are not claimed fixed.
 
-```
---- FAIL: TestAutoMasterOf2160pIsHEVCAt2160p (nodes/video)
-video.transcode: failed_precondition: transcoding to master-2160p-hevc@1: ... ffmpeg failed with exit code 176:
-[vost#0:0/libx265] Error submitting a packet to the muxer: Not yet implemented in FFmpeg, patches welcome
-```
+**HEVC of one or two frames** (I296). With B-frames, `libx265` sometimes gives the first packet of a stream that short a garbage DTS, and the MP4 muxer refuses it: `pts/dts pair unsupported`, exit code 176. Under 24 parallel encodes with x265 4.3 and FFmpeg 9.0.2 on this machine:
 
-It came back once in 100 parallel runs of that test, and never in 120 runs of a plain FFmpeg command. **It is not fixed and its cause is unknown.** It is FFmpeg's MP4 muxer refusing a packet from `libx265`, on a fixture of two 4K frames. A real 4K ingest would fail as a permanent error if it ever hit this.
+| Stream | Failures |
+|---|---|
+| 1 frame | 45 of 300 |
+| 2 frames | 20 of 600 |
+| 2 frames, `bframes=0` | 0 of 600 |
+| 3, 4 and 6 frames | 0 of 600 each |
+
+Such a source fails its transcode as a permanent error, and the code does not work around it, because no real recording is that short. The test that hit it now has three frames and passed 400 parallel runs.
 
 ## 3. Real and exercised end to end
 
