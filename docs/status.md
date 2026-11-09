@@ -1,6 +1,6 @@
 # Status of the first executable version
 
-The honest state of this tree, for comparing with the website and the README, which another session is writing as product copy. Where they differ, this file describes what the code does today. Nothing has been tagged or released. Results below are from one Mac Studio (macOS arm64, Docker Desktop with Linux arm64 containers); when they were taken, no Windows host and no x86-64 host had run any of this. [`docs/reports/2026-11-09-first-executable-version.md`](reports/2026-11-09-first-executable-version.md) records how this version was built and verified.
+The honest state of this tree, for comparing with the website, which is product copy. Where they differ, this file describes what the code does today. Nothing has been tagged or released. Results below are from one Mac Studio (macOS arm64, Docker Desktop with Linux arm64 containers); when they were taken, no Windows host and no x86-64 host had run any of this. [`docs/reports/2026-11-09-first-executable-version.md`](reports/2026-11-09-first-executable-version.md) records how this version was built and verified.
 
 The short version: **the whole lifecycle works end to end, on one host, natively and under Docker Compose, with a fake AI engine, a mock LLM, a mock destination and local storage.** Real AI models ran only by hand, on six short spoken stories (section 6). Nothing has talked to real YouTube, real GCS or a real LLM vendor.
 
@@ -233,7 +233,7 @@ The full list is in `docs/decisions/integration.md` (I280–I295), and each comp
 - **Compose's master key is a plaintext file** (I10, I290): below D13's target and reported as such by `doctor` and `/health`.
 - **The worker can be scraped directly** with `--metrics-addr` (I294). `GET /metrics` on the daemon shows the daemon's process only.
 - **Metadata edits on a public video reach `public.db` but not the destination** (section 5). There is no flow pushing a new title to the platform.
-- **The website and README describe every phase as implemented**, by the other session's choice. This file is what the code does; I did not touch those files.
+- **The website describes every phase as implemented**, by the maintainer's decision on its voice. This file is what the code does.
 
 ## 9. Disagreements left open
 

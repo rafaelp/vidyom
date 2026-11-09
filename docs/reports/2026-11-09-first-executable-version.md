@@ -148,16 +148,14 @@ Each was taken without asking, as instructed, and each can be changed.
 
 - **Next.js telemetry.** An early spike in `library` ran plain `next build`, which probably sent telemetry to Vercel once or twice. Later controlled runs would have made the npm advisory lookup. Project builds now disable telemetry.
 - **Commits that do not build alone.** `8462a1d` is fixed by `6d6d0a0`. `fb1ed7a` is configuration only, and the build returns at `1edf884`.
-- **`AGENTS.md` is out of date.** Its status section still says no runtime code exists. Another session has uncommitted edits to that file, so it was left alone.
-- **The website describes every phase as implemented,** by the maintainer's decision on its voice. Compare it with [`docs/status.md`](../status.md) before relying on any claim about what runs.
-- **The CLI reference disagrees with §11** on `workflow resume`, `job resolve --action`, `device pair-code`, `budget status` and `asset verify`, in `website/docs/reference/cli.md`.
-- **Another session's work is not included.** Its uncommitted changes to 39 tracked files, in `website/` and the community files, stayed out of every commit of this session.
+- **The website describes every phase as implemented,** by the maintainer's decision on its voice. Compare it with [`docs/status.md`](../status.md) before relying on any claim about what runs. The README keeps that voice and has a Status section that says what is not ready.
+- **The CLI reference disagrees with §11** on `job resolve --action`, `device pair-code`, `budget status` and `asset verify`, in `website/docs/reference/cli.md`.
+- **Another session's work went out in the same push.** Commits `5d753fa` and `e1f7256` rewrote the website, the README, the contribution files and `AGENTS.md`. They arrived after the checks above and change no runtime code. The website's own CI covers them, and the checks above do not.
 
 ## Next steps
 
 1. Check the first run of `.github/workflows/ci.yml`, which is also the first time this code runs on x86-64 Linux.
-2. Update the status section of `AGENTS.md`.
-3. Run a real recording in Portuguese through the real models. This is what shows whether transcription and search work on the content Vidyom is for.
-4. Try a real LLM, then real YouTube and GCS, closing their **Validate** items.
-5. Close the gap in §15.2 item 9.
-6. Review the decisions above.
+2. Run a real recording in Portuguese through the real models. This is what shows whether transcription and search work on the content Vidyom is for.
+3. Try a real LLM, then real YouTube and GCS, closing their **Validate** items.
+4. Close the gap in §15.2 item 9.
+5. Review the decisions above.
