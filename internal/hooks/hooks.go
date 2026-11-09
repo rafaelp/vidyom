@@ -132,6 +132,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, point hook.Point, chain hook.
 	return final, nil
 }
 
+// Probe runs one hook once, with no policy, and returns what it said: `vidyom hook test`
+// shows this, including parameters that Dispatch only passes on at node.before.
+func (d *Dispatcher) Probe(ctx context.Context, inv hook.Invocation) (hook.Result, error) {
+	return d.runOnce(ctx, inv.Hook, inv)
+}
+
 func withParameters(data, params json.RawMessage) json.RawMessage {
 	doc := map[string]json.RawMessage{}
 	if len(data) > 0 {

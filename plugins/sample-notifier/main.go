@@ -95,11 +95,19 @@ func (s *server) handle(ctx context.Context, method string, params json.RawMessa
 func (s *server) invoke(ctx context.Context, inv hook.Invocation) (any, error) {
 	switch inv.Hook.Action {
 	case "check-source":
+		// The engine sends a workflow's inputs at workflow.before and a node's resolved
+		// parameters at node.before.
 		var data struct {
-			Title string `json:"title"`
+			Title  string `json:"title"`
+			Inputs struct {
+				Title string `json:"title"`
+			} `json:"inputs"`
+			Parameters struct {
+				Title string `json:"title"`
+			} `json:"parameters"`
 		}
 		_ = json.Unmarshal(inv.Data, &data)
-		if data.Title == "" {
+		if data.Title == "" && data.Inputs.Title == "" && data.Parameters.Title == "" {
 			return hook.Result{Allow: false, Reason: "the source has no title"}, nil
 		}
 		return hook.Result{Allow: true}, nil

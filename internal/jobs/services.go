@@ -1518,8 +1518,22 @@ func (i introspectionService) TestHook(ctx context.Context, s service.Scope, hoo
 		}
 		decl := entry.decl
 		decl.OnFailure = wfdef.HookAbort
-		res, err := i.e.d.Hooks.Dispatch(ctx, entry.point, hook.Chain{Global: []wfdef.HookDecl{decl}}, hook.Invocation{TenantID: s.Tenant, AssetID: req.AssetID, TraceID: s.TraceID})
+		inv := hook.Invocation{Point: entry.point, Hook: decl, TenantID: s.Tenant, AssetID: req.AssetID, TraceID: s.TraceID}
+		var (
+			res hook.Result
+			err error
+		)
+		if probe, ok := i.e.d.Hooks.(interface {
+			Probe(context.Context, hook.Invocation) (hook.Result, error)
+		}); ok {
+			res, err = probe.Probe(ctx, inv)
+		} else {
+			res, err = i.e.d.Hooks.Dispatch(ctx, entry.point, hook.Chain{Global: []wfdef.HookDecl{decl}}, inv)
+		}
 		out := map[string]any{"hook": hookID, "point": entry.point, "allow": res.Allow, "reason": res.Reason}
+		if len(res.Parameters) > 0 {
+			out["parameters"] = res.Parameters
+		}
 		if err != nil {
 			out["allow"] = false
 			out["reason"] = errs.Public(err).Message

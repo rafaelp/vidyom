@@ -177,6 +177,8 @@ func (r *jobRun) startJob() error {
 	}
 	tenant, job := r.store.Tenant(), r.job
 	base := r.invocation(nil)
+	// A job-level hook judges what the job was given, as a node's judges its parameters.
+	base.Data, _ = json.Marshal(map[string]json.RawMessage{"inputs": r.job.Inputs})
 	e.spawn(func(ctx context.Context) {
 		defer e.Kick(tenant, job.ULID)
 		defer e.release(key)
