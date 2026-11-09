@@ -30,7 +30,7 @@ Network binding and TLS protect the transport; role/permission checks protect op
 
 ## Approval roles
 
-**Decided:** Roles are assigned per tenant: `viewer`, `editor`, `publisher` and `admin`. Approval has two levels:
+**Decided:** Roles are assigned per tenant: `viewer`, `editor`, `publisher` and `admin`. Each role is a bundle of granular permissions (`storage.archive.restore`, `asset.delete`, `plugin.install`, `secret.write`, …); an admin can grant an individual permission without changing the role, and the audit records which permission authorized each action. Approval has two levels:
 
 - An `editor` approves the clip selection (`approval.request` kind `clip_selection`).
 - A `publisher` (or `admin`) approves publication (kind `publication`).

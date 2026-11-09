@@ -24,6 +24,8 @@ sidebar_position: 1
 
 `finish` is a durable finalization task designed to run even after process restart; not a guarantee under irrecoverable infrastructure failure.
 
+**Decided:** A hook has a default timeout of 30 seconds. A hook can set its own `timeoutSeconds`, and notification hooks are further bound by a configurable global ceiling.
+
 ## Hook scopes and order
 
 Global policy hooks apply to all workflows and must not be disabled by untrusted JSON. Workflow hooks apply to one workflow version, and node hooks apply at an individual step. Proposed order: global → workflow → node for `before`, and reverse for `after` / `finish`. Persistent security/audit policy supersedes plugin requests.
@@ -52,7 +54,7 @@ Global policy hooks apply to all workflows and must not be disabled by untrusted
 
 ## Event Bus
 
-Events such as `original.indexed`, `asset.created`, `clip.created`, `publication.completed`, `workflow.failed`, or `storage.backup.verified` may trigger plugins, webhooks and other JSON workflows. Use a transactional outbox, durable subscriptions, delivery state, retry/backoff, recursion limits and consumer idempotency keys. Model delivery as **at least once**, not exactly once.
+Events such as `original.indexed`, `asset.created`, `clip.created`, `publication.completed`, `workflow.failed`, or `storage.backup.verified` may trigger plugins, webhooks and other JSON workflows. Use a transactional outbox, durable subscriptions, delivery state, retry/backoff, recursion limits and consumer idempotency keys. Model delivery as **at least once**, not exactly once. **Decided:** The event semantics follow that model: an event is emitted only after the state transition is committed, and consumers must be idempotent.
 
 **Decided:** Event trigger filters are written in CEL (Common Expression Language), as are conditions in `flow.if` and approval rules. CEL is side-effect free, not Turing-complete and bound by evaluation cost limits; the Go daemon evaluates it with cel-go. The `${...}` syntax is reserved for data references such as `${event.asset_id}`.
 
@@ -75,6 +77,6 @@ Events such as `original.indexed`, `asset.created`, `clip.created`, `publication
 
 **Decided:** Out-of-process plugins talk to the daemon over **JSON-RPC 2.0 on stdin/stdout** (the same transport model as LSP and MCP), which is language-neutral and needs no code generation. Remote plugins and services use JSON-RPC over authenticated HTTPS. Native Go `.so` plugins remain excluded. **Future:** WASM for specific sandboxed cases.
 
-Plugins may be separate Go or Python executables or remote services. Each manifest describes protocol version, actions, input/output schemas, hook subscriptions, capabilities, resource quotas, permissions and compatible daemon versions. Installing a plugin never grants unrestricted keyring, filesystem, network or shell access.
+Plugins may be separate Go or Python executables or remote services. **Decided:** Each plugin ships a manifest. It describes protocol version, actions, input/output schemas, hook subscriptions, capabilities, resource quotas, permissions and compatible daemon versions. Installing a plugin never grants unrestricted keyring, filesystem, network or shell access.
 
 Creating a new **workflow** requires JSON when node types exist; creating a new **node or connector** generally requires writing and distributing an implementation plugin.

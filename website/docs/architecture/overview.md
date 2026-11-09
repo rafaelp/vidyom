@@ -9,7 +9,7 @@ Vidyom follows a **thin client / persistent daemon / worker** design. The archit
 
 ```mermaid
 flowchart TB
-  CLI[vidyom CLI] -->|Unix socket / HTTPS with pairing| API[vidyomd API]
+  CLI[vidyom CLI] -->|Unix socket / loopback or remote HTTPS with pairing| API[vidyomd API]
   Agent[Other clients / agents / MCP] -->|Authenticated HTTPS API| API
   API --> Engine[Workflow engine + scheduler]
   Engine --> DB[(SQLite per tenant + system.db)]
@@ -34,9 +34,9 @@ flowchart TB
 
 ## Deployment
 
-**Decided:** Go for `vidyom` (CLI), `vidyomd` (daemon) and the media worker; Python only for the AI worker (faster-whisper, BGE-M3), which talks to the daemon over JSON-RPC. **Proposed:** daemon on Linux and client on macOS/Linux/Windows, with FFmpeg for media processing.
+**Decided:** Go for `vidyom` (CLI), `vidyomd` (daemon) and the media worker; Python only for the AI worker (faster-whisper, BGE-M3), which talks to the daemon over JSON-RPC. **Decided:** The whole project must be able to run on a single host running Linux, macOS or Windows, with FFmpeg for media processing. The Go binaries are built for all three platforms.
 
-**Decided:** Docker Compose is the supported MVP deployment: the daemon, the workers (with FFmpeg and the Python AI worker packaged) and Redis. The Go binaries can also run natively under systemd, but that is not the primary path. Kubernetes is **Future**.
+**Decided:** Docker Compose is the supported MVP deployment on all three platforms (Docker Desktop or WSL2 on macOS and Windows): the daemon, the workers (with FFmpeg and the Python AI worker packaged) and Redis. The Go binaries can also run natively, for example under systemd on Linux, but that is not the primary path. Docker on macOS has no GPU access, so local AI runs on CPU or uses a configured local or external endpoint. **Validate:** AI performance on macOS without a GPU. Kubernetes is **Future**.
 
 ## State and tenancy
 
@@ -50,12 +50,12 @@ flowchart TB
 
 ## Remote access
 
-**Decided:** The remote API is HTTPS (TLS 1.3). An admin generates a one-time pairing code and the CLI exchanges it for a per-device credential that is revocable and rotated. The local Unix socket remains for same-host use. SSH tunneling is available only for host operators, and binding only to a private interface (Tailscale/NetBird) remains supported with the same fail-closed rules.
+**Decided:** The remote API is HTTPS (TLS 1.3). An admin generates a one-time pairing code and the CLI exchanges it for a per-device credential that is revocable and rotated. The local Unix socket remains for same-host use on Linux (**Proposed:** HTTPS on loopback when the daemon runs inside Docker Desktop on macOS or Windows). SSH tunneling is available only for host operators, and binding only to a private interface (Tailscale/NetBird) remains supported with the same fail-closed rules.
 
 The daemon operates even when no CLI is connected. Every submitted command producing work returns a `job_id` promptly. Clients may attach to stream logs; disconnecting does not cancel work. Recovery uses persisted checkpoints and idempotency rather than assuming exactly-once execution.
 
 ## Trust boundaries
 
-External plugins run in restricted processes or sandboxes. Workflows are untrusted configuration until validated and authorized. Credentials are resolved at execution time, never serialized into job payloads. **Decided:** On the server, secrets live in an encrypted vault inside each tenant database (envelope encryption, one data key per tenant, wrapped by a master key unsealed at boot via TPM/systemd-creds or a cloud KMS); client machines use the OS keyring. A missing or sealed master key makes the daemon fail closed.
+External plugins run in restricted processes or sandboxes. Workflows are untrusted configuration until validated and authorized. Credentials are resolved at execution time, never serialized into job payloads. **Decided:** On the server, secrets live in an encrypted vault inside each tenant database (envelope encryption, one data key per tenant, wrapped by a master key unsealed at boot via TPM/systemd-creds, Keychain, DPAPI/TPM or a KMS, depending on the platform; **Validate**); client machines use the OS keyring. A missing or sealed master key makes the daemon fail closed.
 
 Out-of-process plugins talk to the daemon over JSON-RPC 2.0 on stdin/stdout, and remote plugins and services use JSON-RPC over authenticated HTTPS (**Decided**); WASM is **Future**. Public catalog data is explicitly approved and filtered from private assets: per tenant, the daemon exports a read-only `public.db` with only approved public records and their embeddings and ships it to the public site's host, so the daemon is never exposed publicly (**Decided**). The audit log is append-only with hash chaining in each tenant database.

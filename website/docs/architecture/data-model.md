@@ -11,7 +11,21 @@ The canonical catalog must outlive any individual vendor integration. **Decided:
 
 **Decided:** Each tenant has one SQLite database file holding its assets, jobs, checkpoints, transcripts, search indexes, audit log and encrypted secrets. A global `system.db` holds tenants, users, roles, device credentials, the plugin registry and wrapped tenant data keys. Full-text search uses FTS5 and vector search uses sqlite-vec. **Validate:** sqlite-vec has no approximate index yet, so asset-scoped search is the main path and tenant-wide semantic search must be load-tested. Databases run in WAL mode with continuous Litestream backup to the archive storage provider, and only the daemon opens them.
 
-**Decided:** Friendly IDs use the prefixes `ORI-`, `CLIP-`, `EDT-`, `JOB-`, `APR-`, `PUB-` and `CLIENT-`. They are aliases for an immutable ULID technical key, and storage paths follow the prefix (for example `clips/CLIP-001/v1/master.mp4`).
+**Decided:** Friendly IDs use the prefixes `ORI-`, `CLIP-`, `EDT-`, `JOB-`, `APR-`, `PUB-` and `CLIENT-`. Each tenant has its own sequence per prefix (at least 3 digits, never reused), so a friendly ID is resolved within the tenant given by the `Vidyom-Tenant` header. They are aliases for an immutable, globally unique ULID technical key, and storage paths follow the prefix (for example `clips/CLIP-001/v1/master.mp4`).
+
+## Asset states
+
+**Decided:** An asset has one lifecycle state: `registered`, `ingesting`, `ready_for_clipping`, `ingest_failed`, `editorial_review`, `approved`, `rejected`, `published`, `withdrawn` or `archived_only`. The state is independent of job state and of visibility. `published` requires a confirmed publication with a URL taken from the destination's API response.
+
+## Versions
+
+**Decided:** A media version becomes immutable once it is published (at least one confirmed publication). Before that, the files of a version can be replaced in place. After publication, any new render, transcode or file replacement creates a new version (`v2`, `v3`, and so on). Editing only metadata never creates a media version, but the change is recorded in the history. Storage keys include the version, and each publication records which version was sent.
+
+**Decided:** When the published file is byte-identical to the master, `published_file` points to the master instead of duplicating it.
+
+## Input URIs
+
+**Decided:** Workflow file inputs use one URI form: `server:` (a path on the daemon host), `upload:` (a completed client upload), `storage://role/key` (a logical storage location) or `import:connector/id` (an item from an import connector).
 
 ## Main entities
 
@@ -65,6 +79,10 @@ The canonical catalog must outlive any individual vendor integration. **Decided:
 }
 ```
 
+## Clips of clips
+
+**Decided:** A derivative that reaches `ready_for_clipping` can be the source of a new clip. Intervals are converted to the root original's timeline and, when the edit is continuous, rendered from the root original's master. The lineage records the full chain of parents.
+
 ## Portable exports
 
-Export metadata as JSON, transcript as time-aligned JSON plus SRT/VTT, summary as Markdown, thumbnails as JPG/PNG, and media as ordinary MP4/MOV. Preserve content IDs, hashes, source intervals, publication mappings and ownership/license metadata. CSV catalog exports are an optional convenience; no proprietary database export should be required for an archive migration.
+**Decided:** A per-asset metadata export package is available, without the masters. Export metadata as JSON, transcript as time-aligned JSON plus SRT/VTT, summary as Markdown, thumbnails as JPG/PNG, and media as ordinary MP4/MOV. Preserve content IDs, hashes, source intervals, publication mappings and ownership/license metadata. CSV catalog exports are an optional convenience; no proprietary database export should be required for an archive migration.

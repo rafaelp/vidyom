@@ -37,7 +37,7 @@ Cancellation is cooperative between nodes: the running node finishes, or aborts 
 
 ## Worker scheduling
 
-Resource-aware dispatch allows a CPU worker for FFmpeg and GPU worker for transcription. Initially, local workers are sufficient. Future expansion to multiple hosts must preserve the same workflow JSON and stable job API. Workers never open database files; they talk to the daemon through its API or Redis.
+**Decided:** Workers declare their CPU, GPU, memory, disk and capacity, and the scheduler picks a compatible worker for each node. Execution records are kept for a configurable retention period (see [observability](../operations/observability.md)). Resource-aware dispatch allows a CPU worker for FFmpeg and GPU worker for transcription. Initially, local workers are sufficient. Future expansion to multiple hosts must preserve the same workflow JSON and stable job API. Workers never open database files; they talk to the daemon through its API or Redis.
 
 ## Worker cache
 
@@ -46,3 +46,9 @@ Resource-aware dispatch allows a CPU worker for FFmpeg and GPU worker for transc
 ## Paths and uploads
 
 When the CLI requests a remote job with `file=/data/class.mp4`, that path belongs to the **daemon host**. Use an explicit resumable `vidyom asset upload` operation for a file located on the client machine. Validate checksum at completion and prevent arbitrary server filesystem traversal.
+
+**Decided:** Inputs use unified URIs: `server:` for a path on the daemon host, `upload:` for a completed client upload, `storage://role/key` for a logical storage location and `import:connector/id` for an item from an import connector.
+
+## Same-host transport
+
+**Decided:** On Linux, the CLI reaches a daemon on the same host through a Unix domain socket. When the daemon runs inside Docker Desktop on macOS or Windows, socket files cannot cross the VM boundary, so the CLI uses HTTPS on loopback instead.

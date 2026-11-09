@@ -5,13 +5,13 @@ sidebar_position: 1
 
 # Observability connectors
 
-**Decided:** Logs, metrics, and traces must use pluggable connectors rather than embedding vendor SDK assumptions into every workflow. OpenTelemetry provides the intended instrumentation conventions, but the daemon operates without an external monitoring stack.
+**Decided:** Logs, metrics, and traces must use pluggable connectors rather than embedding vendor SDK assumptions into every workflow. OpenTelemetry provides the intended instrumentation conventions, but the daemon operates without an external monitoring stack. **Decided:** by default it writes local JSONL logs and exposes a Prometheus metrics endpoint; Loki, Tempo and Grafana are an optional Docker Compose profile. A Datadog connector is **Future**.
 
 ## Interfaces
 
 | Interface | Purpose | Suggested drivers |
 | --- | --- | --- |
-| `LogSink` | Structured event/log delivery | Local JSONL, Loki, Datadog, Syslog, Google Cloud Logging |
+| `LogSink` | Structured event/log delivery | Local JSONL, Loki, Datadog (**Future**), Syslog, Google Cloud Logging |
 | `MetricsExporter` | Time-series metrics | Prometheus, OTLP, Datadog |
 | `TraceExporter` | Distributed tracing | OTLP, Datadog APM |
 
@@ -41,7 +41,7 @@ A plugin may provide all three interfaces. Multiple destinations may be active s
 
 ## Reliability
 
-Export asynchronously through bounded per-connector queues with batching, timeouts, retries, backoff and disk buffering when configured. One unavailable sink must not interrupt media processing or another sink. The daemon should expose exporter health, drops and backlogs. Never silently discard required audit records: audit persistence is distinct from best-effort telemetry exports.
+**Decided:** Operational logs are kept 30 days and workflow execution details 90 days by default, both configurable. Export asynchronously through bounded per-connector queues with batching, timeouts, retries, backoff and disk buffering when configured. One unavailable sink must not interrupt media processing or another sink. The daemon should expose exporter health, drops and backlogs. Never silently discard required audit records: audit persistence is distinct from best-effort telemetry exports.
 
 **Decided:** The audit is an append-only table in each tenant database with **hash chaining** (each record includes the previous record's hash). The chain is exported daily to archive storage, and minimum retention is 1 year, configurable.
 

@@ -7,7 +7,8 @@
 
 <p align="center">
   <strong>Open-source, AI-powered video workflow engine.</strong><br>
-  Preserve · Discover · Transform · Share
+  Preserve · Discover · Transform · Share<br>
+  <sub>Originally built for <a href="https://www.mapadeva.com.br/">MapaDeva</a></sub>
 </p>
 
 <p align="center">

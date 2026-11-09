@@ -3,7 +3,7 @@ title: "Daemon API and protocol"
 sidebar_position: 1
 ---
 
-# Daemon API and protocol (proposed)
+# Daemon API and protocol
 
 The daemon must expose a stable, versioned client API over local Unix domain sockets or HTTPS (TLS 1.3), which is the default remote transport. SSH tunneling remains available only for host operators. Requests and responses are structured JSON; long-running job and event streams may use an authenticated streaming protocol such as SSE/WebSocket or gRPC streaming.
 
@@ -31,7 +31,7 @@ The daemon must expose a stable, versioned client API over local Unix domain soc
 | `GET` | `/v1/plugins` | Installed plugin metadata |
 | `GET` | `/v1/audit` | Authorized audit history |
 
-These paths are **design suggestions**, not published live endpoints. API versioning must protect old CLI clients against silent behavioral changes; mutating requests use idempotency keys; every method enforces resource-level authorization.
+**Decided:** This endpoint list is the daemon API surface. It is **not yet implemented**, so none of these are live endpoints. API versioning must protect old CLI clients against silent behavioral changes; mutating requests use idempotency keys; every method enforces resource-level authorization.
 
 ## Tenant scoping
 

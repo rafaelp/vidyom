@@ -17,6 +17,8 @@ sidebar_position: 1
 
 These numbers are **illustrative**, not guaranteed quality or compression targets. A master must preserve enough quality for subsequent edits, including vertical reframing and zoom; the 720p proxy is not an acceptable sole production master.
 
+**Decided:** The proxy is MP4 H.264 at 720p, and the ASR audio is Opus mono at 16 kHz and 24–32 kbps. Neither is ever upscaled beyond the source.
+
 ## Master profiles
 
 **Decided:** The profile depends on the source resolution.

@@ -24,9 +24,9 @@ vidyom/
 └── SECURITY.md
 ```
 
-## Proposed runtime layout
+## Runtime layout
 
-The runtime code will be added alongside `website/`:
+**Decided:** The runtime code will follow this structure, added alongside `website/`. None of it exists yet.
 
 ```text
 vidyom/

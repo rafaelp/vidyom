@@ -7,7 +7,9 @@ sidebar_position: 1
 
 **Decided:** Workflows are JSON configuration, modeled after n8n's concepts of nodes, parameters, connections and workflow settings. The runtime must support creating new workflows **without writing code** when all required node types already exist. Vidyom is *not* required to execute n8n JSON directly in the first release.
 
-## Workflow contract (proposed)
+## Workflow contract
+
+**Decided:** The workflow JSON model has these parts.
 
 - `id`, `name`, semantic `version`, optional `description`.
 - JSON-schema-compatible `inputs` and `outputs`.
@@ -67,6 +69,10 @@ This is intentionally a **partial example**, not the full production ingest work
 ## Merge and branching
 
 **Decided:** A node runs when all of its required predecessors have completed. Nodes on a branch not taken by `flow.if` are marked `skipped`, and the skip propagates to their descendants unless they are joined through `flow.merge`. `flow.merge` has `mode: all | any`: `all` waits for every non-skipped input, and `any` continues with the first completed input.
+
+## Approval node
+
+**Decided:** The `approval.request` node pauses a job until a person decides. Its parameters are `kind` (for example `clip_selection` or `publication`), `assetId`, `approvers`, `timeoutSeconds` and `onTimeout`. The pause is persisted, so the CLI may disconnect. `approvers` can tighten the default approval rule, never loosen it.
 
 ## Subworkflows
 

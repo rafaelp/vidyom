@@ -23,9 +23,9 @@ The CLI uses the keyring for its own credentials, such as the per-device credent
 
 - One data key per tenant encrypts that tenant's secrets.
 - The data key is stored wrapped by a master key; wrapped tenant data keys live in the global system database.
-- The master key is unsealed at boot through TPM/systemd-creds or a cloud KMS, with no manual passphrase.
+- The master key is unsealed at boot with no manual passphrase: TPM/systemd-creds on Linux, Keychain on macOS, DPAPI/TPM on Windows, or a KMS on any platform.
 
-The daemon must **fail closed**: if the master key is missing or sealed, it refuses to start or to serve secrets, and it never stores plain-text secrets as a fallback. **Validate:** TPM/systemd-creds and KMS unsealing on the target hosts.
+The daemon must **fail closed**: if the master key is missing or sealed, it refuses to start or to serve secrets, and it never stores plain-text secrets as a fallback. **Validate:** unsealing on each platform (TPM/systemd-creds, Keychain, DPAPI/TPM) and with a KMS on the target hosts.
 
 ## Location modes
 

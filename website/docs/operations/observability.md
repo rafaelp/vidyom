@@ -42,13 +42,15 @@ Every trace and operational event should carry the relevant `job_id`, `workflow_
 - Authentication failures and suspicious operation rates.
 - Telemetry exporter queue length, retry rate and dropped-event count.
 
-## Proposed stack
+## Stack
 
-Instrumentation with OpenTelemetry; local JSONL logs by default; Prometheus for metrics; optional OTLP Collector, Loki, Tempo, and Grafana dashboards. Datadog, Syslog and Cloud Logging can be connector alternatives. The daemon **must not require** a monitoring cluster to operate.
+**Decided:** Instrumentation uses OpenTelemetry. By default the daemon writes local JSONL logs and exposes a Prometheus metrics endpoint. Loki, Tempo and Grafana are an optional Docker Compose profile. **Future:** a Datadog connector. Syslog and Cloud Logging can be connector alternatives. The daemon **must not require** a monitoring cluster to operate.
 
-## Data retention (proposed, configurable)
+## Data retention
 
-| Class | Example retention |
+**Decided:** Retention is configurable, with these defaults.
+
+| Class | Default retention |
 | --- | --- |
 | Operational logs | 30 days |
 | Workflow execution details | 90 days |
