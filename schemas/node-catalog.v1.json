@@ -264,6 +264,20 @@
         },
         "source_original_uri": {
           "type": "string"
+        },
+        "archive_uri": {
+          "type": "string",
+          "description": "Where the asset's archive copy is: the raw original, or a derivative's backup."
+        },
+        "key_prefix": {
+          "type": "string",
+          "description": "Storage keys of the current version start with this (§14.1)."
+        },
+        "proxy_available": {
+          "type": "boolean"
+        },
+        "backup_verified": {
+          "type": "boolean"
         }
       }
     }
@@ -629,6 +643,10 @@
           },
           "version": {
             "type": "string"
+          },
+          "key_prefix": {
+            "type": "string",
+            "description": "Storage keys of this version start with this, under the role and tenant prefix (§14.1)."
           }
         }
       }
