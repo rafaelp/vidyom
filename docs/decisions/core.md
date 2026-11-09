@@ -117,7 +117,7 @@ Same format as [`docs/decisions.md`](../decisions.md). What these say a version 
 
 ### I114. Tenant lifecycle and bootstrap
 
-- **Choice.** Creation order: refuse if `system.db` has the tenant; create or open the tenant database; create the data key; write the system row, the creator's `admin` membership and the audit last. A crash before the last step leaves an orphan file that the next attempt adopts, and no request can reach it. The creating system admin becomes the tenant's `admin`, otherwise they could not use it. `tenants.Bootstrap` backs `vidyomd init` (I17): refuses if any tenant or user exists, then creates the tenant, the first user (system admin and tenant admin), a worker token and one pairing code, returning the last two once.
+- **Choice.** Creation order: refuse if `system.db` has the tenant; create or open the tenant database; create the data key; write the system row, the creator's `admin` membership and the audit last. A crash before the last step leaves an orphan file that the next attempt adopts, and no request can reach it. The creating system admin becomes the tenant's `admin`, otherwise they could not use it. `Service.Bootstrap` backs `vidyomd init` (I17): it refuses if any tenant exists, adopts a system admin left by an attempt that crashed part way, then creates the tenant, the first user (system admin and tenant admin), a worker token and one pairing code, returning the last two once.
 - **Why.** I17. Two databases, no shared transaction, so the system row is the commit point.
 - **Revisit if.** Tenants can be renamed or deleted; neither exists in §11.
 

@@ -607,4 +607,3 @@ func withTenant(scope service.Scope) domain.Principal {
 	}
 	return p
 }
-

@@ -1,4 +1,4 @@
-// Package tenants: tenant lifecycle, per-tenant keys and prefixes (D6).
-//
-// Owner: component core (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Package tenants is the tenant lifecycle (D6), users and grants (D48), budgets (D19),
+// per-tenant configuration from files (I34), the bootstrap behind `vidyomd init` (I17)
+// and the retention sweeps (I45). Decisions are in docs/decisions/core.md, I114 to I118.
 package tenants
