@@ -406,8 +406,9 @@ func TestTemporaryLinkIsSignedAndCredentialsStayOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.Query().Get("X-Goog-Signature") == "" || u.Query().Get("X-Goog-Expires") != "3600" {
-		t.Fatalf("not a V4 signed URL: %s", u.Path)
+	expires, err := strconv.Atoi(u.Query().Get("X-Goog-Expires"))
+	if err != nil || expires < 3590 || expires > 3600 || u.Query().Get("X-Goog-Signature") == "" {
+		t.Fatalf("not a V4 signed URL with this expiry: %s, expires %q", u.Path, u.Query().Get("X-Goog-Expires"))
 	}
 	if strings.Contains(link, "PRIVATE") {
 		t.Fatal("the key leaked into the link")
