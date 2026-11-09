@@ -133,9 +133,21 @@ At startup and periodically, for every tenant and active job: daemon-pool `runni
 All additive, each a `contract:` commit:
 
 - `settings.assetStatusOnFailure` in the workflow schema and `wfdef.Settings`.
-- `subworkflows` in the workflow schema and `wfdef.Definition`, for immutable snapshots of a whole job tree.
-- `event.Draft.ID`, optional deterministic event ID.
-- Catalog entries owned by `engine` for what the workflows need and the catalog lacks.
+- `subworkflows` in the workflow schema and `wfdef.Definition`, for immutable snapshots of a whole job tree (I144).
+- `event.Draft.ID`, optional deterministic event ID (I156).
+- Catalog entries owned by `engine`: `catalog.get_transcript`, `catalog.list_purgeable_archives` (I159).
+
+Contract fields other components added for this one to fill: `Lease.ScratchJobs`, `Lease.AI`, `jobqueue.ScratchCleanupPointer` (`media`), and the consumer of `plugin.EventSubscriber` (`extensibility`).
+
+## 7.1 Review notes
+
+Reviewed against the spec, the master plan and the other components' plans. What changed:
+
+- `service.Workflows`, `Jobs` and `Approvals` share method names with different signatures, so one type cannot implement them all. `jobs.Engine` exposes `Workflows()`, `Jobs()`, `Approvals()`, `Introspection()` and `Coordinator()`.
+- `Coordinator.Lease` receives no tenant. The engine keeps a job-to-tenant map, filled at creation and startup, and scans tenants on a miss.
+- `api` rewrites file inputs (I131). The engine applies the same parse again, because `publishing`'s service and child jobs reach it without the API.
+- `core` derives asset files and transcript info on read, ignores them on write and rejects invalid transitions, so `catalog.*` writes through `VersionRepo` and `memstore` mimics this.
+- `media` refuses `archive` as a source of `storage.put` and refuses non-master sources for `audio.extract`, so `ingest-original` passes `${nodes.store_master.output.uri}` to `audio.extract`.
 
 ## 8. Tests
 
