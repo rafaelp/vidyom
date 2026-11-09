@@ -78,7 +78,8 @@ Flow through `ingest-original`: `ai.transcribe` (scratch audio from the master) 
 
 - `Finder`: hybrid retrieval restricted to the asset → context around the top hits → with an allowed LLM, candidates from JSON validated against the transcript and snapped to sentence boundaries → without one, candidates from retrieval expanded by context and stored stories, always ambiguous (I28, D51).
 - Modes: `complete_story`, `short` (fits `targetDurationSeconds`), `best_moments` (several disjoint intervals in one candidate, an assembly).
-- Evidence: excerpt taken from the transcript, never from LLM text; timestamps; confidence; rationale. Ambiguity rule in I205.
+- Evidence: excerpt taken from the transcript, never from LLM text; timestamps; confidence; rationale. Ambiguity rule in I205. Output also states `method` (`llm` or `retrieval`), so the approval shows how the proposal was made.
+- The `asset` parameter is reduced to its reference and the asset is re-read from the store; fields in the parameter are ignored, so a workflow cannot widen the AI policy (I208). No hit at all fails the node (I211).
 - D8: the effective policy comes from the stored asset and collection, never from node parameters. An endpoint not classified `local` on `local_only` content is treated as absent, even if `env.LLM` returned it. D30: redaction before any non-local endpoint.
 - `Analyze`: transcript blocks → summary, chapters, tags, stories; blocks merged; LLM output validated and clamped. No allowed endpoint or a failed endpoint gives `available: false` with a reason (I28, I206).
 - `Editorial`: title, description, tags, with the fallback of I28.
@@ -90,10 +91,10 @@ Every node returns `schemas.DescriptorFor` as its descriptor and is checked with
 | Node | Pool | Environment | Behavior |
 |---|---|---|---|
 | `ai.transcribe` | `ai` | `AIEnv` | `OpenInput` with `archive` and `proxy` forbidden (D56). Refuses a transcriber declaring capability `external` unless `aiProcessing` is `external_allowed`. Progress forwarded. `timestamp_basis: working_master` |
-| `ai.embed` | `ai` | `AIEnv` | D15 chunks, batches. Refuses an external embedder (no asset policy reaches this pool). Records model, dimensions, chunking |
+| `ai.embed` | `ai` | `AIEnv` | D15 chunks, batches. Refuses an external embedder, since no asset policy reaches this pool (I215). Records model, dimensions, chunking |
 | `ai.export_transcript` | `ai` | `Env` | JSON, SRT, VTT, Markdown to scratch with SHA-256 and size. Sensitive marks are redacted, or dropped with `excludeSensitive` (D30) |
 | `ai.analyze` | `daemon` | `DaemonEnv` | `Analyze` above, usage recorded |
-| `ai.index` | `daemon` | `DaemonEnv` | One transaction: transcript, analysis, lexical, vectors, sensitive marks carried from the source through lineage (I207), events `asset.indexed` and `original.indexed`. Sets or swaps the active model (D15) |
+| `ai.index` | `daemon` | `DaemonEnv` | One transaction: transcript, analysis, lexical, vectors, sensitive marks carried from the source through lineage (I207), events `asset.indexed` and `original.indexed`, which fire only when both indexes are non-empty and not again on a retry of a committed attempt. Sets or swaps the active model (I213) |
 | `ai.find_segment` | `daemon` | `DaemonEnv` | `Finder` above |
 | `ai.derive_transcript` | `daemon` | `DaemonEnv` | Maps source segments and words onto the clip's timeline, intervals concatenated in order |
 | `ai.editorial` | `daemon` | `DaemonEnv` | `Editorial` above |
@@ -113,7 +114,10 @@ All additive, each its own `contract:` commit (master plan section 7):
 
 - `config.AIWorker.Engine`, optional: which engine the client accepts (I201).
 - `domain.Analysis.UnavailableReason`, optional: why `available` is false (I206).
-- An extra test vector or two in `schemas/ai-worker-rpc.v1.json#/$defs/fakeHashEmbed` for Unicode edge cases, if they help `library` keep TypeScript identical (I203).
+- Doc comment on `domain.SearchHit.Score`: higher is better, cosine similarity for vector hits (I212).
+- Extra test vectors in `schemas/ai-worker-rpc.v1.json#/$defs/fakeHashEmbed` for the Unicode cases of I203, so `library` keeps TypeScript identical.
+
+Needed but **not** changed here, because section 7 does not allow it: `paid` on `ai.find_segment` (I216). Listed in the final report.
 
 ## 5. Wiring notes for `integration`
 
