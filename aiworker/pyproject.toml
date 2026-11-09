@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vidyom"
+description = "Vidyom AI worker: transcription and embeddings over JSON-RPC 2.0"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+version = "0.0.0.dev0"
+# The core (protocol and the fake engine) uses only the standard library (I37).
+dependencies = []
+
+[project.optional-dependencies]
+asr = ["faster-whisper>=1.1,<2"]
+embeddings = ["sentence-transformers>=3,<6"]
+all = ["vidyom[asr,embeddings]"]
+
+[project.scripts]
+vidyom-ai-worker = "vidyom.cli:main"
+
+[project.urls]
+Repository = "https://github.com/rafaelp/vidyom"
+
+[tool.setuptools.packages.find]
+include = ["vidyom*"]
