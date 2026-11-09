@@ -183,6 +183,18 @@ class TranscribeTest(ConnectionTestCase):
         self.client.notify("$/cancelRequest", {"id": str(long_running)})
         self.client.wait(long_running)
 
+    def test_queued_transcriptions_do_not_hold_up_embeddings(self):
+        os.environ["VIDYOM_AI_FAKE_DELAY_SECONDS"] = "30"
+        self.client.initialize()
+        running = [self.client.send("transcribe", self.transcribe_params()) for _ in range(12)]
+        started = time.monotonic()
+        self.assertIn("vectors", self.client.call("embed", {"texts": ["hi"], "kind": "query"})["result"])
+        self.assertLess(time.monotonic() - started, 5)
+        for request_id in running:
+            self.client.notify("$/cancelRequest", {"id": str(request_id)})
+        for request_id in running:
+            self.assertEqual(self.client.wait(request_id)["error"]["code"], protocol.CODE_REQUEST_CANCELLED)
+
     def test_disconnect_cancels_in_flight_work(self):
         os.environ["VIDYOM_AI_FAKE_DELAY_SECONDS"] = "30"
         self.client.initialize()

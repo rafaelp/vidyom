@@ -1,6 +1,6 @@
 """The JSON-RPC server: dispatch, cancellation, shutdown and the three transports (I6).
 
-Requests run in a thread pool so a long transcription never blocks `health`,
+Requests run in thread pools so a long transcription never blocks `health`,
 `$/cancelRequest` or another client's query embedding. Each connection must start
 with `initialize`. stdout belongs to the protocol on the stdio transport, so anything
 for people goes to stderr.
@@ -45,7 +45,9 @@ from vidyom.protocol import (
 log = logging.getLogger("vidyom.aiworker")
 
 MAX_EMBED_BATCH = 64
-_MAX_WORKERS = 8
+
+# One pool per method, so queued transcriptions never hold up query embeddings (I200).
+_POOL_SIZES = {"transcribe": 2, "embed": 6}
 
 
 class Worker:
@@ -55,7 +57,10 @@ class Worker:
         self.engine = engine
         self.token = token
         self.token_required = token_required
-        self.pool = ThreadPoolExecutor(max_workers=_MAX_WORKERS, thread_name_prefix="vidyom-rpc")
+        self.pools = {
+            method: ThreadPoolExecutor(max_workers=size, thread_name_prefix=f"vidyom-{method}")
+            for method, size in _POOL_SIZES.items()
+        }
         self.stopping = threading.Event()
         self.finished = threading.Event()
         self._in_flight = 0
@@ -82,7 +87,8 @@ class Worker:
                 self._idle.wait()
 
     def close(self) -> None:
-        self.pool.shutdown(wait=False, cancel_futures=True)
+        for pool in self.pools.values():
+            pool.shutdown(wait=False, cancel_futures=True)
         self.finished.set()
 
 
@@ -183,7 +189,7 @@ class Connection:
         with self._cancels_lock:
             self._cancels[str(request_id)] = cancel
         try:
-            self.worker.pool.submit(self._run, method, request_id, params, cancel)
+            self.worker.pools[method].submit(self._run, method, request_id, params, cancel)
         except RuntimeError:
             self._finish(request_id)
             self._write(error_message(request_id, CODE_UNAVAILABLE, "the worker is shutting down"))
