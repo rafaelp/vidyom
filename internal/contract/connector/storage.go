@@ -93,6 +93,14 @@ type LinkProvider interface {
 	TemporaryLink(ctx context.Context, key string, ttl time.Duration) (string, error)
 }
 
+// RoleCopier is an optional capability, discovered by type assertion, that copies
+// an object from another instance without passing it through the caller, such as a
+// rewrite between two buckets. It answers errs.CodeCapabilityUnsupported when it
+// cannot, and the caller then streams the object with its checksum.
+type RoleCopier interface {
+	CopyFrom(ctx context.Context, src Storage, srcKey, dstKey string) (ObjectInfo, error)
+}
+
 // StorageParams is what a factory receives to open one role for one tenant.
 type StorageParams struct {
 	Tenant   domain.TenantID
