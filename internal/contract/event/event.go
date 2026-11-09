@@ -78,6 +78,9 @@ type Draft struct {
 	Type    Type
 	AssetID string
 	Payload any
+	// ID is optional: a deterministic event ID, so a re-run of an idempotent
+	// producer emits nothing new (I156). Empty means a fresh ULID.
+	ID id.ULID
 }
 
 // DeliveryStatus tracks one subscriber's delivery of an event.

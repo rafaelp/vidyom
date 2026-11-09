@@ -36,6 +36,11 @@
     "outputs": {
       "type": "object",
       "additionalProperties": { "type": "string" }
+    },
+    "subworkflows": {
+      "type": "object",
+      "description": "Written by the engine in job snapshots only: every subworkflow of the job tree, keyed id or id@version, so a new version never changes a job in progress (§6.5, I144). A submitted definition carrying it is refused.",
+      "additionalProperties": { "type": "object" }
     }
   },
   "$defs": {
@@ -132,7 +137,11 @@
         "retryBackoffSeconds": { "type": "integer", "minimum": 0 },
         "resumeOnFailure": { "type": "boolean" },
         "saveExecutionProgress": { "type": "boolean" },
-        "timeoutSeconds": { "type": "integer", "minimum": 1 }
+        "timeoutSeconds": { "type": "integer", "minimum": 1 },
+        "assetStatusOnFailure": {
+          "enum": ["ingest_failed"],
+          "description": "Asset state written with a failed or cancelled job; job retry moves it back to ingesting (§2.5, I145)."
+        }
       }
     }
   }

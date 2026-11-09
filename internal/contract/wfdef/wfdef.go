@@ -103,6 +103,9 @@ type Settings struct {
 	ResumeOnFailure       bool `json:"resumeOnFailure,omitempty"`
 	SaveExecutionProgress bool `json:"saveExecutionProgress,omitempty"`
 	TimeoutSeconds        *int `json:"timeoutSeconds,omitempty"`
+	// AssetStatusOnFailure is written with a failed or cancelled job, in the same
+	// transaction; job retry moves the asset back to ingesting (§2.5, I145).
+	AssetStatusOnFailure string `json:"assetStatusOnFailure,omitempty"`
 }
 
 // Definition is a workflow file. Connections maps a node ID to the IDs that
@@ -119,6 +122,10 @@ type Definition struct {
 	Hooks       *HookSet             `json:"hooks,omitempty"`
 	Settings    *Settings            `json:"settings,omitempty"`
 	Outputs     map[string]string    `json:"outputs,omitempty"` // output name to ${...}
+	// Subworkflows is written by the engine in job snapshots only: the definitions
+	// of the whole job tree, keyed id or id@version, so a new version never changes
+	// a job in progress (§6.5, I144). A submitted definition carrying it is refused.
+	Subworkflows map[string]json.RawMessage `json:"subworkflows,omitempty"`
 }
 
 // Parse decodes a workflow file. It does not validate it; use the engine.

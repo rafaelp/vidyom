@@ -1208,6 +1208,77 @@
       }
     },
     {
+      "type": "catalog.get_transcript",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "Read an asset version's stored transcript and analysis, for reindexing (D15).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "$ref": "#/$defs/assetRef"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "output": {
+        "type": "object",
+        "required": [
+          "transcript"
+        ],
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "transcript": {
+            "$ref": "#/$defs/transcript"
+          },
+          "analysis": {
+            "$ref": "#/$defs/analysis"
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog.list_purgeable_archives",
+      "typeVersion": 1,
+      "owner": "engine",
+      "pool": "daemon",
+      "sideEffect": "none",
+      "title": "List archive copies of soft-deleted assets past their minimum storage duration (D17).",
+      "parameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "type": "integer"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    {
       "type": "storage.put",
       "typeVersion": 1,
       "owner": "media",
