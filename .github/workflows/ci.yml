@@ -27,6 +27,10 @@ jobs:
       - run: make check-static
       - run: make cross
       - run: go test ./...
+      # The engine's whole suite again, on core's real SQLite store instead of its fake.
+      - run: go test ./internal/jobs
+        env:
+          VIDYOM_JOBS_REAL_STORE: "1"
 
   python:
     runs-on: ubuntu-latest
