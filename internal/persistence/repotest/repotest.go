@@ -1810,6 +1810,8 @@ func testPublications(t *testing.T, open Factory) {
 	wantCode(t, r.Create(ctx(), domain.Publication{ID: "PUB-900", ULID: id.New(), AssetID: "CLIP-404", AssetVersion: "v1"}), errs.CodeNotFound)
 	wantCode(t, r.Create(ctx(), domain.Publication{ID: "PUB-901", ULID: id.New(), AssetID: a.ID}), errs.CodeFailedPrecondition)
 	wantCode(t, r.Create(ctx(), domain.Publication{ID: "PUB-902", ULID: id.New(), AssetID: a.ID, AssetVersion: "v1", IdempotencyKey: "idem-mock-main"}), errs.CodeConflict)
+	// D35 holds or the write fails: a published record cannot name a version with no row.
+	wantCode(t, r.Create(ctx(), domain.Publication{ID: "PUB-903", ULID: id.New(), AssetID: a.ID, AssetVersion: "v9", Status: domain.PubPublished, RemoteID: "r", URL: "https://media.example.internal/watch/r"}), errs.CodeFailedPrecondition)
 
 	found, ok, err := r.FindByIdempotencyKey(ctx(), "idem-mock-main")
 	must(t, err)
@@ -2056,23 +2058,36 @@ func runAuditChain(t *testing.T, r repo.AuditRepo, tenant domain.TenantID) {
 	if removed != 0 {
 		t.Fatalf("pruned %d unexported records", removed)
 	}
-	must(t, m.RecordExport(ctx(), repo.AuditExport{FromSeq: 1, ToSeq: 2, HeadHash: second.Hash, Key: "audit/x.jsonl", SHA256: "aa"}))
+	// One export holding records of both ages does not go: record 1 is at fixedTime,
+	// record 2 at the wall clock's now, and a prune stops only at a boundary.
+	must(t, m.RecordExport(ctx(), repo.AuditExport{FromSeq: 2, ToSeq: 2, HeadHash: second.Hash, Key: "audit/b.jsonl", SHA256: "bb"}))
 	last, found, err := m.LastExport(ctx())
 	must(t, err)
-	if !found || last.ToSeq != 2 || last.HeadHash != second.Hash || last.Key != "audit/x.jsonl" {
+	if !found || last.ToSeq != 2 || last.HeadHash != second.Hash || last.Key != "audit/b.jsonl" {
 		t.Fatalf("last = %+v", last)
 	}
+	removed, err = m.PruneExportedBefore(ctx(), fixedTime.Add(time.Second))
+	must(t, err)
+	if removed != 0 {
+		t.Fatalf("pruned across an export boundary: %d", removed)
+	}
+	must(t, m.RecordExport(ctx(), repo.AuditExport{FromSeq: 1, ToSeq: 1, HeadHash: first.Hash, Key: "audit/a.jsonl", SHA256: "aa"}))
 	exports, err := m.ListExports(ctx())
 	must(t, err)
-	if len(exports) != 1 {
+	if len(exports) != 2 {
 		t.Fatalf("exports = %+v", exports)
 	}
-	// Only the exported prefix goes, and only what is old enough: record 1 is at
-	// fixedTime, record 2 is at the wall clock's now.
+	// Only whole exported segments go, and only when old enough.
 	removed, err = m.PruneExportedBefore(ctx(), fixedTime.Add(time.Second))
 	must(t, err)
 	if removed != 1 {
 		t.Fatalf("removed = %d", removed)
+	}
+	// A second run finds nothing new past the anchor.
+	removed, err = m.PruneExportedBefore(ctx(), fixedTime.Add(time.Second))
+	must(t, err)
+	if removed != 0 {
+		t.Fatalf("removed again = %d", removed)
 	}
 	anchor, err = m.Anchor(ctx())
 	must(t, err)

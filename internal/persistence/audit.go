@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/domain"
+	"github.com/rafaelp/vidyom/internal/contract/errs"
 	"github.com/rafaelp/vidyom/internal/contract/id"
 	"github.com/rafaelp/vidyom/internal/contract/repo"
 )
@@ -180,32 +181,47 @@ func (r auditRepo) Anchor(ctx context.Context) (repo.AuditAnchor, error) {
 	return a, nil
 }
 
-// PruneExportedBefore removes only a whole prefix of the chain that was exported and
-// is older than t, leaving the last removed record as the anchor (D23).
+// PruneExportedBefore removes whole exported segments older than t, up to the newest
+// export boundary with nothing recent at or below it. The last removed record becomes
+// the anchor. Stopping only at a boundary is what lets Verify compare the anchor with an
+// export's recorded head (D23, I107). A chain that already disagrees with its export is
+// evidence, so it is refused rather than pruned.
 func (r auditRepo) PruneExportedBefore(ctx context.Context, t time.Time) (int64, error) {
 	var removed int64
 	err := r.write(ctx, func(q querier) error {
-		var exported int64
-		err := q.QueryRowContext(ctx, `SELECT COALESCE(MAX(to_seq), 0) FROM audit_exports`).Scan(&exported)
+		var firstRecent *int64
+		if err := q.QueryRowContext(ctx, `SELECT MIN(seq) FROM audit_log WHERE at >= ?`, timeText(t)).Scan(&firstRecent); err != nil {
+			return mapErr(err)
+		}
+		query := `SELECT to_seq, head_hash FROM audit_exports WHERE to_seq > COALESCE((SELECT seq FROM audit_anchor WHERE id = 1), 0)`
+		var args []any
+		if firstRecent != nil {
+			query += ` AND to_seq < ?`
+			args = append(args, *firstRecent)
+		}
+		var (
+			boundary int64
+			head     string
+		)
+		err := q.QueryRowContext(ctx, query+` ORDER BY to_seq DESC LIMIT 1`, args...).Scan(&boundary, &head)
+		if isNoRows(err) {
+			return nil
+		}
 		if err != nil {
 			return mapErr(err)
 		}
-		// The prefix stops at the first record that is too recent or not yet exported.
-		var seq int64
 		var hash string
-		err = q.QueryRowContext(ctx, `SELECT seq, hash FROM audit_log
-			WHERE seq <= ? AND at < ? AND seq < COALESCE((SELECT MIN(seq) FROM audit_log WHERE at >= ?), ? + 1)
-			ORDER BY seq DESC LIMIT 1`, exported, timeText(t), timeText(t), exported).Scan(&seq, &hash)
+		err = q.QueryRowContext(ctx, `SELECT hash FROM audit_log WHERE seq = ?`, boundary).Scan(&hash)
+		if isNoRows(err) || (err == nil && hash != head) {
+			return errs.Newf(errs.CodeFailedPrecondition, "audit record %d differs from what was exported: not pruning", boundary)
+		}
 		if err != nil {
-			if isNoRows(err) {
-				return nil
-			}
 			return mapErr(err)
 		}
 		if _, err := q.ExecContext(ctx, `UPDATE audit_prune_guard SET allowed = 1`); err != nil {
 			return mapErr(err)
 		}
-		res, err := q.ExecContext(ctx, `DELETE FROM audit_log WHERE seq <= ?`, seq)
+		res, err := q.ExecContext(ctx, `DELETE FROM audit_log WHERE seq <= ?`, boundary)
 		if err != nil {
 			return mapErr(err)
 		}
@@ -217,7 +233,7 @@ func (r auditRepo) PruneExportedBefore(ctx context.Context, t time.Time) (int64,
 			return mapErr(err)
 		}
 		_, err = q.ExecContext(ctx, `INSERT INTO audit_anchor (id, seq, hash) VALUES (1, ?, ?)
-			ON CONFLICT (id) DO UPDATE SET seq = excluded.seq, hash = excluded.hash`, seq, hash)
+			ON CONFLICT (id) DO UPDATE SET seq = excluded.seq, hash = excluded.hash`, boundary, hash)
 		return mapErr(err)
 	})
 	return removed, err

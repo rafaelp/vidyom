@@ -654,8 +654,19 @@ func markImmutableIfPublished(ctx context.Context, q querier, assetULID string, 
 	if p.Status != domain.PubPublished {
 		return nil
 	}
-	_, err := q.ExecContext(ctx, `UPDATE asset_versions SET immutable = 1 WHERE asset_ulid = ? AND version = ?`, assetULID, p.AssetVersion)
-	return mapErr(err)
+	res, err := q.ExecContext(ctx, `UPDATE asset_versions SET immutable = 1 WHERE asset_ulid = ? AND version = ?`, assetULID, p.AssetVersion)
+	if err != nil {
+		return mapErr(err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return mapErr(err)
+	}
+	if n == 0 {
+		// A later Create and PutFile could otherwise replace media already published.
+		return errs.Newf(errs.CodeFailedPrecondition, "publication %s names version %s, which does not exist", p.ID, p.AssetVersion)
+	}
+	return nil
 }
 
 func (r publicationRepo) Get(ctx context.Context, ref id.Ref) (domain.Publication, error) {

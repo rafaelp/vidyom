@@ -159,22 +159,50 @@ func (a *Auditor) Record(ctx context.Context, e security.AuditEntry) error {
 }
 
 // Verify recomputes the chain from its anchor (I107): every hash, every link, sequence
-// continuity, and each recorded export's head hash. It reports the first bad record.
+// continuity, the anchor against an export's recorded head, and each export's head hash.
+// It reports the first bad record. A prune running during the scan moves the anchor
+// under it, which looks like missing records, so a failure with a moved anchor is
+// checked again rather than raised as tampering.
 func (a *Auditor) Verify(ctx context.Context, tenant domain.TenantID) (domain.AuditVerification, error) {
 	r, err := a.chain(ctx, tenant)
 	if err != nil {
 		return domain.AuditVerification{}, err
 	}
+	const attempts = 3
+	var out domain.AuditVerification
+	for range attempts {
+		var anchor repo.AuditAnchor
+		out, anchor, err = verifyOnce(ctx, r)
+		if err != nil || out.OK {
+			return out, err
+		}
+		m, ok := r.(repo.AuditMaintainer)
+		if !ok {
+			return out, nil
+		}
+		current, err := m.Anchor(ctx)
+		if err != nil {
+			return domain.AuditVerification{}, err
+		}
+		if current == anchor {
+			return out, nil
+		}
+	}
+	return out, nil
+}
+
+func verifyOnce(ctx context.Context, r repo.AuditRepo) (domain.AuditVerification, repo.AuditAnchor, error) {
 	var (
 		anchor  repo.AuditAnchor
 		exports []repo.AuditExport
+		err     error
 	)
 	if m, ok := r.(repo.AuditMaintainer); ok {
 		if anchor, err = m.Anchor(ctx); err != nil {
-			return domain.AuditVerification{}, err
+			return domain.AuditVerification{}, anchor, err
 		}
 		if exports, err = m.ListExports(ctx); err != nil {
-			return domain.AuditVerification{}, err
+			return domain.AuditVerification{}, anchor, err
 		}
 	}
 	heads := make(map[int64]string, len(exports))
@@ -187,11 +215,16 @@ func (a *Auditor) Verify(ctx context.Context, tenant domain.TenantID) (domain.Au
 	}
 
 	out := domain.AuditVerification{OK: true}
-	fail := func(seq int64, reason string) (domain.AuditVerification, error) {
+	fail := func(seq int64, reason string) (domain.AuditVerification, repo.AuditAnchor, error) {
 		out.OK = false
 		out.FirstBadSeq = seq
 		out.Reason = reason
-		return out, nil
+		return out, anchor, nil
+	}
+	// A prune stops only at an export boundary, so an anchor anywhere else, or with
+	// another hash, was not written by a prune.
+	if anchor.Seq > 0 && heads[anchor.Seq] != anchor.Hash {
+		return fail(anchor.Seq, "the prune anchor does not match any export")
 	}
 	expectedSeq := anchor.Seq + 1
 	prevHash := anchor.Hash
@@ -202,7 +235,7 @@ func (a *Auditor) Verify(ctx context.Context, tenant domain.TenantID) (domain.Au
 	for {
 		batch, err := r.Scan(ctx, cursor, scanBatch)
 		if err != nil {
-			return domain.AuditVerification{}, err
+			return domain.AuditVerification{}, anchor, err
 		}
 		if len(batch) == 0 {
 			break
@@ -233,7 +266,7 @@ func (a *Auditor) Verify(ctx context.Context, tenant domain.TenantID) (domain.Au
 	if lastExported >= expectedSeq {
 		return fail(expectedSeq, fmt.Sprintf("records up to %d were exported but are missing here", lastExported))
 	}
-	return out, nil
+	return out, anchor, nil
 }
 
 // exportKey is the role-relative key of one export (§14.1).

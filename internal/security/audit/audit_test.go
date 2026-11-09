@@ -352,7 +352,6 @@ func TestPruneOnlyExportedAndOldEnough(t *testing.T) {
 	f.auditor.clock = func() time.Time { return now }
 	f.record(t, 3)
 	now = start.AddDate(1, 2, 0) // 14 months later
-	f.record(t, 2)
 
 	// Nothing exported yet: nothing goes, however old.
 	removed, err := f.auditor.Prune(ctx, "acme", 365)
@@ -362,6 +361,10 @@ func TestPruneOnlyExportedAndOldEnough(t *testing.T) {
 	if removed != 0 {
 		t.Fatalf("removed = %d", removed)
 	}
+	if _, err := f.auditor.Export(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	f.record(t, 2)
 	if _, err := f.auditor.Export(ctx, "acme"); err != nil {
 		t.Fatal(err)
 	}
@@ -389,6 +392,146 @@ func TestPruneOnlyExportedAndOldEnough(t *testing.T) {
 	}
 	if !strings.Contains(key, "00000006-00000006") {
 		t.Fatalf("key = %s", key)
+	}
+}
+
+// A prune stops at an export boundary, so one export spanning old and recent records
+// stays whole until all of it is past retention (I107).
+func TestPruneKeepsAWholeExportTogether(t *testing.T) {
+	f := setup(t)
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	now := start
+	f.auditor.clock = func() time.Time { return now }
+	f.record(t, 2)
+	now = start.AddDate(1, 2, 0)
+	f.record(t, 2)
+	if _, err := f.auditor.Export(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := f.auditor.Prune(ctx, "acme", 365)
+	if err != nil || removed != 0 {
+		t.Fatalf("removed = %d, %v", removed, err)
+	}
+	now = now.AddDate(1, 2, 0)
+	removed, err = f.auditor.Prune(ctx, "acme", 365)
+	if err != nil || removed != 4 {
+		t.Fatalf("removed = %d, %v", removed, err)
+	}
+	if v := mustVerify(t, f); !v.OK || v.Records != 0 {
+		t.Fatalf("v = %+v", v)
+	}
+}
+
+// Someone with database access removes old records and forges an anchor where the next
+// record links, without any export backing it (I107).
+func TestVerifyDetectsAForgedAnchor(t *testing.T) {
+	f := setup(t)
+	f.record(t, 5)
+	records, err := f.store.Audit().Scan(ctx, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db := f.rawDB(t)
+	for _, q := range []string{`DROP TRIGGER audit_log_no_delete`, `DELETE FROM audit_log WHERE seq <= 2`} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO audit_anchor (id, seq, hash) VALUES (1, 2, ?)`, records[1].Hash); err != nil {
+		t.Fatal(err)
+	}
+	v := mustVerify(t, f)
+	if v.OK || v.FirstBadSeq != 2 || !strings.Contains(v.Reason, "anchor") {
+		t.Fatalf("v = %+v", v)
+	}
+}
+
+// A chain that disagrees with its export is evidence and is not pruned (I107).
+func TestPruneRefusesAChainThatDiffersFromItsExport(t *testing.T) {
+	f := setup(t)
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	now := start
+	f.auditor.clock = func() time.Time { return now }
+	f.record(t, 2)
+	if _, err := f.auditor.Export(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	db := f.rawDB(t)
+	for _, q := range []string{`DROP TRIGGER audit_log_no_update`, `UPDATE audit_log SET hash = '` + strings.Repeat("b", 64) + `' WHERE seq = 2`} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now = start.AddDate(2, 0, 0)
+	if _, err := f.auditor.Prune(ctx, "acme", 365); !errs.IsCode(err, errs.CodeFailedPrecondition) {
+		t.Fatalf("prune = %v", err)
+	}
+}
+
+// racyStores makes a prune happen in the middle of Verify's scan.
+type racyStores struct {
+	repo.TenantStores
+	onScan func()
+}
+
+func (r racyStores) ForTenant(c context.Context, tenant domain.TenantID) (repo.TenantStore, error) {
+	st, err := r.TenantStores.ForTenant(c, tenant)
+	if err != nil {
+		return nil, err
+	}
+	return racyStore{st, r.onScan}, nil
+}
+
+type racyStore struct {
+	repo.TenantStore
+	onScan func()
+}
+
+func (r racyStore) Audit() repo.AuditRepo {
+	inner := r.TenantStore.Audit()
+	return racyAudit{inner, inner.(repo.AuditMaintainer), r.onScan}
+}
+
+type racyAudit struct {
+	repo.AuditRepo
+	repo.AuditMaintainer
+	onScan func()
+}
+
+func (r racyAudit) Scan(c context.Context, afterSeq int64, limit int) ([]domain.AuditRecord, error) {
+	if r.onScan != nil {
+		r.onScan()
+	}
+	return r.AuditRepo.Scan(c, afterSeq, limit)
+}
+
+// A concurrent prune must not read as tampering.
+func TestVerifyDuringAPruneIsNotATamperAlert(t *testing.T) {
+	f := setup(t)
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	now := start
+	f.auditor.clock = func() time.Time { return now }
+	f.record(t, 3)
+	if _, err := f.auditor.Export(ctx, "acme"); err != nil {
+		t.Fatal(err)
+	}
+	now = start.AddDate(2, 0, 0)
+	f.record(t, 2)
+	pruned := false
+	stores := racyStores{f.stores.Tenants, func() {
+		if !pruned {
+			pruned = true
+			if _, err := f.auditor.Prune(ctx, "acme", 365); err != nil {
+				t.Error(err)
+			}
+		}
+	}}
+	v, err := New(stores, Options{}).Verify(ctx, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !pruned || !v.OK || v.Records != 2 {
+		t.Fatalf("pruned = %v, v = %+v", pruned, v)
 	}
 }
 
