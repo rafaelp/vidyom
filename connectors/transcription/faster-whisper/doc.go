@@ -1,4 +1,8 @@
-// Package fasterwhisper: the transcription connector, a client of the Python AI worker (D9, I6).
+// Package fasterwhisper is the transcription connector, a client of the Python AI
+// worker (D9, I6). The model runs in the worker; this package carries requests and
+// maps results.
 //
-// Owner: component ai (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Transcripts report what actually produced them: a worker started with
+// --engine fake returns canned text labeled "fake/...", and this connector reaches
+// such a worker only when aiWorker.engine says "fake" (I27, I201).
 package fasterwhisper
