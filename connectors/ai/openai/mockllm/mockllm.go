@@ -152,7 +152,7 @@ func answer(r Request) string {
 	case "condense_summaries":
 		value = map[string]string{"summary": "[mock] Combined summary of the recording."}
 	case "editorial":
-		value = editorial(lines, requestOf(user))
+		value = editorial(lines, requestOf(user), workingTitleOf(user), transcriptOf(user))
 	default:
 		value = map[string]string{"message": "[mock] unknown task"}
 	}
@@ -184,6 +184,20 @@ func requestOf(text string) string {
 		return match[1]
 	}
 	return ""
+}
+
+var workingTitlePattern = regexp.MustCompile(`(?m)^Working title: (.*)$`)
+
+func workingTitleOf(text string) string {
+	if match := workingTitlePattern.FindStringSubmatch(text); match != nil {
+		return match[1]
+	}
+	return ""
+}
+
+func transcriptOf(text string) string {
+	_, after, _ := strings.Cut(text, "Transcript:\n")
+	return after
 }
 
 func wordsOf(text string) map[string]bool {
@@ -282,9 +296,18 @@ func topWords(lines []line, n int) []string {
 	return words
 }
 
-func editorial(lines []line, request string) map[string]any {
+func editorial(lines []line, request, workingTitle, transcript string) map[string]any {
+	title := request
+	if title == "" {
+		title = workingTitle
+	}
+	// The editorial prompt carries plain sentences, without the timestamps of the
+	// other tasks.
+	if len(lines) == 0 {
+		lines = []line{{text: transcript}}
+	}
 	return map[string]any{
-		"title":       "[mock] " + request,
+		"title":       "[mock] " + title,
 		"description": "[mock] Draft description, for review.",
 		"tags":        topWords(lines, 3),
 	}
