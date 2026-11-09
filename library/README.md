@@ -105,6 +105,8 @@ Lexical search needs nothing. Semantic search needs an embedder for the file's `
 
 ## Build for an image
 
+`npm run build` keeps Next.js telemetry off. If you run `next` directly, set `NEXT_TELEMETRY_DISABLED=1` yourself.
+
 ```bash
 VIDYOM_LIBRARY_STANDALONE=1 npm run build
 cp -r .next/static .next/standalone/.next/static

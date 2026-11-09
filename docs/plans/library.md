@@ -141,7 +141,7 @@ Rules:
 - Destination links are rendered only when `http:` or `https:`. Embeds and thumbnails only when `https:`, since CSP and mixed content rule out the rest.
 - A transcript renders its first 300 segments, with a link to the rest, because a three-hour recording would otherwise send over a megabyte twice.
 - Theme: a cookie written only when the visitor uses the toggle, read on the server, so no inline script and no flash. No cookie means `prefers-color-scheme`.
-- CSP with a per-request nonce from `proxy.ts`. No third-party scripts, analytics or font hosts. Fonts are self-hosted from `@fontsource-variable` packages. Next.js telemetry is disabled in `next.config.ts`.
+- CSP with a per-request nonce from `proxy.ts`. No third-party scripts, analytics or font hosts. Fonts are self-hosted from `@fontsource-variable` packages. Next.js telemetry is disabled through `scripts/next.mjs`, which every npm script uses.
 - SEO: metadata per page, canonical when the site URL is configured, Open Graph, `VideoObject` JSON-LD with `Clip` parts for chapters, sitemap from the current file. Search and filtered list pages are `noindex`. `?t=` pages are canonical to the bare video URL.
 
 ## 7. Configuration

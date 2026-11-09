@@ -79,6 +79,18 @@ describe('no scripts or trackers', () => {
     ]);
   });
 
+  it('runs the framework only with its telemetry off', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    for (const name of ['dev', 'build', 'start', 'typecheck']) {
+      expect(manifest.scripts[name], name).toMatch(/^node scripts\/next\.mjs /);
+    }
+    expect(fs.readFileSync(path.join(ROOT, 'scripts/next.mjs'), 'utf8')).toContain(
+      "process.env.NEXT_TELEMETRY_DISABLED = '1'",
+    );
+  });
+
   it('pins every dependency exactly', () => {
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
       dependencies: Record<string, string>;

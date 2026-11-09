@@ -77,11 +77,10 @@ beforeAll(async () => {
   dbPath = path.join(directory, 'tenant', 'public.db');
   const port = await freePort();
   baseUrl = `http://127.0.0.1:${port}`;
-  server = spawn(process.execPath, [path.join(ROOT, 'node_modules/next/dist/bin/next'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
+  server = spawn(process.execPath, [path.join(ROOT, 'scripts/next.mjs'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: ROOT,
     env: {
       ...process.env,
-      NEXT_TELEMETRY_DISABLED: '1',
       VIDYOM_PUBLIC_DB: dbPath,
       VIDYOM_LIBRARY_TITLE: 'Acme video library',
       VIDYOM_LIBRARY_DESCRIPTION: 'Fictional catalog for tests.',

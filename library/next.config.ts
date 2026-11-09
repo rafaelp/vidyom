@@ -1,8 +1,5 @@
 import type { NextConfig } from 'next';
 
-// The site makes no call to Vercel or anyone else (docs/decisions/library.md, I255).
-process.env.NEXT_TELEMETRY_DISABLED = '1';
-
 const config: NextConfig = {
   poweredByHeader: false,
   // The queries are local and fast, so metadata is never streamed after the shell:
