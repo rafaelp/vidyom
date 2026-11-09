@@ -373,17 +373,30 @@ type sectionCloser struct {
 	io.Closer
 }
 
-// tempFile is a write in progress.
+// tempFile is a write in progress, owned by one Put: no two writers ever share one.
 type tempFile struct {
-	f         *os.File
-	path      string
-	hash      hash.Hash
-	resumable bool
+	f      *os.File
+	path   string
+	hash   hash.Hash
+	parked string // where a failed write leaves its bytes for a retry; empty for none
 }
 
 func (t *tempFile) discard(s *Storage) {
 	_ = t.f.Close()
 	_ = s.root.Remove(t.path)
+}
+
+// park keeps a failed write's bytes for the next attempt with the same idempotency
+// key. A write that cannot be resumed is simply discarded.
+func (t *tempFile) park(s *Storage) {
+	if t.parked == "" {
+		t.discard(s)
+		return
+	}
+	_ = t.f.Close()
+	if err := s.root.Rename(t.path, t.parked); err != nil {
+		_ = s.root.Remove(t.path)
+	}
 }
 
 // Put writes an object atomically. A wrong checksum or size fails and leaves no
@@ -403,11 +416,7 @@ func (s *Storage) Put(ctx context.Context, key string, r io.Reader, opts connect
 	}
 	sum, size, err := s.writeTemp(ctx, tmp, r, opts)
 	if err != nil {
-		if tmp.resumable {
-			_ = tmp.f.Close()
-		} else {
-			tmp.discard(s)
-		}
+		tmp.park(s)
 		return connector.ObjectInfo{}, s.mapError(err, "put")
 	}
 	if err := s.checkWritten(tmp, sum, size, opts); err != nil {
@@ -432,6 +441,10 @@ func (s *Storage) Put(ctx context.Context, key string, r io.Reader, opts connect
 	}
 	if err := s.commit(tmp.path, key, m); err != nil {
 		_ = s.root.Remove(tmp.path)
+		if errors.Is(err, errNoRecord) {
+			// A failed write leaves no object. An overwritten one is in its generations.
+			_ = s.root.Remove(s.dataPath(key))
+		}
 		return connector.ObjectInfo{}, s.mapError(err, "put")
 	}
 	if err := s.record("put", classWrite, key, size); err != nil {
@@ -483,44 +496,65 @@ func (s *Storage) createTemp(prefix, suffix string) (*os.File, string, error) {
 	return nil, "", errors.New("cannot create a temp file")
 }
 
-// openResumable continues a partial file when its bytes match the source's start.
+// openResumable continues a parked partial file when its bytes match the source's
+// start. Taking the parked file is a rename, so only one attempt can get it, and two
+// overlapping attempts never write the same inode. A stale writer could otherwise keep
+// appending to a file another attempt had already published. A write cut off by a
+// crash stays under its private name and is swept later, so resuming covers failed
+// attempts, not a killed process (I187).
 func (s *Storage) openResumable(key string, r io.ReadSeeker, opts connector.PutOptions) (*tempFile, error) {
 	name := sha256.Sum256([]byte(s.base + key + "\x00" + opts.IdempotencyKey))
-	p := filepath.Join(filepath.FromSlash(tmpDir), hex.EncodeToString(name[:])+partSuffix)
-	f, err := s.root.OpenFile(p, os.O_RDWR|os.O_CREATE, 0o600)
+	parked := filepath.Join(filepath.FromSlash(tmpDir), hex.EncodeToString(name[:])+partSuffix)
+	f, p, err := s.createTemp("put-", partSuffix)
 	if err != nil {
 		return nil, err
 	}
-	tmp := &tempFile{f: f, path: p, hash: sha256.New(), resumable: true}
+	tmp := &tempFile{f: f, path: p, hash: sha256.New(), parked: parked}
+	// A successful rename replaces the empty file made above with the parked bytes.
+	if err := s.root.Rename(parked, p); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return tmp, nil
+		}
+		tmp.discard(s)
+		return nil, err
+	}
+	_ = f.Close()
+	f, err = s.root.OpenFile(p, os.O_RDWR, 0o600)
+	if err != nil {
+		_ = s.root.Remove(p)
+		return nil, err
+	}
+	tmp.f = f
 	st, err := f.Stat()
 	if err != nil {
 		tmp.discard(s)
 		return nil, err
 	}
-	if have := st.Size(); have > 0 {
-		match, err := sameStart(f, r, have, tmp.hash)
-		if err != nil {
-			tmp.discard(s)
-			return nil, err
-		}
-		if !match {
-			tmp.hash.Reset()
-			if err := f.Truncate(0); err != nil {
-				tmp.discard(s)
-				return nil, err
-			}
-			if _, err := f.Seek(0, io.SeekStart); err != nil {
-				tmp.discard(s)
-				return nil, err
-			}
-			if _, err := r.Seek(0, io.SeekStart); err != nil {
-				tmp.discard(s)
-				return nil, err
-			}
-			return tmp, nil
-		}
+	have := st.Size()
+	if have == 0 {
+		return tmp, nil
+	}
+	match, err := sameStart(f, r, have, tmp.hash)
+	if err != nil {
+		tmp.discard(s)
+		return nil, err
+	}
+	if match {
 		// Both files now sit at offset have, and the hash covers those bytes.
 		return tmp, nil
+	}
+	tmp.hash.Reset()
+	if err := f.Truncate(0); err != nil {
+		tmp.discard(s)
+		return nil, err
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		tmp.discard(s)
+		return nil, err
+	}
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		tmp.discard(s)
+		return nil, err
 	}
 	return tmp, nil
 }
@@ -605,8 +639,13 @@ func (s *Storage) lockFor(key string) *sync.Mutex {
 	return &commitLocks[h.Sum32()%uint32(len(commitLocks))]
 }
 
-// commit moves a finished file into place with its record: the old record goes
-// first, so a crash leaves an object with no checksum, never a wrong one.
+// errNoRecord says an object reached its key and its record did not.
+var errNoRecord = errors.New("the object's record could not be written")
+
+// commit moves a finished file into place with its record. The rename replaces the
+// old object atomically, so readers see one or the other and a failure keeps the old
+// one. The old record goes first, so a crash leaves an object with no checksum, never
+// a wrong one, and a failed rename puts it back.
 func (s *Storage) commit(srcPath, key string, m meta) error {
 	lock := s.lockFor(key)
 	lock.Lock()
@@ -618,19 +657,29 @@ func (s *Storage) commit(srcPath, key string, m meta) error {
 	if err := s.keepGeneration(key); err != nil {
 		return err
 	}
-	if err := s.root.Remove(s.metaPath(key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	metaPath := s.metaPath(key)
+	oldRecord, readErr := s.root.ReadFile(metaPath)
+	if err := s.root.Remove(metaPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	if err := s.root.Rename(srcPath, dst); err != nil {
+		if readErr == nil {
+			_ = s.root.WriteFile(metaPath, oldRecord, 0o600)
+		}
 		return err
 	}
 	if err := s.syncDir(filepath.Dir(dst)); err != nil {
 		return err
 	}
-	return s.writeMeta(key, m)
+	if err := s.writeMeta(key, m); err != nil {
+		return fmt.Errorf("%w: %w", errNoRecord, err)
+	}
+	return nil
 }
 
-// keepGeneration moves the current object aside when versioning is on.
+// keepGeneration adds the current object to the generations when versioning is on.
+// It links rather than moves: the key must keep answering until the new object takes
+// its place, and a crash here must not leave the key empty.
 func (s *Storage) keepGeneration(key string) error {
 	if !s.caps.Versioning {
 		return nil
@@ -655,14 +704,36 @@ func (s *Storage) keepGeneration(key string) error {
 	if err := s.root.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := s.root.Rename(dst, filepath.Join(dir, m.Generation)); err != nil {
-		return err
+	target := filepath.Join(dir, m.Generation)
+	if err := s.root.Link(dst, target); err != nil && !errors.Is(err, fs.ErrExist) {
+		// Some file systems have no hard links.
+		if err := s.copyWithin(dst, target); err != nil {
+			return err
+		}
 	}
 	data, err := json.Marshal(m)
 	if err != nil {
 		return err
 	}
-	return s.root.WriteFile(filepath.Join(dir, m.Generation+".json"), data, 0o600)
+	return s.root.WriteFile(target+".json", data, 0o600)
+}
+
+func (s *Storage) copyWithin(src, dst string) error {
+	in, err := s.root.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	out, err := s.root.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := io.CopyBuffer(out, in, make([]byte, copyBuf)); err != nil {
+		_ = out.Close()
+		_ = s.root.Remove(dst)
+		return err
+	}
+	return out.Close()
 }
 
 func (s *Storage) writeMeta(key string, m meta) error {

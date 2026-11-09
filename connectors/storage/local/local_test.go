@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -347,6 +348,138 @@ func TestResumableUploadContinuesFromThePartialFile(t *testing.T) {
 	}
 	if firstReport <= 1<<17 {
 		t.Fatalf("the second attempt started over: first progress %d", firstReport)
+	}
+}
+
+// Two attempts with one idempotency key must never share a file: a stale writer could
+// otherwise append to what the other had already published.
+func TestOverlappingAttemptsOwnTheirFiles(t *testing.T) {
+	root := t.TempDir()
+	s := openLocal(t, root, "acme", domain.RoleMaster, config.StorageInstance{})
+	ctx := context.Background()
+	first := strings.Repeat("a", 1<<20)
+	second := strings.Repeat("b", 1<<20)
+	gate := make(chan struct{})
+	stalled := &stallingReader{Reader: strings.NewReader(first), after: 1 << 18, gate: gate, reached: make(chan struct{})}
+	opts := connector.PutOptions{IdempotencyKey: "same-key"}
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.Put(ctx, "k", stalled, opts)
+		done <- err
+	}()
+	<-stalled.reached
+	// The successor runs start to finish while the first attempt is stalled mid-write.
+	info, err := s.Put(ctx, "k", strings.NewReader(second), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.SHA256 != storagetest.Sum([]byte(second)) {
+		t.Fatalf("%+v", info)
+	}
+	close(gate)
+	if err := <-done; err != nil {
+		t.Fatalf("the stale attempt: %v", err)
+	}
+	// Whichever renamed last, the object is one attempt's bytes, whole, and it matches
+	// its record: never a mix.
+	rc, got, err := s.Get(ctx, "k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if string(data) != first && string(data) != second {
+		t.Fatalf("the object is a mix of two attempts: %d bytes", len(data))
+	}
+	if got.SHA256 != storagetest.Sum(data) {
+		t.Fatalf("object and record disagree: %+v", got)
+	}
+}
+
+type stallingReader struct {
+	*strings.Reader
+	after   int
+	read    int
+	gate    chan struct{}
+	reached chan struct{}
+	once    sync.Once
+}
+
+func (r *stallingReader) Read(p []byte) (int, error) {
+	if r.read >= r.after {
+		r.once.Do(func() { close(r.reached) })
+		<-r.gate
+	}
+	if len(p) > r.after && r.read < r.after {
+		p = p[:r.after-r.read]
+	}
+	n, err := r.Reader.Read(p)
+	r.read += n
+	return n, err
+}
+
+// A failed overwrite must leave the object answering, with its own checksum.
+func TestFailedOverwriteKeepsTheObject(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs directory permissions to take effect")
+	}
+	root := t.TempDir()
+	s := openLocal(t, root, "acme", domain.RoleMaster, config.StorageInstance{})
+	ctx := context.Background()
+	old := "the object before"
+	if _, err := s.Put(ctx, "dir/k", strings.NewReader(old), connector.PutOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(root, "acme", "dir")
+	if err := os.Chmod(parent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
+	if _, err := s.Put(ctx, "dir/k", strings.NewReader("the object after"), connector.PutOptions{}); err == nil {
+		t.Fatal("the overwrite should fail")
+	}
+	if err := os.Chmod(parent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	info, err := s.Stat(ctx, "dir/k")
+	if err != nil {
+		t.Fatalf("the failed overwrite emptied the key: %v", err)
+	}
+	if info.SHA256 != storagetest.Sum([]byte(old)) {
+		t.Fatalf("the record was lost: %+v", info)
+	}
+	rc, _, err := s.Get(ctx, "dir/k")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if string(data) != old {
+		t.Fatalf("%q", data)
+	}
+}
+
+// A write whose record cannot be stored fails and leaves no object without a checksum.
+func TestFailedRecordLeavesNoObject(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs directory permissions to take effect")
+	}
+	root := t.TempDir()
+	s := openLocal(t, root, "acme", domain.RoleMaster, config.StorageInstance{})
+	ctx := context.Background()
+	meta := filepath.Join(root, ".vidyom", "meta", "acme", "dir")
+	if err := os.MkdirAll(meta, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(meta, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(meta, 0o700) })
+	if _, err := s.Put(ctx, "dir/k", strings.NewReader("content"), connector.PutOptions{}); err == nil {
+		t.Fatal("the write should fail")
+	}
+	if ok, err := s.Exists(ctx, "dir/k"); err != nil || ok {
+		t.Fatalf("an object with no record stayed: %v %v", ok, err)
 	}
 }
 
