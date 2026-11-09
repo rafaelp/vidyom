@@ -1,4 +1,4 @@
-// Package audionodes: audio.* nodes.
-//
-// Owner: component media (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Package audionodes implements audio.extract: audio for transcription, taken from the
+// working master so it has exactly the master's timeline (§3.1 step 8, D21, D56), and
+// never upscaled (D40).
 package audionodes
