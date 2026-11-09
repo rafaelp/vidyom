@@ -1,4 +1,5 @@
-// Package audit: the append-only hash-chained audit (D23).
-//
-// Owner: component core (docs/plans/00-master-plan.md, section 5). Not implemented yet.
+// Package audit is the append-only hash-chained audit (D23). The repository writes
+// the chain, this package verifies it, exports it to archive storage and prunes
+// exported records past retention. Records state the fact of an action, never
+// content or secrets. Details are in docs/decisions/core.md, I107 and I108.
 package audit
