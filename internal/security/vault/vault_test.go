@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	gokeyring "github.com/zalando/go-keyring"
+
 	"github.com/rafaelp/vidyom/internal/contract/api"
 	"github.com/rafaelp/vidyom/internal/contract/config"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
@@ -809,10 +811,8 @@ func TestEnvProvider(t *testing.T) {
 	if !bytes.Equal(got, key(5)) {
 		t.Fatal("wrong key")
 	}
-	if _, ok := os.LookupEnv(EnvMasterKey); ok {
-		t.Fatal("the key must leave the environment")
-	}
-	if _, err := p.Unseal(ctx); !errs.IsCode(err, errs.CodeSealed) {
+	// The daemon checks a provider again after the vault has used it.
+	if again, err := p.Unseal(ctx); err != nil || !bytes.Equal(again, key(5)) {
 		t.Fatalf("second unseal: %v", err)
 	}
 	t.Setenv(EnvMasterKey, "bad")
@@ -924,46 +924,44 @@ func TestDPAPIAndKMSFailClosedHere(t *testing.T) {
 	}
 }
 
-func TestGenerateMasterKeyFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "master.key")
-	if err := GenerateMasterKeyFile(path); err != nil {
-		t.Fatal(err)
-	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if currentOS != "windows" && info.Mode().Perm() != 0o400 {
-		t.Fatalf("mode = %o", info.Mode().Perm())
-	}
+// A file written the way `vidyomd init --generate-master-key` writes it opens (I111,
+// I138): standard base64, a trailing newline, mode 0400.
+func TestFileProviderReadsTheGeneratedFormat(t *testing.T) {
+	path := writeKeyFile(t, 0o400, []byte(base64.StdEncoding.EncodeToString(key(4))+"\n"))
 	p, err := ProviderFor(config.Unseal{Provider: config.UnsealFile, Path: path, AcknowledgeFileSealed: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := p.Unseal(ctx)
+	got, err := p.Unseal(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := GenerateMasterKeyFile(path); !errs.IsCode(err, errs.CodeConflict) {
-		t.Fatalf("overwrite: %v", err)
+	if !bytes.Equal(got, key(4)) {
+		t.Fatal("wrong key")
 	}
-	again, err := p.Unseal(ctx)
+}
+
+// The real Keychain runs only when asked, so a plain `go test` never touches the
+// maintainer's keychain (I12).
+func TestRealKeychain(t *testing.T) {
+	if os.Getenv("VIDYOM_TEST_REAL_KEYCHAIN") != "1" {
+		t.Skip("set VIDYOM_TEST_REAL_KEYCHAIN=1 to use the real macOS Keychain")
+	}
+	const item = "vidyom-master-key-test"
+	encoded := base64.StdEncoding.EncodeToString(key(3))
+	if err := gokeyring.Set(keychainService, item, encoded); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = gokeyring.Delete(keychainService, item) })
+	p, err := ProviderFor(config.Unseal{Provider: config.UnsealMacOSKeychain, ItemName: item})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(first, again) {
-		t.Fatal("a refused overwrite must not change the key")
-	}
-	other := filepath.Join(t.TempDir(), "other.key")
-	if err := GenerateMasterKeyFile(other); err != nil {
-		t.Fatal(err)
-	}
-	p2, _ := ProviderFor(config.Unseal{Provider: config.UnsealFile, Path: other, AcknowledgeFileSealed: true})
-	second, err := p2.Unseal(ctx)
+	got, err := p.Unseal(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Equal(first, second) {
-		t.Fatal("generated keys must differ")
+	if !bytes.Equal(got, key(3)) {
+		t.Fatal("wrong key")
 	}
 }

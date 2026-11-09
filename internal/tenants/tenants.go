@@ -345,11 +345,16 @@ type BootstrapCredentials interface {
 // BootstrapResult is shown once. The pairing code and the worker token exist nowhere
 // else: only their hashes are stored.
 type BootstrapResult struct {
-	Tenant      domain.Tenant
-	Admin       domain.User
-	PairingCode string
-	WorkerToken string
+	Tenant           domain.Tenant
+	Admin            domain.User
+	PairingCode      string
+	PairingExpiresAt time.Time
+	WorkerToken      string
 }
+
+// bootstrapPairingTTL is how long the first pairing code lasts: long enough to read it
+// from an install log and set up a client (I114).
+const bootstrapPairingTTL = time.Hour
 
 // Bootstrap initializes an empty daemon: the first tenant, a user who is both system
 // admin and tenant admin, one pairing code and a worker token. It refuses a system
@@ -390,7 +395,8 @@ func (s *Service) Bootstrap(ctx context.Context, req BootstrapRequest) (Bootstra
 	if err != nil {
 		return BootstrapResult{}, err
 	}
-	code, err := req.Credentials.CreateCode(ctx, principal, email, 0)
+	expires := s.clock().UTC().Add(bootstrapPairingTTL)
+	code, err := req.Credentials.CreateCode(ctx, principal, email, int(bootstrapPairingTTL/time.Second))
 	if err != nil {
 		return BootstrapResult{}, err
 	}
@@ -402,5 +408,5 @@ func (s *Service) Bootstrap(ctx context.Context, req BootstrapRequest) (Bootstra
 	if err != nil {
 		return BootstrapResult{}, err
 	}
-	return BootstrapResult{Tenant: tenant, Admin: admin, PairingCode: code, WorkerToken: token}, nil
+	return BootstrapResult{Tenant: tenant, Admin: admin, PairingCode: code, PairingExpiresAt: expires, WorkerToken: token}, nil
 }

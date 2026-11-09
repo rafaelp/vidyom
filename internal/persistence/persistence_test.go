@@ -46,7 +46,15 @@ func TestLayoutAndPermissions(t *testing.T) {
 	if _, err := s.Tenants.Create(context.Background(), "acme"); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{"system.db", "tenants/acme/tenant.db"} {
+	st, err := s.Tenants.ForTenant(context.Background(), "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A committed write keeps the -wal and -shm files around while the handle is open.
+	if _, err := st.IDs().Next(context.Background(), id.PrefixJob); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"system.db", "tenants/acme/tenant.db", "tenants/acme/tenant.db-wal", "tenants/acme/tenant.db-shm"} {
 		info, err := os.Stat(filepath.Join(dir, p))
 		if err != nil {
 			t.Fatal(err)
@@ -226,12 +234,12 @@ func TestMigrationGuards(t *testing.T) {
 	opts := Options{Clock: time.Now}
 
 	// Opening the wrong kind of database is refused.
-	d, err := openDatabase(ctx, path, kindSystem, opts)
+	d, err := openDatabase(ctx, path, kindSystem, "", opts)
 	if err != nil {
 		t.Fatal(err)
 	}
 	d.close()
-	if _, err := openDatabase(ctx, path, kindTenant, opts); err == nil {
+	if _, err := openDatabase(ctx, path, kindTenant, "", opts); err == nil {
 		t.Fatal("a system database opened as a tenant database")
 	}
 
@@ -244,13 +252,13 @@ func TestMigrationGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw.Close()
-	if _, err := openDatabase(ctx, path, kindSystem, opts); !errs.IsCode(err, errs.CodeFailedPrecondition) {
+	if _, err := openDatabase(ctx, path, kindSystem, "", opts); !errs.IsCode(err, errs.CodeFailedPrecondition) {
 		t.Fatalf("newer database: %v", err)
 	}
 
 	// An applied migration whose text changed is refused.
 	path2 := filepath.Join(dir, "y.db")
-	d, err = openDatabase(ctx, path2, kindSystem, opts)
+	d, err = openDatabase(ctx, path2, kindSystem, "", opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,14 +271,14 @@ func TestMigrationGuards(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw.Close()
-	if _, err := openDatabase(ctx, path2, kindSystem, opts); !errs.IsCode(err, errs.CodeFailedPrecondition) {
+	if _, err := openDatabase(ctx, path2, kindSystem, "", opts); !errs.IsCode(err, errs.CodeFailedPrecondition) {
 		t.Fatalf("changed migration: %v", err)
 	}
 
 	// Opening twice is a no-op.
 	path3 := filepath.Join(dir, "z.db")
 	for range 2 {
-		d, err := openDatabase(ctx, path3, kindTenant, opts)
+		d, err := openDatabase(ctx, path3, kindTenant, "", opts)
 		if err != nil {
 			t.Fatal(err)
 		}

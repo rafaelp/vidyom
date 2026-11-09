@@ -54,16 +54,8 @@ func (s *tenantStores) Create(ctx context.Context, tenant domain.TenantID) (repo
 	if err := ensurePrivateDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
-	d, err := openDatabase(ctx, path, kindTenant, s.opts)
+	d, err := openDatabase(ctx, path, kindTenant, tenant, s.opts)
 	if err != nil {
-		return nil, err
-	}
-	err = d.inTx(ctx, func(q querier) error {
-		_, err := q.ExecContext(ctx, `INSERT INTO meta (key, value) VALUES ('tenant_id', ?)`, string(tenant))
-		return mapErr(err)
-	})
-	if err != nil {
-		d.close()
 		return nil, err
 	}
 	store := newTenantStore(d, tenant)
@@ -92,7 +84,7 @@ func (s *tenantStores) ForTenant(ctx context.Context, tenant domain.TenantID) (r
 		}
 		return nil, fmt.Errorf("stat tenant database: %w", err)
 	}
-	d, err := openDatabase(ctx, path, kindTenant, s.opts)
+	d, err := openDatabase(ctx, path, kindTenant, "", s.opts)
 	if err != nil {
 		return nil, err
 	}

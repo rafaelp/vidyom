@@ -3,10 +3,8 @@ package vault
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -140,8 +138,9 @@ type envProvider struct{}
 func (envProvider) Name() string                   { return string(config.UnsealEnv) }
 func (envProvider) Sealing() security.SealingLevel { return security.SealingDev }
 
-// Unseal removes the key from the environment, so processes the daemon starts, such
-// as plugins, never inherit it. A second Unseal therefore fails.
+// Unseal can run more than once: the daemon checks a provider before it opens any
+// listener, after the vault has unsealed through it. Processes the daemon starts never
+// inherit the variable: plugins and FFmpeg get a minimal environment.
 func (envProvider) Unseal(context.Context) ([]byte, error) {
 	if os.Getenv(EnvInsecureDev) != insecureDevEnabled {
 		return nil, errs.Newf(errs.CodeSealed, "the env master key provider is for development and needs %s=1", EnvInsecureDev)
@@ -153,9 +152,6 @@ func (envProvider) Unseal(context.Context) ([]byte, error) {
 	key, err := parseKey([]byte(value))
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeSealed, err, err.Error())
-	}
-	if err := os.Unsetenv(EnvMasterKey); err != nil {
-		return nil, errs.Wrap(errs.CodeSealed, err, "cannot clear the master key from the environment")
 	}
 	return key, nil
 }
@@ -240,33 +236,4 @@ func (kmsProvider) Sealing() security.SealingLevel { return security.SealingKMS 
 
 func (kmsProvider) Unseal(context.Context) ([]byte, error) {
 	return nil, errs.NotImplemented("the gcp-kms master key provider")
-}
-
-// GenerateMasterKeyFile creates a new master key at path, base64 encoded, mode 0400.
-// It refuses to overwrite: losing a master key loses every secret (I111). It backs
-// `vidyomd init --generate-master-key`; nothing creates a key at startup (I10).
-func GenerateMasterKeyFile(path string) error {
-	key := make([]byte, MasterKeySize)
-	if _, err := rand.Read(key); err != nil {
-		return fmt.Errorf("generate master key: %w", err)
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o400)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return errs.New(errs.CodeConflict, "a master key file already exists at that path; refusing to overwrite it")
-		}
-		return fmt.Errorf("create master key file: %w", err)
-	}
-	encoded := base64.StdEncoding.EncodeToString(key)
-	if _, err := f.WriteString(encoded + "\n"); err != nil {
-		f.Close()
-		os.Remove(path)
-		return fmt.Errorf("write master key file: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		os.Remove(path)
-		return fmt.Errorf("sync master key file: %w", err)
-	}
-	return f.Close()
 }

@@ -72,7 +72,7 @@ func Open(ctx context.Context, opts Options) (*Stores, error) {
 	if err := ensurePrivateDir(filepath.Join(opts.DataDir, tenantsDir)); err != nil {
 		return nil, err
 	}
-	sys, err := openDatabase(ctx, systemPath, kindSystem, opts)
+	sys, err := openDatabase(ctx, systemPath, kindSystem, "", opts)
 	if err != nil {
 		return nil, err
 	}

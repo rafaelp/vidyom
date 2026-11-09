@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
 )
 
@@ -68,7 +69,7 @@ func loadMigrations(kind dbKind) ([]migration, error) {
 // migrate brings a database to the latest version in one transaction. It refuses a
 // database of another kind, one newer than this binary, and an applied migration
 // whose text changed (I103).
-func (d *database) migrate(ctx context.Context, kind dbKind) error {
+func (d *database) migrate(ctx context.Context, kind dbKind, tenant domain.TenantID) error {
 	migrations, err := loadMigrations(kind)
 	if err != nil {
 		return fmt.Errorf("load migrations: %w", err)
@@ -127,6 +128,11 @@ func (d *database) migrate(ctx context.Context, kind dbKind) error {
 				return fmt.Errorf("apply %s: %w", m.name, err)
 			}
 			if _, err := q.ExecContext(ctx, `INSERT INTO schema_migrations (version, name, sha256, applied_at) VALUES (?, ?, ?, ?)`, m.version, m.name, m.sha256, now); err != nil {
+				return err
+			}
+		}
+		if tenant != "" {
+			if _, err := q.ExecContext(ctx, `INSERT INTO meta (key, value) VALUES ('tenant_id', ?)`, string(tenant)); err != nil {
 				return err
 			}
 		}

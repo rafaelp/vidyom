@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
 	"github.com/rafaelp/vidyom/internal/contract/repo"
 	"github.com/rafaelp/vidyom/internal/persistence/sqlitedriver"
@@ -47,8 +48,10 @@ type database struct {
 	opts  Options
 }
 
-// openDatabase opens path, creating it private if needed, and migrates it.
-func openDatabase(ctx context.Context, path string, kind dbKind, opts Options) (*database, error) {
+// openDatabase opens path, creating it private if needed, and migrates it. tenant, when
+// set, is recorded in the same transaction as the first migration, so no file can exist
+// with a schema and without an owner (I103).
+func openDatabase(ctx context.Context, path string, kind dbKind, tenant domain.TenantID, opts Options) (*database, error) {
 	// SQLite creates the -wal and -shm files with the database's own mode.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -61,7 +64,7 @@ func openDatabase(ctx context.Context, path string, kind dbKind, opts Options) (
 	}
 	db.SetConnMaxIdleTime(5 * time.Minute)
 	d := &database{db: db, path: path, gate: make(chan struct{}, 1), clock: opts.Clock, opts: opts}
-	if err := d.migrate(ctx, kind); err != nil {
+	if err := d.migrate(ctx, kind, tenant); err != nil {
 		db.Close()
 		return nil, err
 	}

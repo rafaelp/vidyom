@@ -34,6 +34,7 @@ const (
 	MaxPairingTTL     = 24 * time.Hour
 
 	lastSeenInterval = time.Minute
+	maxDeviceName    = 200
 )
 
 // Options configures the service.
@@ -367,6 +368,9 @@ func (s *Service) mayIssueFor(ctx context.Context, by domain.Principal, tenant d
 // Pair exchanges a code for a device credential. It is the only unauthenticated
 // mutating call. Consuming the code and creating the device are one transaction.
 func (s *Service) Pair(ctx context.Context, code, deviceName string) (security.IssuedCredential, error) {
+	if len(deviceName) > maxDeviceName {
+		return security.IssuedCredential{}, errs.Newf(errs.CodeInvalidArgument, "a device name has at most %d bytes", maxDeviceName)
+	}
 	secret, err := randomSecret()
 	if err != nil {
 		return security.IssuedCredential{}, err

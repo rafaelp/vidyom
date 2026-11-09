@@ -129,6 +129,9 @@ func TestPairingFlow(t *testing.T) {
 	if _, err := f.auth.Pair(ctx, "garbage", "other"); !errs.IsCode(err, errs.CodeUnauthenticated) {
 		t.Fatalf("bad code: %v", err)
 	}
+	if _, err := f.auth.Pair(ctx, "garbage", strings.Repeat("x", 201)); !errs.IsCode(err, errs.CodeInvalidArgument) {
+		t.Fatalf("long name: %v", err)
+	}
 
 	// The credential works and identifies the device and user.
 	p, err := f.auth.Authenticate(ctx, security.Credentials{BearerToken: cred.Token})

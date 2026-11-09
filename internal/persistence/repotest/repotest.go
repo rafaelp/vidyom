@@ -1308,6 +1308,47 @@ func testSearch(t *testing.T, open Factory) {
 		must(t, r.IndexVectors(ctx(), repo.EmbeddingBatch{AssetID: id.Ref(a.ID), Version: "v1", Model: "old@1", Chunks: []domain.EmbeddedChunk{chunk(0, 1, "again", vec(2, 0))}}))
 	})
 
+	t.Run("vectors read back", func(t *testing.T) {
+		st := tenantStore(t, open, "acme")
+		lister, ok := st.Search().(repo.EmbeddingLister)
+		if !ok {
+			t.Skip("backend cannot read vectors back")
+		}
+		a := newAsset(t, st, domain.KindOriginal)
+		empty, err := lister.ListEmbeddings(ctx(), id.Ref(a.ID), "v1", "m@1")
+		must(t, err)
+		if len(empty) != 0 {
+			t.Fatalf("empty = %+v", empty)
+		}
+		v1 := []float32{0.25, -0.5, 0.125, 1}
+		v2 := []float32{1, 0, 0, 0}
+		must(t, st.Search().IndexVectors(ctx(), repo.EmbeddingBatch{AssetID: id.Ref(a.ID), Version: "v1", Model: "m@1", Chunks: []domain.EmbeddedChunk{
+			{SearchChunk: domain.SearchChunk{Level: domain.ChunkChapter, StartSeconds: 30, EndSeconds: 60, Text: "second"}, Vector: v2},
+			{SearchChunk: domain.SearchChunk{Level: domain.ChunkWindow, StartSeconds: 0, EndSeconds: 30, Text: "first"}, Vector: v1},
+		}}))
+		must(t, st.Search().IndexVectors(ctx(), repo.EmbeddingBatch{AssetID: id.Ref(a.ID), Version: "v2", Model: "m@1", Chunks: []domain.EmbeddedChunk{chunk(0, 1, "other version", vec(4, 3))}}))
+		must(t, st.Search().IndexVectors(ctx(), repo.EmbeddingBatch{AssetID: id.Ref(a.ID), Version: "v1", Model: "n@1", Chunks: []domain.EmbeddedChunk{chunk(0, 1, "other model", vec(2, 0))}}))
+		got, err := lister.ListEmbeddings(ctx(), id.Ref(a.ID), "v1", "m@1")
+		must(t, err)
+		if len(got) != 2 || got[0].Text != "first" || got[1].Text != "second" || got[1].Level != domain.ChunkChapter || got[0].EndSeconds != 30 {
+			t.Fatalf("got = %+v", got)
+		}
+		for i, want := range v1 {
+			if got[0].Vector[i] != want {
+				t.Fatalf("vector = %v, want %v", got[0].Vector, v1)
+			}
+		}
+		none, err := lister.ListEmbeddings(ctx(), id.Ref(a.ID), "v9", "m@1")
+		must(t, err)
+		unknown, err := lister.ListEmbeddings(ctx(), id.Ref(a.ID), "v1", "unknown@1")
+		must(t, err)
+		if len(none) != 0 || len(unknown) != 0 {
+			t.Fatalf("none = %+v, unknown = %+v", none, unknown)
+		}
+		_, err = lister.ListEmbeddings(ctx(), "ORI-404", "v1", "m@1")
+		wantCode(t, err, errs.CodeNotFound)
+	})
+
 	t.Run("delete asset", func(t *testing.T) {
 		st := tenantStore(t, open, "acme")
 		r := st.Search()

@@ -3,8 +3,10 @@ package persistence
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"unicode"
@@ -19,7 +21,10 @@ import (
 // searchRepo is FTS5 and sqlite-vec (D5, I106).
 type searchRepo struct{ conn }
 
-var _ repo.SearchRepo = searchRepo{}
+var (
+	_ repo.SearchRepo      = searchRepo{}
+	_ repo.EmbeddingLister = searchRepo{}
+)
 
 const (
 	activeModelKey    = "active_embedding_model"
@@ -466,6 +471,58 @@ func vectorHits(ctx context.Context, q querier, results []knnResult, limit int) 
 			return nil, mapErr(err)
 		}
 		out = append(out, h)
+	}
+	return out, nil
+}
+
+// ListEmbeddings reads stored vectors back, ordered by start time, for the public.db
+// export (D18, I232). An unknown model or version is an empty list.
+func (r searchRepo) ListEmbeddings(ctx context.Context, asset id.Ref, version, model string) ([]domain.EmbeddedChunk, error) {
+	var out []domain.EmbeddedChunk
+	err := r.read(ctx, func(q querier) error {
+		key, err := resolveAsset(ctx, q, asset)
+		if err != nil {
+			return err
+		}
+		m, found, err := getModel(ctx, q, model)
+		if err != nil || !found {
+			return err
+		}
+		out, err = queryAll(ctx, q, `SELECT c.level, c.start_seconds, c.end_seconds, c.text, v.embedding
+			FROM vector_chunks c JOIN `+m.table+` v ON v.rowid = c.id
+			WHERE c.model = ? AND c.asset_ulid = ? AND c.version = ?
+			ORDER BY c.start_seconds, c.id`, []any{model, key.ulid, version},
+			func(s scanner) (domain.EmbeddedChunk, error) {
+				var (
+					c    domain.EmbeddedChunk
+					blob []byte
+				)
+				if err := s.Scan(&c.Level, &c.StartSeconds, &c.EndSeconds, &c.Text, &blob); err != nil {
+					return c, err
+				}
+				vector, err := decodeVector(blob, m.dimensions)
+				if err != nil {
+					return c, err
+				}
+				c.Vector = vector
+				return c, nil
+			})
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// decodeVector reads the little-endian float32 form SerializeVector writes.
+func decodeVector(blob []byte, dimensions int) ([]float32, error) {
+	if len(blob) != dimensions*4 {
+		return nil, fmt.Errorf("a stored vector has %d bytes, expected %d", len(blob), dimensions*4)
+	}
+	out := make([]float32, dimensions)
+	for i := range out {
+		out[i] = math.Float32frombits(binary.LittleEndian.Uint32(blob[i*4:]))
 	}
 	return out, nil
 }

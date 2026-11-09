@@ -285,7 +285,7 @@ func TestBootstrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Tenant.ID != "acme" || !res.Admin.SystemAdmin || res.Admin.Email != "admin@example.com" || res.PairingCode == "" || res.WorkerToken == "" {
+	if res.Tenant.ID != "acme" || !res.Admin.SystemAdmin || res.Admin.Email != "admin@example.com" || res.PairingCode == "" || res.WorkerToken == "" || !res.PairingExpiresAt.After(time.Now()) {
 		t.Fatalf("result = %+v", res)
 	}
 	// The results work.
