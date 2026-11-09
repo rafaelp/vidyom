@@ -8,7 +8,7 @@ sidebar_position: 1
 **The open-source video editing studio run by AI agents.**  
 **Preserve · Discover · Transform · Share.**
 
-Vidyom is an open-source, vendor-independent video editing studio built for AI agents to operate. An agent takes a brief, finds the stories in your recordings, cuts clips, prepares them to publish and brings each decision to a person for approval. Vidyom does the heavy work behind every step: preserving, cataloging, searching, rendering and publishing audiovisual knowledge. It was originally designed for [MapaDeva](https://www.mapadeva.com.br/), and it is useful to anyone: yoga schools, course creators, educators, cultural institutions, companies, and personal archives.
+Vidyom is an open-source, vendor-independent video editing studio built for AI agents to operate. An agent takes a brief, finds the stories in your recordings, cuts clips, prepares them to publish and brings each decision to a person for approval. Vidyom does the heavy work behind every step: preserving, cataloging, searching, rendering and publishing audiovisual knowledge. It was originally designed for [Mapadeva](https://www.mapadeva.com.br/), and it is useful to anyone: yoga schools, course creators, educators, cultural institutions, companies, and personal archives.
 
 ## How an agent runs the studio
 

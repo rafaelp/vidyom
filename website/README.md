@@ -1,6 +1,6 @@
 # Vidyom documentation website
 
-An English-language Docusaurus documentation site for **Vidyom**, the open-source video editing studio run by AI agents, originally built for [MapaDeva](https://www.mapadeva.com.br/).
+An English-language Docusaurus documentation site for **Vidyom**, the open-source video editing studio run by AI agents, originally built for [Mapadeva](https://www.mapadeva.com.br/).
 
 ## Requirements
 

@@ -4,7 +4,7 @@
 > **Preserve · Discover · Transform · Share**  
 > **Foundation document for architecture, product, and implementation**  
 > Document version: **1.1 — 2026-11-08** (consistency and gap review of v1.0; see **§20 Revision log v1.1**)  
-> Project origin: **MapaDeva — https://www.mapadeva.com.br/**  
+> Project origin: **Mapadeva — https://www.mapadeva.com.br/**  
 > Status: **specification for implementation; does not represent features already delivered**.
 
 ---
@@ -29,17 +29,17 @@ The command names, plugin contracts, and JSON formats in this document are **tar
 ### 1.1 Name, identity, and origin
 
 - **[DECIDED] Project name: `Vidyom`.**
-- **[DECIDED]** Vidyom is born to serve **MapaDeva**, but it will be **open source**, available and useful to any person or organization.
+- **[DECIDED]** Vidyom is born to serve **Mapadeva**, but it will be **open source**, available and useful to any person or organization.
 - **[DECIDED]** The system will not be specifically religious: it must also serve schools, content creators, universities, cultural institutions, companies, communities, and personal collections.
 - **[PROPOSED]** International description: **Open-source AI-powered video workflow engine**.
 - **[PROPOSED]** Tagline: **Preserve · Discover · Transform · Share**.
 - **[DECIDED]** The executables will be named `vidyom` (CLI), `vidyomd` (daemon), and, per the proposed architecture, `vidyom-worker` (worker).
-- **[PROPOSED]** The README will state “Originally built for MapaDeva”, without creating a functional or brand dependency.
+- **[PROPOSED]** The README will state “Originally built for Mapadeva”, without creating a functional or brand dependency.
 - The name was inspired by **video**, **vidya** (knowledge), and **Om** (spiritual reference).
 
 ### 1.2 Problem to solve
 
-MapaDeva will produce recordings of yoga classes, courses, meetings, talks, interviews, and other content. Each original recording may be approximately **10 GB**. The system must:
+Mapadeva will produce recordings of yoga classes, courses, meetings, talks, interviews, and other content. Each original recording may be approximately **10 GB**. The system must:
 
 1. Preserve the raw recording with integrity and controlled storage cost.
 2. Keep a good-quality working version **directly accessible** for continuous production, without restoring from backup.
@@ -998,7 +998,7 @@ Workflow and node hooks, configurable through JSON, with no need to modify the e
 - No arbitrary shell by default; pass FFmpeg arguments in a safe/validated way, do not concatenate a command.
 - Human approval before publishing or deleting, by default for publication; destructive actions with differentiated permission.
 - Minimize exposure of private transcripts and sensitive content in AI logs and indexing.
-- **(v1.1, R39)** Transcripts and audio of identifiable people are **personal data** under the LGPD (MapaDeva operates in Brazil) and equivalent regulations in other countries. Sending a transcript or audio to an external AI provider is processing by a third party and must be configurable **per asset or per collection** (`aiProcessing: local_only | external_allowed`). The **[PROPOSED]** default is `local_only` whenever a local engine is available. The topic is part of §17, item 6.
+- **(v1.1, R39)** Transcripts and audio of identifiable people are **personal data** under the LGPD (Mapadeva operates in Brazil) and equivalent regulations in other countries. Sending a transcript or audio to an external AI provider is processing by a third party and must be configurable **per asset or per collection** (`aiProcessing: local_only | external_allowed`). The **[PROPOSED]** default is `local_only` whenever a local engine is available. The topic is part of §17, item 6.
 
 ---
 
@@ -1667,7 +1667,7 @@ This section is a verification index so the team does not lose decisions.
 | # | Decision | Status |
 |---|---|---|
 | 1 | Official name **Vidyom** | DECIDED |
-| 2 | Project initially for **MapaDeva**, but **open source** and general-purpose | DECIDED |
+| 2 | Project initially for **Mapadeva**, but **open source** and general-purpose | DECIDED |
 | 3 | Asset type/prefix **`originals`**, not `lectures`; "lecture" becomes just a content category (`lecture`) (v1.1, R1) | DECIDED |
 | 4 | Content: yoga classes, courses, meetings, talks, interviews, etc. | DECIDED |
 | 5 | Preserve the raw file in backup and use a compressed working master | DECIDED |

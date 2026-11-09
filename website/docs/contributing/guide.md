@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Contributing
 
-Vidyom is an open-source project under the Apache License 2.0, meant for any person or organization, although it originates from the MapaDeva use case.
+Vidyom is an open-source project under the Apache License 2.0, meant for any person or organization, although it originates from the Mapadeva use case.
 
 ## Contribution principles
 

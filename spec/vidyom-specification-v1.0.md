@@ -4,7 +4,7 @@
 > **Preserve · Discover · Transform · Share**  
 > **Foundational architecture, product, and implementation document**  
 > Document version: **1.0 — 2026-11-08**  
-> Project origin: **MapaDeva — https://www.mapadeva.com.br/**  
+> Project origin: **Mapadeva — https://www.mapadeva.com.br/**  
 > Status: **specification for implementation; does not represent features already delivered**.
 
 ---
@@ -27,17 +27,17 @@ The command names, plugin contracts, and JSON formats in this document are **tar
 ### 1.1 Name, identity, and origin
 
 - **[DECIDED] Project name: `Vidyom`.**
-- **[DECIDED]** Vidyom is born to serve **MapaDeva**, but it will be **open source**, available and useful to any person or organization.
+- **[DECIDED]** Vidyom is born to serve **Mapadeva**, but it will be **open source**, available and useful to any person or organization.
 - **[DECIDED]** The system will not be specifically religious: it must also serve schools, content creators, universities, cultural institutions, companies, communities, and personal collections.
 - **[PROPOSED]** International description: **Open-source AI-powered video workflow engine**.
 - **[PROPOSED]** Tagline: **Preserve · Discover · Transform · Share**.
 - **[DECIDED]** The executables will be named `vidyom` (CLI), `vidyomd` (daemon), and, per the proposed architecture, `vidyom-worker` (worker).
-- **[PROPOSED]** The README will state “Originally built for MapaDeva”, without creating a functional or brand dependency.
+- **[PROPOSED]** The README will state “Originally built for Mapadeva”, without creating a functional or brand dependency.
 - The name was inspired by **video**, **vidya** (knowledge), and **Om** (spiritual reference).
 
 ### 1.2 Problem to solve
 
-MapaDeva will produce recordings of yoga classes, courses, meetings, talks, interviews, and other content. Each original recording can be approximately **10 GB**. The system needs to:
+Mapadeva will produce recordings of yoga classes, courses, meetings, talks, interviews, and other content. Each original recording can be approximately **10 GB**. The system needs to:
 
 1. Preserve the raw recording with integrity and controlled storage cost.
 2. Keep a good-quality working version **directly accessible** for ongoing production, with no recovery from backup.
@@ -1418,7 +1418,7 @@ This section is a verification index so the team does not lose decisions.
 | # | Decision | Status |
 |---|---|---|
 | 1 | Official name **Vidyom** | DECIDED |
-| 2 | Project initially for **MapaDeva**, but **open source** and general-purpose | DECIDED |
+| 2 | Project initially for **Mapadeva**, but **open source** and general-purpose | DECIDED |
 | 3 | Category **`originals`**, not `lectures` | DECIDED |
 | 4 | Content: yoga classes, courses, gatherings, talks, interviews, etc. | DECIDED |
 | 5 | Preserve the raw file as a backup and use a compressed operational master | DECIDED |

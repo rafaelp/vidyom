@@ -31,7 +31,7 @@ const config: Config = {
     footer: {style: 'dark', links: [
       {title: 'Explore', items: [{label: 'Getting started',to:'/docs/intro'},{label:'CLI reference',to:'/docs/reference/cli'}]},
       {title: 'Project', items: [{label:'Contributing',to:'/docs/contributing/guide'},{label:'GitHub',href:'https://github.com/rafaelp/vidyom'}]},
-      {title: 'Origins', items: [{label:'Originally built for MapaDeva',href:'https://www.mapadeva.com.br/'}]},
+      {title: 'Origins', items: [{label:'Originally built for Mapadeva',href:'https://www.mapadeva.com.br/'}]},
     ], copyright: `© ${new Date().getFullYear()} Vidyom contributors.`},
     prism: {additionalLanguages: ['bash','json','yaml','go']},
     colorMode: {defaultMode:'dark', respectPrefersColorScheme:true},

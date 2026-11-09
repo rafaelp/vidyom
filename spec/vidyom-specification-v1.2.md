@@ -4,7 +4,7 @@
 > **Preserve · Discover · Transform · Share**  
 > **Foundation document for architecture, product, and implementation**  
 > Document version: **1.2 — 2026-11-09** (maintainer decisions D1–D59 on the pending items of v1.1; see **§21 Revision log v1.2**)  
-> Project origin: **MapaDeva — https://www.mapadeva.com.br/**  
+> Project origin: **Mapadeva — https://www.mapadeva.com.br/**  
 > Status: **specification for implementation; does not represent features already delivered**.
 
 ---
@@ -31,19 +31,19 @@ The command names, plugin contracts, and JSON formats in this document are **tar
 ### 1.1 Name, identity, and origin
 
 - **[DECIDED] Project name: `Vidyom`.**
-- **[DECIDED]** Vidyom is born to serve **MapaDeva**, but it will be **open source**, available and useful to any person or organization.
+- **[DECIDED]** Vidyom is born to serve **Mapadeva**, but it will be **open source**, available and useful to any person or organization.
 - **[DECIDED]** The system will not be specifically religious: it must also serve schools, content creators, universities, cultural institutions, companies, communities, and personal collections.
 - **(v1.2, D43) [DECIDED]** International description: **Open-source AI-powered video workflow engine**.
 - **(v1.2, D43) [DECIDED]** Tagline: **Preserve · Discover · Transform · Share**.
 - **[DECIDED]** The executables will be named `vidyom` (CLI), `vidyomd` (daemon), and, per the proposed architecture, `vidyom-worker` (worker).
-- **(v1.2, D43) [DECIDED]** The README will state “Originally built for MapaDeva”, without creating a functional or brand dependency.
+- **(v1.2, D43) [DECIDED]** The README will state “Originally built for Mapadeva”, without creating a functional or brand dependency.
 - **(v1.2, D27) [DECIDED]** Official domain: **vidyom.org**; `https://www.vidyom.org` is canonical (the apex redirects to `www`). The documentation website is deployed there on Vercel.
 - **(v1.2, D28) [DECIDED]** The repository is `github.com/rafaelp/vidyom` (the `vidyom` name is taken on GitHub and Docker Hub); a later move to a GitHub organization remains possible (GitHub redirects). Package names are in §14.2. Open: trademark check (§17.2).
 - The name was inspired by **video**, **vidya** (knowledge), and **Om** (spiritual reference).
 
 ### 1.2 Problem to solve
 
-MapaDeva will produce recordings of yoga classes, courses, meetings, talks, interviews, and other content. Each original recording may be approximately **10 GB**. The system must:
+Mapadeva will produce recordings of yoga classes, courses, meetings, talks, interviews, and other content. Each original recording may be approximately **10 GB**. The system must:
 
 1. Preserve the raw recording with integrity and controlled storage cost.
 2. Keep a good-quality working version **directly accessible** for continuous production, without restoring from backup.
@@ -1034,7 +1034,7 @@ Workflow and node hooks, configurable through JSON, with no need to modify the e
 - Minimize exposure of private transcripts and sensitive content in AI logs and indexing.
 - **(v1.2, D29) [DECIDED]** Image and voice rights: obtaining authorization from speakers and participants is **the tenant's responsibility**. Vidyom does not track or enforce image or voice authorizations; the documentation and the publication approval screen state that the tenant is responsible.
 - **(v1.2, D30) [DECIDED]** Sensitive transcripts: transcripts are **private by default**; a transcript or captions reach the public library or a destination only together with an approved public video. Editors can mark **sensitive segments** (for example names, health, minors); marked segments are excluded from `public.db`, from public captions and from external AI processing, and are redacted in exports.
-- **(v1.1, R39)** Transcripts and audio of identifiable people are **personal data** under the LGPD (MapaDeva operates in Brazil) and equivalent regulations in other countries. Sending a transcript or audio to an external AI provider is processing by a third party and must be configurable **per asset or per collection** (`aiProcessing: local_only | external_allowed`). The **[PROPOSED]** default is `local_only` whenever a local engine is available. The topic is part of §17, item 6. **(v1.2, D8)** **[DECIDED]** The default is `aiProcessing: local_only`. An `admin` can mark a collection or an asset `external_allowed`; Vidyom records who authorized it and when (**consent record**, kept in the tenant database and the audit). This applies to transcription, embeddings and LLM calls; `local_only` content may only use endpoints classified `local` (D9).
+- **(v1.1, R39)** Transcripts and audio of identifiable people are **personal data** under the LGPD (Mapadeva operates in Brazil) and equivalent regulations in other countries. Sending a transcript or audio to an external AI provider is processing by a third party and must be configurable **per asset or per collection** (`aiProcessing: local_only | external_allowed`). The **[PROPOSED]** default is `local_only` whenever a local engine is available. The topic is part of §17, item 6. **(v1.2, D8)** **[DECIDED]** The default is `aiProcessing: local_only`. An `admin` can mark a collection or an asset `external_allowed`; Vidyom records who authorized it and when (**consent record**, kept in the tenant database and the audit). This applies to transcription, embeddings and LLM calls; `local_only` content may only use endpoints classified `local` (D9).
 
 ---
 
@@ -1842,7 +1842,7 @@ This section is a verification index so the team does not lose decisions.
 | # | Decision | Status |
 |---|---|---|
 | 1 | Official name **Vidyom** | DECIDED |
-| 2 | Project initially for **MapaDeva**, but **open source** and general-purpose | DECIDED |
+| 2 | Project initially for **Mapadeva**, but **open source** and general-purpose | DECIDED |
 | 3 | Asset type/prefix **`originals`**, not `lectures`; "lecture" becomes just a content category (`lecture`) (v1.1, R1) | DECIDED |
 | 4 | Content: yoga classes, courses, meetings, talks, interviews, etc. | DECIDED |
 | 5 | Preserve the raw file in backup and use a compressed working master | DECIDED |
@@ -1931,7 +1931,7 @@ This section is a verification index so the team does not lose decisions.
 | 88 | (v1.2, D40) Proxy H.264 720p and ASR audio Opus mono 16 kHz at 24–32 kbps, never upscaled; hook timeout 30 s with a configurable global ceiling; workers declare resources and the scheduler picks a compatible one; configurable retention of execution records | DECIDED |
 | 89 | (v1.2, D41) Whole project on one host with Linux, macOS or Windows; Docker Compose on all three; Go binaries built for all three; replaces "daemon initially on Linux" | DECIDED (AI on macOS without GPU, master key unsealing per platform: VALIDATE; same-host transport: CONFIRMED by #97, v1.2) |
 | 90 | (v1.2, D42) `restore-archived.json` as an administrative operation; maintenance workflows `reindex-asset`, `refresh-publication`, `verify-storage`, `bulk-create-clips`; per-asset metadata export package | DECIDED |
-| 91 | (v1.2, D43) Description "Open-source AI-powered video workflow engine"; tagline "Preserve · Discover · Transform · Share"; README "Originally built for MapaDeva"; plugin manifest format (§7.6) | DECIDED |
+| 91 | (v1.2, D43) Description "Open-source AI-powered video workflow engine"; tagline "Preserve · Discover · Transform · Share"; README "Originally built for Mapadeva"; plugin manifest format (§7.6) | DECIDED |
 | 92 | (v1.2, D44) Workflow JSON model (§6.2); `approval.request` node (R25); event semantics (R35); operational retention (§10.4) | DECIDED |
 | 93 | (v1.2, D45) Daemon API endpoint list (§12.1); code structure (§14.2); log configuration (§7.4); publication URLs only from confirmed API responses, `published` requires a URL (R43) | DECIDED |
 | 94 | (v1.2, D46) Friendly ID sequences per tenant; resolved within the `Vidyom-Tenant` tenant; ULID globally unique | DECIDED |

@@ -8,7 +8,7 @@
 <p align="center">
   <strong>The open-source video editing studio run by AI agents.</strong><br>
   Preserve · Discover · Transform · Share<br>
-  <sub>Originally built for <a href="https://www.mapadeva.com.br/">MapaDeva</a></sub>
+  <sub>Originally built for <a href="https://www.mapadeva.com.br/">Mapadeva</a></sub>
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 ## What is Vidyom?
 
-Vidyom is an open-source, vendor-independent video editing studio built for AI agents to operate. Hand your agent hours of raw footage and a brief: it finds the stories, cuts the clips and prepares them to publish, and a person keeps the final cut. It was originally designed for [MapaDeva](https://www.mapadeva.com.br/), and it is useful to anyone: yoga schools, course creators, educators, cultural institutions, companies and personal archives.
+Vidyom is an open-source, vendor-independent video editing studio built for AI agents to operate. Hand your agent hours of raw footage and a brief: it finds the stories, cuts the clips and prepares them to publish, and a person keeps the final cut. It was originally designed for [Mapadeva](https://www.mapadeva.com.br/), and it is useful to anyone: yoga schools, course creators, educators, cultural institutions, companies and personal archives.
 
 A single recording can be 10 GB or larger and contain many distinct stories. Vidyom keeps the raw original in archival storage, keeps a production-quality working master in direct-access storage, transcribes and indexes it, and lets an agent generate clips from it **at any future time** without touching the archive. Every approved clip becomes its own traceable asset, with its own backup, master, metadata, catalog entry and optional publication through connectors.
 
