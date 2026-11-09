@@ -17,6 +17,7 @@ package sqlitedriver
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"sync"
@@ -114,4 +115,28 @@ func Open(path string, opts Options) (*sql.DB, error) {
 // it: a little-endian float32 BLOB (I29).
 func SerializeVector(v []float32) ([]byte, error) {
 	return vec.SerializeFloat32(v)
+}
+
+// IsConstraint reports a constraint failure of any kind.
+func IsConstraint(err error) bool {
+	var e sqlite3.Error
+	return errors.As(err, &e) && e.Code == sqlite3.ErrConstraint
+}
+
+// IsUnique reports a unique or primary key violation.
+func IsUnique(err error) bool {
+	var e sqlite3.Error
+	return errors.As(err, &e) && (e.ExtendedCode == sqlite3.ErrConstraintUnique || e.ExtendedCode == sqlite3.ErrConstraintPrimaryKey)
+}
+
+// IsForeignKey reports a foreign key violation.
+func IsForeignKey(err error) bool {
+	var e sqlite3.Error
+	return errors.As(err, &e) && e.ExtendedCode == sqlite3.ErrConstraintForeignKey
+}
+
+// IsBusy reports that the database stayed locked past the busy timeout.
+func IsBusy(err error) bool {
+	var e sqlite3.Error
+	return errors.As(err, &e) && (e.Code == sqlite3.ErrBusy || e.Code == sqlite3.ErrLocked)
 }
