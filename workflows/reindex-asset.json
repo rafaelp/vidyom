@@ -1,0 +1,64 @@
+{
+  "id": "reindex-asset",
+  "name": "Reindex Asset",
+  "version": "1.0.0",
+  "description": "Embed and index an asset's stored transcript again, for example after changing the embedding model; the new model's vectors are written side by side (D15, D42).",
+  "inputs": {
+    "assetId": {
+      "type": "string",
+      "required": true
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "nodes": [
+    {
+      "id": "stored",
+      "type": "catalog.get_transcript",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "version": "${inputs.version}"
+      }
+    },
+    {
+      "id": "embed",
+      "type": "ai.embed",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "transcript": "${nodes.stored.output.transcript}",
+        "analysis": "${nodes.stored.output.analysis}"
+      }
+    },
+    {
+      "id": "index",
+      "type": "ai.index",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "version": "${nodes.stored.output.version}",
+        "transcript": "${nodes.stored.output.transcript}",
+        "analysis": "${nodes.stored.output.analysis}",
+        "embeddings": "${nodes.embed.output}"
+      }
+    }
+  ],
+  "connections": {
+    "stored": [
+      "embed"
+    ],
+    "embed": [
+      "index"
+    ]
+  },
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 5
+  },
+  "outputs": {
+    "embedding_model": "${nodes.index.output.embedding_model}",
+    "vectors": "${nodes.index.output.vectors}"
+  }
+}

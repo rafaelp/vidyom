@@ -1,0 +1,204 @@
+{
+  "id": "create-clip",
+  "name": "Create Semantic Clip",
+  "version": "1.0.0",
+  "description": "From an indexed asset and a prompt, propose a segment, obtain the editor's approval, render a clip from the master only and ingest it as a new asset, then publish when destinations are given (§3.2). The clip_selection gate cannot be skipped (D53).",
+  "inputs": {
+    "source_id": {
+      "type": "string",
+      "required": true
+    },
+    "prompt": {
+      "type": "string",
+      "required": true
+    },
+    "mode": {
+      "type": "string",
+      "default": "complete_story",
+      "description": "complete_story, short or best_moments."
+    },
+    "target_duration_seconds": {
+      "type": "number"
+    },
+    "destinations": {
+      "type": "array",
+      "default": [],
+      "description": "Publishing destinations; none stops after ingest."
+    }
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "catalog.get",
+      "typeVersion": 1,
+      "parameters": {
+        "id": "${inputs.source_id}",
+        "requireClipEligible": true,
+        "requireMasterAvailable": true
+      }
+    },
+    {
+      "id": "find_story",
+      "type": "ai.find_segment",
+      "typeVersion": 1,
+      "parameters": {
+        "asset": "${nodes.source.output}",
+        "query": "${inputs.prompt}",
+        "mode": "${inputs.mode}",
+        "targetDurationSeconds": "${inputs.target_duration_seconds}"
+      }
+    },
+    {
+      "id": "overlap",
+      "type": "catalog.check_overlap",
+      "typeVersion": 1,
+      "parameters": {
+        "sourceId": "${inputs.source_id}",
+        "segments": "${nodes.find_story.output.segments}"
+      }
+    },
+    {
+      "id": "preview",
+      "type": "video.preview",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.source.output.proxy_uri}",
+        "segments": "${nodes.find_story.output.segments}"
+      }
+    },
+    {
+      "id": "approve_selection",
+      "type": "approval.request",
+      "typeVersion": 1,
+      "parameters": {
+        "kind": "clip_selection",
+        "approvers": [
+          "editor"
+        ],
+        "assetId": "${inputs.source_id}",
+        "version": "${nodes.source.output.current_version}",
+        "evidence": {
+          "segments": "${nodes.find_story.output.segments}",
+          "candidates": "${nodes.find_story.output.candidates}",
+          "ambiguous": "${nodes.find_story.output.ambiguous}",
+          "confidence": "${nodes.find_story.output.confidence}",
+          "excerpt": "${nodes.find_story.output.excerpt}",
+          "overlap": "${nodes.overlap.output}"
+        },
+        "preview": "${nodes.preview.output.file}",
+        "allowAdjust": true,
+        "summary": "${inputs.prompt}"
+      }
+    },
+    {
+      "id": "if_approved",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.approve_selection.output.decision == 'approved'"
+      }
+    },
+    {
+      "id": "render_source",
+      "type": "catalog.resolve_render_source",
+      "typeVersion": 1,
+      "parameters": {
+        "sourceId": "${inputs.source_id}",
+        "segments": "${nodes.approve_selection.output.segments}"
+      }
+    },
+    {
+      "id": "render",
+      "type": "video.cut",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.render_source.output.source_uri}",
+        "segments": "${nodes.render_source.output.segments}",
+        "forbidStorageRoles": [
+          "archive"
+        ]
+      }
+    },
+    {
+      "id": "ingest_derived",
+      "type": "workflow.execute",
+      "typeVersion": 1,
+      "parameters": {
+        "workflow": "ingest-derived",
+        "file": "${nodes.render.output.file}",
+        "kind": "clip",
+        "title": "${inputs.prompt}",
+        "lineage": {
+          "method": "computed",
+          "source_asset_id": "${inputs.source_id}",
+          "selection_approval_id": "${nodes.approve_selection.output.approval_id}",
+          "segments": "${nodes.approve_selection.output.segments}"
+        }
+      }
+    },
+    {
+      "id": "if_publish",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "size(inputs.destinations) > 0"
+      }
+    },
+    {
+      "id": "publish",
+      "type": "workflow.execute",
+      "typeVersion": 1,
+      "parameters": {
+        "workflow": "publish-video",
+        "assetId": "${nodes.ingest_derived.output.asset_id}",
+        "destinations": "${inputs.destinations}",
+        "requireApproval": true
+      }
+    }
+  ],
+  "connections": {
+    "source": [
+      "find_story"
+    ],
+    "find_story": [
+      "overlap",
+      "preview"
+    ],
+    "overlap": [
+      "approve_selection"
+    ],
+    "preview": [
+      "approve_selection"
+    ],
+    "approve_selection": [
+      "if_approved"
+    ],
+    "if_approved": [
+      "render_source"
+    ],
+    "render_source": [
+      "render"
+    ],
+    "render": [
+      "ingest_derived"
+    ],
+    "ingest_derived": [
+      "if_publish"
+    ],
+    "if_publish": [
+      "publish"
+    ]
+  },
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 5,
+    "resumeOnFailure": true,
+    "saveExecutionProgress": true
+  },
+  "outputs": {
+    "decision": "${nodes.approve_selection.output.decision}",
+    "selection_approval_id": "${nodes.approve_selection.output.approval_id}",
+    "clip_id": "${nodes.ingest_derived.output.asset_id}",
+    "publication_decision": "${nodes.publish.output.decision}"
+  }
+}

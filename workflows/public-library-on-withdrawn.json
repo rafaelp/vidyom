@@ -1,0 +1,28 @@
+{
+  "id": "public-library-on-withdrawn",
+  "name": "Public Library On Withdrawal",
+  "version": "1.0.0",
+  "description": "Rebuild public.db when a publication is withdrawn, which removes it (R15).",
+  "trigger": {
+    "type": "event",
+    "event": "publication.withdrawn"
+  },
+  "nodes": [
+    {
+      "id": "sync",
+      "type": "catalog.public.sync",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${event.asset_id}"
+      }
+    }
+  ],
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 10
+  },
+  "outputs": {
+    "records": "${nodes.sync.output.records}",
+    "sha256": "${nodes.sync.output.sha256}"
+  }
+}

@@ -1,0 +1,253 @@
+{
+  "id": "publish-video",
+  "name": "Publish Video",
+  "version": "1.0.0",
+  "description": "Editorial draft, the publication gate, then one child job per destination (§3.3, R14). A publisher or admin decides the gate (D7). requireApproval false publishes nothing: the gate cannot be lifted in this version (I143).",
+  "inputs": {
+    "assetId": {
+      "type": "string",
+      "required": true
+    },
+    "destinations": {
+      "type": "array",
+      "required": true
+    },
+    "requireApproval": {
+      "type": "boolean",
+      "default": true,
+      "description": "False publishes nothing (I143)."
+    },
+    "visibility": {
+      "type": "string",
+      "default": "public"
+    },
+    "prompt": {
+      "type": "string",
+      "description": "Hint for the editorial draft."
+    }
+  },
+  "nodes": [
+    {
+      "id": "asset",
+      "type": "catalog.get",
+      "typeVersion": 1,
+      "parameters": {
+        "id": "${inputs.assetId}"
+      }
+    },
+    {
+      "id": "gate_required",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "inputs.requireApproval"
+      }
+    },
+    {
+      "id": "editorial",
+      "type": "ai.editorial",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "prompt": "${inputs.prompt}"
+      }
+    },
+    {
+      "id": "draft_is_new",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.asset.output.status != 'published' && has(nodes.editorial.output.generated) && nodes.editorial.output.generated"
+      }
+    },
+    {
+      "id": "apply_draft",
+      "type": "catalog.update_metadata",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "title": "${nodes.editorial.output.title}",
+        "description": "${nodes.editorial.output.description}",
+        "tags": "${nodes.editorial.output.tags}"
+      }
+    },
+    {
+      "id": "needs_review",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.asset.output.status in ['ready_for_clipping', 'rejected', 'withdrawn']"
+      }
+    },
+    {
+      "id": "to_review",
+      "type": "catalog.set_status",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "status": "editorial_review",
+        "reason": "publication requested"
+      }
+    },
+    {
+      "id": "ready_for_gate",
+      "type": "flow.merge",
+      "typeVersion": 1,
+      "parameters": {
+        "mode": "all"
+      }
+    },
+    {
+      "id": "approve_publication",
+      "type": "approval.request",
+      "typeVersion": 1,
+      "parameters": {
+        "kind": "publication",
+        "approvers": [
+          "publisher"
+        ],
+        "assetId": "${inputs.assetId}",
+        "version": "${nodes.asset.output.current_version}",
+        "evidence": {
+          "title": "${nodes.editorial.output.title}",
+          "description": "${nodes.editorial.output.description}",
+          "tags": "${nodes.editorial.output.tags}",
+          "destinations": "${inputs.destinations}",
+          "visibility": "${inputs.visibility}"
+        },
+        "summary": "${nodes.editorial.output.title}"
+      }
+    },
+    {
+      "id": "approved",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.approve_publication.output.decision == 'approved'"
+      }
+    },
+    {
+      "id": "not_yet_published",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.asset.output.status != 'published'"
+      }
+    },
+    {
+      "id": "set_approved",
+      "type": "catalog.set_status",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "status": "approved",
+        "reason": "publication approved"
+      }
+    },
+    {
+      "id": "ready_to_publish",
+      "type": "flow.merge",
+      "typeVersion": 1,
+      "parameters": {
+        "mode": "all"
+      }
+    },
+    {
+      "id": "each_destination",
+      "type": "flow.foreach",
+      "typeVersion": 1,
+      "parameters": {
+        "items": "${inputs.destinations}",
+        "workflow": "publish-one",
+        "itemInput": "destination",
+        "inputs": {
+          "assetId": "${inputs.assetId}",
+          "visibility": "${inputs.visibility}",
+          "approvalId": "${nodes.approve_publication.output.approval_id}",
+          "title": "${nodes.editorial.output.title}",
+          "description": "${nodes.editorial.output.description}",
+          "tags": "${nodes.editorial.output.tags}"
+        },
+        "concurrency": 2,
+        "maxItems": 20
+      }
+    },
+    {
+      "id": "not_approved",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.approve_publication.output.decision != 'approved' && nodes.asset.output.status != 'published'"
+      }
+    },
+    {
+      "id": "set_rejected",
+      "type": "catalog.set_status",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "status": "rejected",
+        "reason": "publication not approved"
+      }
+    }
+  ],
+  "connections": {
+    "asset": [
+      "gate_required"
+    ],
+    "gate_required": [
+      "editorial",
+      "needs_review"
+    ],
+    "editorial": [
+      "draft_is_new",
+      "ready_for_gate"
+    ],
+    "draft_is_new": [
+      "apply_draft"
+    ],
+    "apply_draft": [
+      "ready_for_gate"
+    ],
+    "needs_review": [
+      "to_review"
+    ],
+    "to_review": [
+      "ready_for_gate"
+    ],
+    "ready_for_gate": [
+      "approve_publication"
+    ],
+    "approve_publication": [
+      "approved",
+      "not_approved"
+    ],
+    "approved": [
+      "not_yet_published",
+      "ready_to_publish"
+    ],
+    "not_yet_published": [
+      "set_approved"
+    ],
+    "set_approved": [
+      "ready_to_publish"
+    ],
+    "ready_to_publish": [
+      "each_destination"
+    ],
+    "not_approved": [
+      "set_rejected"
+    ]
+  },
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 5,
+    "resumeOnFailure": true,
+    "saveExecutionProgress": true
+  },
+  "outputs": {
+    "decision": "${nodes.approve_publication.output.decision}",
+    "approval_id": "${nodes.approve_publication.output.approval_id}",
+    "publications": "${nodes.each_destination.output.results}"
+  }
+}

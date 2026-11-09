@@ -1,0 +1,41 @@
+{
+  "id": "verify-storage",
+  "name": "Verify Storage",
+  "version": "1.0.0",
+  "description": "Periodic verification of working masters (§2.5, D42). A missing or corrupted master sets master_available false and the asset leaves create-clip, with no automatic restoration.",
+  "trigger": {
+    "type": "schedule",
+    "every": "24h"
+  },
+  "nodes": [
+    {
+      "id": "list",
+      "type": "catalog.list",
+      "typeVersion": 1,
+      "parameters": {
+        "limit": 1000
+      }
+    },
+    {
+      "id": "each",
+      "type": "flow.foreach",
+      "typeVersion": 1,
+      "parameters": {
+        "items": "${nodes.list.output.items}",
+        "workflow": "verify-asset",
+        "itemInput": "asset",
+        "concurrency": 2,
+        "maxItems": 1000
+      }
+    }
+  ],
+  "connections": {
+    "list": [
+      "each"
+    ]
+  },
+  "settings": {
+    "retry": 2,
+    "retryBackoffSeconds": 30
+  }
+}

@@ -1,0 +1,476 @@
+{
+  "id": "ingest-original",
+  "name": "Ingest Original",
+  "version": "1.0.0",
+  "description": "Receive an original, protect the raw file, generate working versions, extract knowledge, index it and leave it ready for clips (§3.1). External catalogs are not part of it: tenants that enable MediaCMS override this file (D24, R11).",
+  "inputs": {
+    "file": {
+      "type": "file",
+      "required": true,
+      "description": "server:, upload:, storage:// or import: reference (R20)."
+    },
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "category": {
+      "type": "string",
+      "default": "other",
+      "description": "Content category (§2.2)."
+    },
+    "description": {
+      "type": "string"
+    },
+    "language": {
+      "type": "string",
+      "description": "Known language; empty detects."
+    },
+    "collection": {
+      "type": "string"
+    }
+  },
+  "nodes": [
+    {
+      "id": "register",
+      "type": "catalog.register",
+      "typeVersion": 1,
+      "parameters": {
+        "kind": "original",
+        "title": "${inputs.title}",
+        "category": "${inputs.category}",
+        "description": "${inputs.description}",
+        "language": "${inputs.language}",
+        "collection": "${inputs.collection}"
+      }
+    },
+    {
+      "id": "start",
+      "type": "catalog.set_status",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "status": "ingesting"
+      }
+    },
+    {
+      "id": "probe",
+      "type": "video.probe",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${inputs.file}"
+      }
+    },
+    {
+      "id": "backup",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "archive",
+        "source": "${inputs.file}",
+        "key": "${nodes.register.output.key_prefix}/original.${nodes.probe.output.ext}",
+        "verifyChecksum": true
+      }
+    },
+    {
+      "id": "record_backup",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "purpose": "source_original",
+        "object": "${nodes.backup.output}"
+      }
+    },
+    {
+      "id": "backup_verified",
+      "type": "event.emit",
+      "typeVersion": 1,
+      "parameters": {
+        "type": "storage.backup.verified",
+        "assetId": "${nodes.register.output.id}",
+        "payload": {
+          "role": "archive",
+          "sha256": "${nodes.backup.output.sha256}"
+        }
+      }
+    },
+    {
+      "id": "compress",
+      "type": "video.transcode",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${inputs.file}",
+        "profile": "auto:master"
+      }
+    },
+    {
+      "id": "store_master",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "master",
+        "source": "${nodes.compress.output.file}",
+        "key": "${nodes.register.output.key_prefix}/master.mp4",
+        "verifyChecksum": true
+      }
+    },
+    {
+      "id": "record_master",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "purpose": "working_master",
+        "object": "${nodes.store_master.output}"
+      }
+    },
+    {
+      "id": "proxy",
+      "type": "video.transcode",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.compress.output.file}",
+        "profile": "proxy-720p"
+      }
+    },
+    {
+      "id": "store_proxy",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "proxy",
+        "source": "${nodes.proxy.output.file}",
+        "key": "${nodes.register.output.key_prefix}/proxy.mp4",
+        "verifyChecksum": true
+      }
+    },
+    {
+      "id": "record_proxy",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "purpose": "proxy",
+        "object": "${nodes.store_proxy.output}"
+      }
+    },
+    {
+      "id": "thumbnail",
+      "type": "video.thumbnail",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.compress.output.file}"
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "store_thumbnail",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "proxy",
+        "source": "${nodes.thumbnail.output.file}",
+        "key": "${nodes.register.output.key_prefix}/thumbnail.jpg",
+        "contentType": "image/jpeg"
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "record_thumbnail",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "purpose": "thumbnail",
+        "object": "${nodes.store_thumbnail.output}"
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "audio",
+      "type": "audio.extract",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.store_master.output.uri}",
+        "profile": "speech-opus"
+      }
+    },
+    {
+      "id": "timeline",
+      "type": "video.validate_timeline",
+      "typeVersion": 1,
+      "parameters": {
+        "reference": "${inputs.file}",
+        "candidates": [
+          "${nodes.compress.output.file}",
+          "${nodes.proxy.output.file}",
+          "${nodes.audio.output.file}"
+        ]
+      }
+    },
+    {
+      "id": "transcribe",
+      "type": "ai.transcribe",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.audio.output.file}",
+        "assetId": "${nodes.register.output.id}",
+        "language": "${inputs.language}",
+        "wordTimestamps": true
+      }
+    },
+    {
+      "id": "analyze",
+      "type": "ai.analyze",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "transcript": "${nodes.transcribe.output.transcript}"
+      }
+    },
+    {
+      "id": "embed",
+      "type": "ai.embed",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "transcript": "${nodes.transcribe.output.transcript}",
+        "analysis": "${nodes.analyze.output}"
+      }
+    },
+    {
+      "id": "index",
+      "type": "ai.index",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "transcript": "${nodes.transcribe.output.transcript}",
+        "analysis": "${nodes.analyze.output}",
+        "embeddings": "${nodes.embed.output}"
+      }
+    },
+    {
+      "id": "export_transcript",
+      "type": "ai.export_transcript",
+      "typeVersion": 1,
+      "parameters": {
+        "transcript": "${nodes.transcribe.output.transcript}",
+        "formats": [
+          "json",
+          "srt",
+          "vtt"
+        ]
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "store_transcript",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "master",
+        "source": "${nodes.export_transcript.output.files.json.file}",
+        "key": "${nodes.register.output.key_prefix}/transcript.json"
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "record_transcript",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "purpose": "transcript",
+        "name": "json",
+        "object": "${nodes.store_transcript.output}"
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "store_captions",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "master",
+        "source": "${nodes.export_transcript.output.files.srt.file}",
+        "key": "${nodes.register.output.key_prefix}/transcript.srt"
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "record_captions",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "purpose": "captions",
+        "name": "srt",
+        "object": "${nodes.store_captions.output}"
+      },
+      "continueOnFailure": true
+    },
+    {
+      "id": "provenance",
+      "type": "catalog.record_provenance",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "version": "${nodes.register.output.version}",
+        "inputs": {
+          "raw": "${nodes.backup.output.sha256}"
+        },
+        "outputs": {
+          "master": "${nodes.store_master.output.sha256}",
+          "proxy": "${nodes.store_proxy.output.sha256}"
+        },
+        "profiles": [
+          "${nodes.compress.output.profile}",
+          "${nodes.proxy.output.profile}"
+        ],
+        "tools": {
+          "ffmpeg": "${nodes.compress.output.ffmpeg_version}",
+          "asr": "${nodes.transcribe.output.engine}",
+          "embeddings": "${nodes.index.output.embedding_model}"
+        }
+      }
+    },
+    {
+      "id": "flags",
+      "type": "catalog.set_flags",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}",
+        "masterAvailable": "${nodes.store_master.output.verified}",
+        "backupVerified": "${nodes.backup.output.verified}",
+        "proxyAvailable": "${nodes.store_proxy.output.verified}",
+        "timelineValidated": "${nodes.timeline.output.valid}",
+        "durationSeconds": "${nodes.compress.output.duration_seconds}"
+      }
+    },
+    {
+      "id": "ready",
+      "type": "catalog.mark_ready",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${nodes.register.output.id}"
+      }
+    },
+    {
+      "id": "release",
+      "type": "catalog.release_input",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${inputs.file}"
+      },
+      "continueOnFailure": true
+    }
+  ],
+  "connections": {
+    "register": [
+      "start"
+    ],
+    "start": [
+      "probe",
+      "compress"
+    ],
+    "probe": [
+      "backup"
+    ],
+    "backup": [
+      "record_backup"
+    ],
+    "record_backup": [
+      "backup_verified",
+      "provenance"
+    ],
+    "backup_verified": [
+      "flags"
+    ],
+    "compress": [
+      "store_master",
+      "proxy",
+      "thumbnail"
+    ],
+    "store_master": [
+      "record_master",
+      "audio"
+    ],
+    "record_master": [
+      "provenance"
+    ],
+    "proxy": [
+      "store_proxy",
+      "timeline"
+    ],
+    "store_proxy": [
+      "record_proxy"
+    ],
+    "record_proxy": [
+      "provenance"
+    ],
+    "thumbnail": [
+      "store_thumbnail"
+    ],
+    "store_thumbnail": [
+      "record_thumbnail"
+    ],
+    "audio": [
+      "timeline",
+      "transcribe"
+    ],
+    "timeline": [
+      "flags"
+    ],
+    "transcribe": [
+      "analyze"
+    ],
+    "analyze": [
+      "embed"
+    ],
+    "embed": [
+      "index"
+    ],
+    "index": [
+      "provenance",
+      "export_transcript"
+    ],
+    "export_transcript": [
+      "store_transcript",
+      "store_captions"
+    ],
+    "store_transcript": [
+      "record_transcript"
+    ],
+    "store_captions": [
+      "record_captions"
+    ],
+    "provenance": [
+      "flags"
+    ],
+    "flags": [
+      "ready"
+    ],
+    "ready": [
+      "release"
+    ]
+  },
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 5,
+    "resumeOnFailure": true,
+    "saveExecutionProgress": true,
+    "assetStatusOnFailure": "ingest_failed"
+  },
+  "outputs": {
+    "asset_id": "${nodes.register.output.id}",
+    "version": "${nodes.register.output.version}",
+    "status": "${nodes.ready.output.status}"
+  }
+}

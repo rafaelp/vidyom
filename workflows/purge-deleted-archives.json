@@ -1,0 +1,41 @@
+{
+  "id": "purge-deleted-archives",
+  "name": "Purge Deleted Archives",
+  "version": "1.0.0",
+  "description": "Remove the archive copies of deleted assets once the archive's minimum storage duration ended (D17). Until then they stay inaccessible.",
+  "trigger": {
+    "type": "schedule",
+    "every": "24h"
+  },
+  "nodes": [
+    {
+      "id": "list",
+      "type": "catalog.list_purgeable_archives",
+      "typeVersion": 1,
+      "parameters": {
+        "limit": 200
+      }
+    },
+    {
+      "id": "each",
+      "type": "flow.foreach",
+      "typeVersion": 1,
+      "parameters": {
+        "items": "${nodes.list.output.items}",
+        "workflow": "purge-archive-object",
+        "itemInput": "item",
+        "concurrency": 2,
+        "maxItems": 200
+      }
+    }
+  ],
+  "connections": {
+    "list": [
+      "each"
+    ]
+  },
+  "settings": {
+    "retry": 2,
+    "retryBackoffSeconds": 30
+  }
+}

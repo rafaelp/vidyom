@@ -1,0 +1,58 @@
+{
+  "id": "publish-private-first",
+  "name": "Publish With A Private Upload First",
+  "version": "1.0.0",
+  "description": "The private-first flow of D37: upload privately to every destination, then run publish-video, whose gate decides whether visibility opens. publish.prepare adopts the records already uploaded, so nothing is sent twice.",
+  "inputs": {
+    "assetId": {
+      "type": "string",
+      "required": true
+    },
+    "destinations": {
+      "type": "array",
+      "required": true
+    },
+    "visibility": {
+      "type": "string",
+      "default": "public"
+    }
+  },
+  "nodes": [
+    {
+      "id": "upload_first",
+      "type": "flow.foreach",
+      "typeVersion": 1,
+      "parameters": {
+        "items": "${inputs.destinations}",
+        "workflow": "publish-upload-private",
+        "itemInput": "destination",
+        "inputs": {
+          "assetId": "${inputs.assetId}"
+        },
+        "concurrency": 2,
+        "maxItems": 20
+      }
+    },
+    {
+      "id": "publish",
+      "type": "workflow.execute",
+      "typeVersion": 1,
+      "parameters": {
+        "workflow": "publish-video",
+        "assetId": "${inputs.assetId}",
+        "destinations": "${inputs.destinations}",
+        "visibility": "${inputs.visibility}"
+      }
+    }
+  ],
+  "connections": {
+    "upload_first": [
+      "publish"
+    ]
+  },
+  "outputs": {
+    "decision": "${nodes.publish.output.decision}",
+    "approval_id": "${nodes.publish.output.approval_id}",
+    "publications": "${nodes.publish.output.publications}"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "id": "expire-unapproved-renders",
+  "name": "Expire Unapproved Renders",
+  "version": "1.0.0",
+  "description": "Delete from master the renders that were rejected or never approved, past their retention (D16, I45).",
+  "trigger": {
+    "type": "schedule",
+    "every": "24h"
+  },
+  "nodes": [
+    {
+      "id": "list",
+      "type": "catalog.list_expired_renders",
+      "typeVersion": 1,
+      "parameters": {}
+    },
+    {
+      "id": "each",
+      "type": "flow.foreach",
+      "typeVersion": 1,
+      "parameters": {
+        "items": "${nodes.list.output.items}",
+        "workflow": "expire-render",
+        "itemInput": "render",
+        "concurrency": 2,
+        "maxItems": 500
+      }
+    }
+  ],
+  "connections": {
+    "list": [
+      "each"
+    ]
+  },
+  "settings": {
+    "retry": 2,
+    "retryBackoffSeconds": 30
+  }
+}

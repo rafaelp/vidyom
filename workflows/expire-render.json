@@ -1,0 +1,54 @@
+{
+  "id": "expire-render",
+  "name": "Expire One Render",
+  "version": "1.0.0",
+  "description": "Remove one expired render from master and record it. Used by expire-unapproved-renders.",
+  "inputs": {
+    "render": {
+      "type": "object",
+      "required": true,
+      "description": "An item of catalog.list_expired_renders."
+    }
+  },
+  "nodes": [
+    {
+      "id": "delete_master",
+      "type": "storage.delete",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${inputs.render.master_uri}"
+      }
+    },
+    {
+      "id": "flags",
+      "type": "catalog.set_flags",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.render.asset_id}",
+        "masterAvailable": false
+      }
+    },
+    {
+      "id": "status",
+      "type": "catalog.set_status",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.render.asset_id}",
+        "status": "archived_only",
+        "reason": "unapproved render expired"
+      }
+    }
+  ],
+  "connections": {
+    "delete_master": [
+      "flags"
+    ],
+    "flags": [
+      "status"
+    ]
+  },
+  "settings": {
+    "retry": 2,
+    "retryBackoffSeconds": 30
+  }
+}

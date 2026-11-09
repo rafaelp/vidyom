@@ -1,0 +1,123 @@
+{
+  "id": "publish-one",
+  "name": "Publish To One Destination",
+  "version": "1.0.0",
+  "description": "Prepare, upload, wait for the destination and finalize one publication (§3.3). A repeat finds the existing record and uploads nothing (§15.5).",
+  "inputs": {
+    "assetId": {
+      "type": "string",
+      "required": true
+    },
+    "destination": {
+      "type": "string",
+      "required": true
+    },
+    "version": {
+      "type": "string"
+    },
+    "visibility": {
+      "type": "string",
+      "default": "public"
+    },
+    "approvalId": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array"
+    }
+  },
+  "nodes": [
+    {
+      "id": "prepare",
+      "type": "publish.prepare",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "destination": "${inputs.destination}",
+        "version": "${inputs.version}",
+        "visibility": "${inputs.visibility}",
+        "approvalId": "${inputs.approvalId}",
+        "title": "${inputs.title}",
+        "description": "${inputs.description}",
+        "tags": "${inputs.tags}"
+      }
+    },
+    {
+      "id": "not_done",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "!(has(nodes.prepare.output.already_published) && nodes.prepare.output.already_published)"
+      }
+    },
+    {
+      "id": "upload",
+      "type": "publish.upload",
+      "typeVersion": 1,
+      "parameters": {
+        "publicationId": "${nodes.prepare.output.publication_id}"
+      }
+    },
+    {
+      "id": "await",
+      "type": "publish.await_processing",
+      "typeVersion": 1,
+      "parameters": {
+        "publicationId": "${nodes.prepare.output.publication_id}"
+      }
+    },
+    {
+      "id": "accepted",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "!(nodes.await.output.status in ['rejected_by_destination', 'failed'])"
+      }
+    },
+    {
+      "id": "finalize",
+      "type": "publish.finalize",
+      "typeVersion": 1,
+      "parameters": {
+        "publicationId": "${nodes.prepare.output.publication_id}",
+        "visibility": "${inputs.visibility}",
+        "approvalId": "${inputs.approvalId}"
+      }
+    }
+  ],
+  "connections": {
+    "prepare": [
+      "not_done"
+    ],
+    "not_done": [
+      "upload"
+    ],
+    "upload": [
+      "await"
+    ],
+    "await": [
+      "accepted"
+    ],
+    "accepted": [
+      "finalize"
+    ]
+  },
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 10,
+    "resumeOnFailure": true,
+    "saveExecutionProgress": true
+  },
+  "outputs": {
+    "publication_id": "${nodes.prepare.output.publication_id}",
+    "status": "${nodes.finalize.output.status}",
+    "remote_status": "${nodes.await.output.status}",
+    "url": "${nodes.finalize.output.url}"
+  }
+}

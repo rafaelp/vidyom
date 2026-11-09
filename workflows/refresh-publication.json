@@ -1,0 +1,32 @@
+{
+  "id": "refresh-publication",
+  "name": "Refresh Publication",
+  "version": "1.0.0",
+  "description": "Read remote state back into publication records; a change emits publication.updated (D42).",
+  "inputs": {
+    "publicationId": {
+      "type": "string"
+    },
+    "assetId": {
+      "type": "string"
+    }
+  },
+  "nodes": [
+    {
+      "id": "refresh",
+      "type": "publish.refresh",
+      "typeVersion": 1,
+      "parameters": {
+        "publicationId": "${inputs.publicationId}",
+        "assetId": "${inputs.assetId}"
+      }
+    }
+  ],
+  "settings": {
+    "retry": 2,
+    "retryBackoffSeconds": 10
+  },
+  "outputs": {
+    "publications": "${nodes.refresh.output.publications}"
+  }
+}

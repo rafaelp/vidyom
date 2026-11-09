@@ -1,0 +1,44 @@
+{
+  "id": "bulk-create-clips",
+  "name": "Bulk Create Clips",
+  "version": "1.0.0",
+  "description": "One create-clip job per prompt, each with its own selection gate (D42, D53).",
+  "inputs": {
+    "source_id": {
+      "type": "string",
+      "required": true
+    },
+    "prompts": {
+      "type": "array",
+      "required": true
+    },
+    "mode": {
+      "type": "string"
+    },
+    "destinations": {
+      "type": "array"
+    }
+  },
+  "nodes": [
+    {
+      "id": "each",
+      "type": "flow.foreach",
+      "typeVersion": 1,
+      "parameters": {
+        "items": "${inputs.prompts}",
+        "workflow": "create-clip",
+        "itemInput": "prompt",
+        "inputs": {
+          "source_id": "${inputs.source_id}",
+          "mode": "${inputs.mode}",
+          "destinations": "${inputs.destinations}"
+        },
+        "concurrency": 2,
+        "maxItems": 50
+      }
+    }
+  ],
+  "outputs": {
+    "clips": "${nodes.each.output.results}"
+  }
+}

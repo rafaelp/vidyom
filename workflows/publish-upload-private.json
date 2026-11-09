@@ -1,0 +1,59 @@
+{
+  "id": "publish-upload-private",
+  "name": "Upload Privately Before Approval",
+  "version": "1.0.0",
+  "description": "Upload to one destination as private before the gate. publish.prepare refuses unless allowPrivateUploadBeforeApproval is set (D37).",
+  "inputs": {
+    "assetId": {
+      "type": "string",
+      "required": true
+    },
+    "destination": {
+      "type": "string",
+      "required": true
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    }
+  },
+  "nodes": [
+    {
+      "id": "prepare",
+      "type": "publish.prepare",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "destination": "${inputs.destination}",
+        "visibility": "private",
+        "title": "${inputs.title}",
+        "description": "${inputs.description}"
+      }
+    },
+    {
+      "id": "upload",
+      "type": "publish.upload",
+      "typeVersion": 1,
+      "parameters": {
+        "publicationId": "${nodes.prepare.output.publication_id}"
+      }
+    }
+  ],
+  "connections": {
+    "prepare": [
+      "upload"
+    ]
+  },
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 10,
+    "resumeOnFailure": true,
+    "saveExecutionProgress": true
+  },
+  "outputs": {
+    "publication_id": "${nodes.prepare.output.publication_id}",
+    "status": "${nodes.upload.output.status}"
+  }
+}

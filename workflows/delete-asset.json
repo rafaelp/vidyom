@@ -1,0 +1,31 @@
+{
+  "id": "delete-asset",
+  "name": "Delete Asset",
+  "version": "1.0.0",
+  "description": "Controlled deletion by an admin (R16, D17). Refuses while publications are active, removes operational files and search indexes, keeps the audited fact without content and defers the archive purge to the end of its minimum storage duration.",
+  "inputs": {
+    "asset_id": {
+      "type": "string",
+      "required": true
+    }
+  },
+  "nodes": [
+    {
+      "id": "delete",
+      "type": "catalog.delete",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.asset_id}"
+      }
+    }
+  ],
+  "settings": {
+    "retry": 2,
+    "retryBackoffSeconds": 5
+  },
+  "outputs": {
+    "asset_id": "${nodes.delete.output.asset_id}",
+    "archive_purge_after": "${nodes.delete.output.archive_purge_after}",
+    "early_deletion_estimate_minor": "${nodes.delete.output.early_deletion_estimate_minor}"
+  }
+}

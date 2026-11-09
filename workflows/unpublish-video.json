@@ -1,0 +1,43 @@
+{
+  "id": "unpublish-video",
+  "name": "Withdraw Publications",
+  "version": "1.0.0",
+  "description": "Withdraw a video from one or more destinations; immediate, by a publisher or admin, and repeating is a no-op (R15, D17). publication.withdrawn then updates the public library through public-library-on-withdrawn.",
+  "inputs": {
+    "assetId": {
+      "type": "string",
+      "required": true
+    },
+    "destinations": {
+      "type": "array"
+    },
+    "all": {
+      "type": "boolean"
+    },
+    "mode": {
+      "type": "string",
+      "description": "delete or private."
+    }
+  },
+  "nodes": [
+    {
+      "id": "withdraw",
+      "type": "publish.withdraw",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.assetId}",
+        "destinations": "${inputs.destinations}",
+        "all": "${inputs.all}",
+        "mode": "${inputs.mode}"
+      }
+    }
+  ],
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 5
+  },
+  "outputs": {
+    "withdrawn": "${nodes.withdraw.output.withdrawn}",
+    "already": "${nodes.withdraw.output.already}"
+  }
+}

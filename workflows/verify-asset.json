@@ -1,0 +1,82 @@
+{
+  "id": "verify-asset",
+  "name": "Verify One Asset",
+  "version": "1.0.0",
+  "description": "Check one asset's working master and record the result in master_available. Used by verify-storage.",
+  "inputs": {
+    "asset": {
+      "type": "object",
+      "required": true,
+      "description": "An item of catalog.list."
+    }
+  },
+  "nodes": [
+    {
+      "id": "has_master",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "has(inputs.asset.working_master_uri)"
+      }
+    },
+    {
+      "id": "verify",
+      "type": "storage.verify",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${inputs.asset.working_master_uri}"
+      },
+      "continueOnFailure": true,
+      "retry": 2
+    },
+    {
+      "id": "is_ok",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.verify.status == 'completed' && nodes.verify.output.verified"
+      }
+    },
+    {
+      "id": "mark_ok",
+      "type": "catalog.set_flags",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.asset.id}",
+        "masterAvailable": true
+      }
+    },
+    {
+      "id": "is_bad",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "!(nodes.verify.status == 'completed' && nodes.verify.output.verified)"
+      }
+    },
+    {
+      "id": "mark_bad",
+      "type": "catalog.set_flags",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.asset.id}",
+        "masterAvailable": false
+      }
+    }
+  ],
+  "connections": {
+    "has_master": [
+      "verify"
+    ],
+    "verify": [
+      "is_ok",
+      "is_bad"
+    ],
+    "is_ok": [
+      "mark_ok"
+    ],
+    "is_bad": [
+      "mark_bad"
+    ]
+  }
+}

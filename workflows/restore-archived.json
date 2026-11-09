@@ -1,0 +1,184 @@
+{
+  "id": "restore-archived",
+  "name": "Restore From Archive",
+  "version": "1.0.0",
+  "description": "Administrative restoration of a working master from the archive (D42), the only workflow that reads archive, needing storage.archive.restore. The API shows the cost before starting it. An original's raw file is transcoded again; a derivative's backup already is a master. Nothing here runs automatically (§3.2 invariant).",
+  "inputs": {
+    "asset_id": {
+      "type": "string",
+      "required": true
+    },
+    "to": {
+      "type": "string",
+      "default": "master",
+      "description": "Target storage role."
+    }
+  },
+  "nodes": [
+    {
+      "id": "asset",
+      "type": "catalog.get",
+      "typeVersion": 1,
+      "parameters": {
+        "id": "${inputs.asset_id}"
+      }
+    },
+    {
+      "id": "is_original",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.asset.output.kind == 'original'"
+      }
+    },
+    {
+      "id": "fetch_raw",
+      "type": "storage.get",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.asset.output.archive_uri}",
+        "allowArchive": true
+      }
+    },
+    {
+      "id": "transcode",
+      "type": "video.transcode",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.fetch_raw.output.file}",
+        "profile": "auto:master"
+      }
+    },
+    {
+      "id": "store_transcoded",
+      "type": "storage.put",
+      "typeVersion": 1,
+      "parameters": {
+        "storage": "${inputs.to}",
+        "source": "${nodes.transcode.output.file}",
+        "key": "${nodes.asset.output.key_prefix}/master.mp4",
+        "verifyChecksum": true
+      }
+    },
+    {
+      "id": "record_transcoded",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.asset_id}",
+        "purpose": "working_master",
+        "object": "${nodes.store_transcoded.output}"
+      }
+    },
+    {
+      "id": "is_derivative",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.asset.output.kind != 'original'"
+      }
+    },
+    {
+      "id": "copy_backup",
+      "type": "storage.copy",
+      "typeVersion": 1,
+      "parameters": {
+        "source": "${nodes.asset.output.archive_uri}",
+        "storage": "${inputs.to}",
+        "key": "${nodes.asset.output.key_prefix}/master.mp4",
+        "allowArchive": true
+      }
+    },
+    {
+      "id": "record_copy",
+      "type": "catalog.record_file",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.asset_id}",
+        "purpose": "working_master",
+        "object": "${nodes.copy_backup.output}"
+      }
+    },
+    {
+      "id": "restored",
+      "type": "flow.merge",
+      "typeVersion": 1,
+      "parameters": {
+        "mode": "all"
+      }
+    },
+    {
+      "id": "flags",
+      "type": "catalog.set_flags",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.asset_id}",
+        "masterAvailable": true
+      }
+    },
+    {
+      "id": "was_archived_only",
+      "type": "flow.if",
+      "typeVersion": 1,
+      "parameters": {
+        "condition": "nodes.asset.output.status == 'archived_only'"
+      }
+    },
+    {
+      "id": "ready",
+      "type": "catalog.mark_ready",
+      "typeVersion": 1,
+      "parameters": {
+        "assetId": "${inputs.asset_id}"
+      }
+    }
+  ],
+  "connections": {
+    "asset": [
+      "is_original",
+      "is_derivative"
+    ],
+    "is_original": [
+      "fetch_raw"
+    ],
+    "fetch_raw": [
+      "transcode"
+    ],
+    "transcode": [
+      "store_transcoded"
+    ],
+    "store_transcoded": [
+      "record_transcoded"
+    ],
+    "record_transcoded": [
+      "restored"
+    ],
+    "is_derivative": [
+      "copy_backup"
+    ],
+    "copy_backup": [
+      "record_copy"
+    ],
+    "record_copy": [
+      "restored"
+    ],
+    "restored": [
+      "flags"
+    ],
+    "flags": [
+      "was_archived_only"
+    ],
+    "was_archived_only": [
+      "ready"
+    ]
+  },
+  "settings": {
+    "retry": 3,
+    "retryBackoffSeconds": 10,
+    "resumeOnFailure": true,
+    "saveExecutionProgress": true
+  },
+  "outputs": {
+    "asset_id": "${nodes.asset.output.id}"
+  }
+}
