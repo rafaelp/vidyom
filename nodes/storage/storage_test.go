@@ -136,6 +136,46 @@ func TestPutRetryRewritesADamagedObject(t *testing.T) {
 	}
 }
 
+// Without verifyChecksum the node must not call a damaged object stored either.
+func TestPutRetryWithoutVerifyStillRewritesADamagedObject(t *testing.T) {
+	h := workertest.New(t)
+	src := scratchFile(t, h, "raw.mov", "raw recording")
+	params := map[string]any{"storage": "master", "source": src, "key": "k"}
+	h.MustRun(ctx, nodeOf(t, "storage.put"), "n", params)
+	stored := filepath.Join(h.Root, "roles", "master", "acme", "k")
+	if err := os.WriteFile(stored, []byte("RAW RECORDING"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.MustRun(ctx, nodeOf(t, "storage.put"), "n", params)
+	data, err := os.ReadFile(stored)
+	if err != nil || string(data) != "raw recording" {
+		t.Fatalf("%q %v", data, err)
+	}
+}
+
+// Only scratch has origin records: a file of that name beside a server path, which
+// anyone with access to an ingest root can drop, means nothing.
+func TestPutIgnoresASidecarBesideAServerFile(t *testing.T) {
+	h := workertest.New(t)
+	root := t.TempDir()
+	h.Deps.IngestRoots = []string{root}
+	inside := filepath.Join(root, "class.mp4")
+	if err := os.WriteFile(inside, []byte("recording"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := provenance.Write(inside, provenance.Origin{Profile: "master-1080p@1", Family: "master", Role: domain.RoleMaster}); err != nil {
+		t.Fatal(err)
+	}
+	out := h.MustRun(ctx, nodeOf(t, "storage.put"), "a", map[string]any{"storage": "master", "source": "server:" + inside, "key": "a"})
+	if out.Field("profile") != "" {
+		t.Fatalf("a planted record set the profile: %+v", out.Output)
+	}
+	if err := os.WriteFile(inside+".origin.json", []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.MustRun(ctx, nodeOf(t, "storage.put"), "b", map[string]any{"storage": "master", "source": "server:" + inside, "key": "b"})
+}
+
 func TestPutReplacesDifferentContent(t *testing.T) {
 	h := workertest.New(t)
 	a := scratchFile(t, h, "a", "first")

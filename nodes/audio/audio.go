@@ -3,6 +3,7 @@ package audionodes
 import (
 	"context"
 	"math"
+	"os"
 
 	"github.com/rafaelp/vidyom/internal/contract/domain"
 	"github.com/rafaelp/vidyom/internal/contract/errs"
@@ -111,6 +112,7 @@ func (extractNode) Execute(ctx context.Context, env node.Env, in node.Input) (no
 		return node.Result{}, err
 	}
 	temp := nodeutil.TempFor(out)
+	defer func() { _ = os.Remove(temp) }()
 	args, err := ffmpeg.AudioExtractArgs(src, temp, profile)
 	if err != nil {
 		return node.Result{}, errs.Wrap(errs.CodeInternal, err, "cannot build the extraction")

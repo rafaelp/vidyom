@@ -3,6 +3,8 @@ package nodeutil
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -88,11 +90,17 @@ func Tools(ctx context.Context, tool *ffmpeg.Tool) (map[string]string, string) {
 	return map[string]string{"ffmpeg": version}, version
 }
 
-// TempFor returns the temp path an encoder writes to, in the same directory as the
-// final path, so finishing is an atomic rename and a failed run leaves nothing a
-// later node could mistake for output.
+// TempFor returns a new temp path for an encoder, in the same directory as the final
+// path, so finishing is an atomic rename and a failed run leaves nothing a later node
+// could mistake for output. The name is unique to this call: a stale attempt that
+// overlaps its successor must never write into a file the other one owns, which is
+// what -y would do on a shared name. Callers remove it when they do not publish it.
 func TempFor(path string) string {
-	return filepath.Join(filepath.Dir(path), ".tmp-"+filepath.Base(path))
+	var random [8]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		panic(err) // crypto/rand does not fail on a supported platform
+	}
+	return filepath.Join(filepath.Dir(path), ".tmp-"+hex.EncodeToString(random[:])+"-"+filepath.Base(path))
 }
 
 // Publish moves a finished temp file into place.

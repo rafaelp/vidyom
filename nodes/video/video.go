@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/rafaelp/vidyom/internal/contract/domain"
@@ -176,6 +178,7 @@ func (transcodeNode) Execute(ctx context.Context, env node.Env, in node.Input) (
 		return node.Result{}, err
 	}
 	temp := nodeutil.TempFor(out)
+	defer func() { _ = os.Remove(temp) }()
 	args, err := ffmpeg.TranscodeArgs(src, temp, profile)
 	if err != nil {
 		return node.Result{}, errs.Wrap(errs.CodeInternal, err, "cannot build the encode")
@@ -199,7 +202,11 @@ func (transcodeNode) Execute(ctx context.Context, env node.Env, in node.Input) (
 	if err := nodeutil.Publish(temp, out); err != nil {
 		return node.Result{}, err
 	}
-	if err := provenance.Write(out, provenance.Origin{SHA256: sum, Profile: profile.Ref(), Family: profile.Family()}); err != nil {
+	family, err := outputFamily(p.Source, input, profile)
+	if err != nil {
+		return node.Result{}, err
+	}
+	if err := provenance.Write(out, provenance.Origin{SHA256: sum, Profile: profile.Ref(), Family: family}); err != nil {
 		return node.Result{}, errs.Wrap(errs.CodeUnavailable, err, "cannot record a file's origin")
 	}
 	tools, version := nodeutil.Tools(ctx, t)
@@ -220,8 +227,43 @@ func (transcodeNode) Execute(ctx context.Context, env node.Env, in node.Input) (
 	return result, nil
 }
 
+// outputFamily says what an encode's output counts as. A file derived from a proxy
+// stays proxy-derived whatever profile re-encoded it, or a proxy could pass as a
+// master through one transcode and reach ASR on the proxy's quality (D56).
+func outputFamily(source string, input node.LocalInput, profile profiles.Profile) (string, error) {
+	if input.Role == domain.RoleProxy {
+		return profiles.FamilyProxy, nil
+	}
+	uri, err := domain.ParseInputURI(source)
+	if err != nil {
+		return "", errs.Wrap(errs.CodeInvalidArgument, err, "invalid source reference")
+	}
+	if uri.Kind == domain.URIScratch {
+		origin, known, err := provenance.Read(input.Path)
+		if err != nil {
+			return "", errs.Wrap(errs.CodeFailedPrecondition, err, "a scratch file's origin record is unreadable")
+		}
+		if known && (origin.Family == profiles.FamilyProxy || origin.Role == domain.RoleProxy) {
+			return profiles.FamilyProxy, nil
+		}
+	}
+	return profile.Family(), nil
+}
+
+// timelineError rejects a duration, and says which. The message is the part that
+// reaches the job's record, so the figures travel in it as well as in the details.
 func timelineError(reference, tolerance float64, durations map[string]float64) error {
-	return errs.New(errs.CodeValidationFailed, fmt.Sprintf("a file left the timeline tolerance of %.3f s", tolerance)).
+	names := make([]string, 0, len(durations))
+	for name := range durations {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, fmt.Sprintf("%s is %.3f s", path.Base(name), durations[name]))
+	}
+	message := fmt.Sprintf("a file left the timeline tolerance of %.3f s: the reference is %.3f s, %s", tolerance, reference, strings.Join(parts, ", "))
+	return errs.New(errs.CodeValidationFailed, message).
 		With("reference_duration", reference).
 		With("tolerance_seconds", tolerance).
 		With("durations", durations)
@@ -303,6 +345,16 @@ type segment struct {
 	EndSeconds    float64 `json:"end_seconds"`
 }
 
+// segmentLimit is how far a render can reach: a clip needs video, so where the video
+// stream ends before the audio, the video's end is the limit. Containers that report
+// no stream duration fall back to the file's.
+func segmentLimit(src ffmpeg.Info) float64 {
+	if src.VideoDuration > 0 {
+		return math.Min(src.DurationSeconds, src.VideoDuration)
+	}
+	return src.DurationSeconds
+}
+
 // checkSegments validates intervals against the source. Clamping within the tolerance
 // is rounding, while anything further out changes what was approved, so it fails.
 func checkSegments(segments []segment, duration, tolerance float64) ([]ffmpeg.Segment, error) {
@@ -350,6 +402,7 @@ func renderSegments(ctx context.Context, env node.Env, src ffmpeg.Info, segments
 		return renderOutput{}, "", err
 	}
 	temp := nodeutil.TempFor(out)
+	defer func() { _ = os.Remove(temp) }()
 	args, err := ffmpeg.SegmentArgs(src, segments, temp, enc)
 	if err != nil {
 		return renderOutput{}, "", errs.Wrap(errs.CodeInternal, err, "cannot build the render")
@@ -365,6 +418,9 @@ func renderSegments(ctx context.Context, env node.Env, src ffmpeg.Info, segments
 	tolerance := math.Max(0.1, float64(len(segments))/math.Max(src.FPS, 1))
 	if math.Abs(info.DurationSeconds-length) > tolerance {
 		return renderOutput{}, "", timelineError(length, tolerance, map[string]float64{name: info.DurationSeconds})
+	}
+	if info.VideoDuration > 0 && math.Abs(info.VideoDuration-length) > tolerance {
+		return renderOutput{}, "", timelineError(length, tolerance, map[string]float64{name + " video": info.VideoDuration})
 	}
 	sum, size, err := provenance.HashFile(ctx, temp)
 	if err != nil {
@@ -414,7 +470,7 @@ func (previewNode) Execute(ctx context.Context, env node.Env, in node.Input) (no
 	if err != nil {
 		return node.Result{}, nodeutil.ProbeError(err)
 	}
-	segments, err := checkSegments(p.Segments, src.DurationSeconds, ffmpeg.Tolerance(src.FPS))
+	segments, err := checkSegments(p.Segments, segmentLimit(src), ffmpeg.Tolerance(src.FPS))
 	if err != nil {
 		return node.Result{}, err
 	}
@@ -506,7 +562,7 @@ func (cutNode) Execute(ctx context.Context, env node.Env, in node.Input) (node.R
 	if profile.AudioOnly() {
 		return node.Result{}, errs.Newf(errs.CodeInvalidArgument, "profile %s is audio-only", profile.Ref())
 	}
-	segments, err := checkSegments(p.Segments, src.DurationSeconds, ffmpeg.Tolerance(src.FPS))
+	segments, err := checkSegments(p.Segments, segmentLimit(src), ffmpeg.Tolerance(src.FPS))
 	if err != nil {
 		return node.Result{}, err
 	}
@@ -577,12 +633,13 @@ func (thumbnailNode) Execute(ctx context.Context, env node.Env, in node.Input) (
 		at = *p.AtSeconds
 	}
 	frame := 1 / math.Max(src.FPS, 1)
-	at = math.Max(0, math.Min(at, math.Max(0, src.DurationSeconds-2*frame)))
+	at = math.Max(0, math.Min(at, math.Max(0, segmentLimit(src)-2*frame)))
 	out, err := env.Scratch().Path("thumbnail.jpg")
 	if err != nil {
 		return node.Result{}, err
 	}
 	temp := nodeutil.TempFor(out)
+	defer func() { _ = os.Remove(temp) }()
 	args, err := ffmpeg.ThumbnailArgs(src, at, temp)
 	if err != nil {
 		return node.Result{}, errs.Wrap(errs.CodeInternal, err, "cannot build the thumbnail")

@@ -138,9 +138,9 @@ func (n putNode) Execute(ctx context.Context, env node.Env, in node.Input) (node
 	if input.SHA256 != "" && input.SHA256 != sum {
 		return node.Result{}, node.Transient(errs.New(errs.CodeUnavailable, "the source changed while it was read"))
 	}
-	origin, _, err := provenance.Read(input.Path)
+	profile, err := originProfile(p.Source, input.Path)
 	if err != nil {
-		return node.Result{}, ioError(err)
+		return node.Result{}, err
 	}
 	storage, err := env.Storage(ctx, p.Storage)
 	if err != nil {
@@ -151,14 +151,17 @@ func (n putNode) Execute(ctx context.Context, env node.Env, in node.Input) (node
 		return node.Result{}, nodeutil.Classify(err)
 	}
 	if err == nil && existing.SHA256 == sum && existing.SizeBytes == size {
-		// With verifyChecksum the record alone is not enough: this asks the driver, which
-		// on gcs still reads nothing (I186). A failed check writes the object again.
+		// The record is not enough, because bytes can change under it: this asks the
+		// driver, which on gcs still reads nothing (I186). A mismatch writes the object
+		// again, and a driver that cannot verify is believed only if nobody asked it to.
 		res, verifyErr := storage.Verify(ctx, p.Key, sum)
+		intact := verifyErr == nil && res.OK
+		unverifiable := errs.IsCode(verifyErr, errs.CodeCapabilityUnsupported)
 		switch {
-		case !p.VerifyChecksum, verifyErr == nil && res.OK:
+		case intact, unverifiable && !p.VerifyChecksum:
 			env.Logger().Info("the object is already stored with this checksum", "key", p.Key)
-			return node.JSONResult(stored(p.Storage, existing, p.VerifyChecksum, origin.Profile))
-		case verifyErr != nil && !errs.IsCode(verifyErr, errs.CodeCapabilityUnsupported):
+			return node.JSONResult(stored(p.Storage, existing, p.VerifyChecksum, profile))
+		case verifyErr != nil && !unverifiable:
 			return node.Result{}, nodeutil.Classify(verifyErr)
 		}
 	}
@@ -194,7 +197,25 @@ func (n putNode) Execute(ctx context.Context, env node.Env, in node.Input) (node
 			return node.Result{}, node.Transient(errs.New(errs.CodeUnavailable, "the stored object does not match its checksum"))
 		}
 	}
-	return node.JSONResult(stored(p.Storage, info, p.VerifyChecksum, origin.Profile))
+	return node.JSONResult(stored(p.Storage, info, p.VerifyChecksum, profile))
+}
+
+// originProfile reads the profile a scratch source was made with. Only scratch has
+// origin records: beside a server: or upload: file, a file of that name is just a
+// file someone put there, and it must not decide what a backup records (I185).
+func originProfile(source, path string) (string, error) {
+	uri, err := domain.ParseInputURI(source)
+	if err != nil {
+		return "", errs.Wrap(errs.CodeInvalidArgument, err, "invalid source reference")
+	}
+	if uri.Kind != domain.URIScratch {
+		return "", nil
+	}
+	origin, _, err := provenance.Read(path)
+	if err != nil {
+		return "", errs.Wrap(errs.CodeFailedPrecondition, err, "a scratch file's origin record is unreadable")
+	}
+	return origin.Profile, nil
 }
 
 // ioError classifies a failed local file operation: a full disk or a lost volume can

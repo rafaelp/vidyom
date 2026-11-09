@@ -110,6 +110,31 @@ func TestExtractRefusesEverythingElse(t *testing.T) {
 	}
 }
 
+// D56: one re-encode must not launder a proxy into a master.
+func TestExtractRefusesAProxyReencodedToAMasterProfile(t *testing.T) {
+	h := workertest.New(t)
+	root := t.TempDir()
+	h.Deps.IngestRoots = []string{root}
+	raw := fixture.Video(t, root, fixture.Spec{Seconds: 1})
+	h.PutFile(domain.RoleProxy, "p.mp4", raw)
+	transcode := nodeOf(t, "video.transcode")
+	extract := nodeOf(t, "audio.extract")
+
+	fromStored := h.MustRun(ctx, transcode, "from_stored", map[string]any{"source": "storage://proxy/p.mp4", "profile": "master-1080p"})
+	if _, err := h.Run(ctx, extract, "a1", map[string]any{"source": fromStored.Field("file")}); !errs.IsCode(err, errs.CodeForbiddenStorageRole) {
+		t.Errorf("from a stored proxy: %v", err)
+	}
+	scratchProxy := h.MustRun(ctx, transcode, "proxy", map[string]any{"source": "server:" + raw, "profile": "proxy-720p"})
+	fromScratch := h.MustRun(ctx, transcode, "from_scratch", map[string]any{"source": scratchProxy.Field("file"), "profile": "master-1080p"})
+	if _, err := h.Run(ctx, extract, "a2", map[string]any{"source": fromScratch.Field("file")}); !errs.IsCode(err, errs.CodeForbiddenStorageRole) {
+		t.Errorf("from a scratch proxy: %v", err)
+	}
+	twice := h.MustRun(ctx, transcode, "twice", map[string]any{"source": fromScratch.Field("file"), "profile": "master-1080p"})
+	if _, err := h.Run(ctx, extract, "a3", map[string]any{"source": twice.Field("file")}); !errs.IsCode(err, errs.CodeForbiddenStorageRole) {
+		t.Errorf("after two re-encodes: %v", err)
+	}
+}
+
 func TestExtractWithoutAudioFailsPlainly(t *testing.T) {
 	h := workertest.New(t)
 	h.PutFile(domain.RoleMaster, "silent.mp4", fixture.Video(t, t.TempDir(), fixture.Spec{Seconds: 1, NoAudio: true}))

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/config"
 	"github.com/rafaelp/vidyom/internal/contract/domain"
@@ -15,6 +16,7 @@ import (
 	"github.com/rafaelp/vidyom/internal/contract/node"
 	"github.com/rafaelp/vidyom/internal/workers/ffmpeg"
 	"github.com/rafaelp/vidyom/internal/workers/ffmpeg/fixture"
+	"github.com/rafaelp/vidyom/internal/workers/nodeutil"
 	"github.com/rafaelp/vidyom/internal/workers/provenance"
 	"github.com/rafaelp/vidyom/internal/workers/workertest"
 	storagenodes "github.com/rafaelp/vidyom/nodes/storage"
@@ -259,9 +261,36 @@ func TestFailedRunLeavesNoOutput(t *testing.T) {
 	if err == nil {
 		t.Fatal("garbage encoded")
 	}
-	matches, _ := filepath.Glob(filepath.Join(h.Deps.ScratchDir, "acme", string(h.Job), "bad", "*.mp4"))
-	if len(matches) != 0 {
-		t.Fatalf("output left behind: %v", matches)
+	assertNoOutput(t, h, "bad")
+}
+
+// assertNoOutput fails if a node's scratch directory holds an output or a temp file.
+func assertNoOutput(t *testing.T, h *workertest.Harness, nodeID string) {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(h.Deps.ScratchDir, "acme", string(h.Job), nodeID))
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".input-") {
+			continue // the task's inputs, removed when its environment closes
+		}
+		t.Fatalf("left behind in %s: %s", nodeID, entry.Name())
+	}
+}
+
+// Each encode has its own temp file, so a stale attempt cannot write into a successor's.
+func TestTempNamesAreUniquePerRun(t *testing.T) {
+	a := nodeutil.TempFor("/scratch/acme/job/node/clip.mp4")
+	b := nodeutil.TempFor("/scratch/acme/job/node/clip.mp4")
+	if a == b {
+		t.Fatalf("both runs got %s", a)
+	}
+	if filepath.Dir(a) != "/scratch/acme/job/node" || !strings.HasSuffix(a, "-clip.mp4") {
+		t.Fatalf("%s", a)
 	}
 }
 
@@ -305,6 +334,13 @@ func TestValidateTimeline(t *testing.T) {
 	public := errs.Public(err)
 	if public.Details["tolerance_seconds"] != 0.1 || public.Details["reference_duration"] == nil || public.Details["durations"] == nil {
 		t.Fatalf("no durations in the error: %+v", public.Details)
+	}
+	// Details do not reach the job's record, so the figures must be in the message.
+	if !strings.Contains(public.Message, "2.0") || !strings.Contains(public.Message, "1.5") {
+		t.Fatalf("no durations in the message: %q", public.Message)
+	}
+	if strings.Contains(public.Message, root) {
+		t.Fatalf("a path reached the message: %q", public.Message)
 	}
 }
 
@@ -499,6 +535,35 @@ func manySegments(n int) []map[string]any {
 	return out
 }
 
+// A clip needs video. Where the video stream ends before the audio, the segment is
+// refused rather than rendered as audio over nothing or failing inside FFmpeg.
+func TestSegmentsMustFallInsideTheVideoStream(t *testing.T) {
+	h := workertest.New(t)
+	video := fixture.Generate(t, t.TempDir(), "short-video.mp4",
+		"-f", "lavfi", "-i", "testsrc2=size=320x240:rate=30:d=3",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:d=6",
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "64k")
+	h.PutFile(domain.RoleMaster, "m.mp4", video)
+	h.PutFile(domain.RoleProxy, "p.mp4", video)
+	cut := nodeOf(t, "video.cut")
+	for name, segments := range map[string][]map[string]any{
+		"past the video":     seg(4, 5),
+		"crossing its end":   seg(2, 4),
+		"second one past it": {{"start_seconds": 1.0, "end_seconds": 2.0}, {"start_seconds": 4.0, "end_seconds": 5.0}},
+	} {
+		if _, err := h.Run(ctx, cut, "render", map[string]any{"source": "storage://master/m.mp4", "segments": segments}); !errs.IsCode(err, errs.CodeInvalidArgument) {
+			t.Errorf("cut %s: %v", name, err)
+		}
+	}
+	if _, err := h.Run(ctx, nodeOf(t, "video.preview"), "preview", map[string]any{"source": "storage://proxy/p.mp4", "segments": seg(4, 5)}); !errs.IsCode(err, errs.CodeInvalidArgument) {
+		t.Errorf("preview: %v", err)
+	}
+	out := h.MustRun(ctx, cut, "ok", map[string]any{"source": "storage://master/m.mp4", "segments": seg(1, 2)})
+	if math.Abs(out.Number("duration_seconds")-1) > 0.1 {
+		t.Fatalf("%+v", out.Output)
+	}
+}
+
 func TestCutAssemblesSeveralSegments(t *testing.T) {
 	h := clipHarness(t, 4)
 	out := h.MustRun(ctx, nodeOf(t, "video.cut"), "render", map[string]any{
@@ -591,8 +656,40 @@ func TestCancellationStopsAnEncode(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("a cancelled encode reported success")
 	}
-	matches, _ := filepath.Glob(filepath.Join(h.Deps.ScratchDir, "acme", string(h.Job), "master", "master-1080p.mp4"))
-	if len(matches) != 0 {
-		t.Fatalf("a final output appeared: %v", matches)
+	assertNoOutput(t, h, "master")
+}
+
+// A failure after ffmpeg started must clean its unique temp file too, or retries would
+// pile them up until the job ended.
+func TestCancelledEncodeLeavesNoTempFile(t *testing.T) {
+	h := workertest.New(t)
+	root := withServerRoot(t, h)
+	raw := fixture.Video(t, root, fixture.Spec{Seconds: 30, Width: 1280, Height: 720})
+	cancelled, cancel := context.WithCancel(ctx)
+	defer cancel()
+	env := h.Env("slow", "video.transcode")
+	n := nodeOf(t, "video.transcode")
+	done := make(chan error, 1)
+	go func() {
+		_, err := n.Execute(cancelled, env, node.Input{
+			Parameters: []byte(`{"source":"server:` + raw + `","profile":"master-1080p"}`),
+		})
+		done <- err
+	}()
+	dir := filepath.Join(h.Deps.ScratchDir, "acme", string(h.Job), "slow")
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		if matches, _ := filepath.Glob(filepath.Join(dir, ".tmp-*")); len(matches) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the encode never started writing")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
+	cancel()
+	if err := <-done; err == nil {
+		t.Fatal("a cancelled encode reported success")
+	}
+	assertNoOutput(t, h, "slow")
 }
