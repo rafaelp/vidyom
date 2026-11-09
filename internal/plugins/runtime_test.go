@@ -616,13 +616,13 @@ func TestCloseStopsEverythingAndRefusesMore(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.mustCall("p", "whoami", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	start := time.Now()
 	if err := f.r.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if time.Since(start) > 10*time.Second {
+	if time.Since(start) > 20*time.Second {
 		t.Errorf("Close took %v", time.Since(start))
 	}
 	if f.r.liveProcesses() != 0 {

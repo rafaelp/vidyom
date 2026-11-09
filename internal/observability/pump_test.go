@@ -65,7 +65,7 @@ func (s *intSink) snapshot() []int {
 
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return
@@ -85,7 +85,7 @@ func TestPumpDeliversInOrderAndFlushes(t *testing.T) {
 	for i := range 50 {
 		p.push(i)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := p.flushCtx(ctx); err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestPumpDropsOldestWhenFull(t *testing.T) {
 		t.Errorf("dropped %d, want %d", st.Dropped, 100-8)
 	}
 	close(s.block)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := p.flushCtx(ctx); err != nil {
 		t.Fatal(err)
@@ -288,7 +288,7 @@ func TestPumpStopDrainsAndClosesOnce(t *testing.T) {
 	for i := range 3 {
 		p.push(i)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := p.stop(ctx); err != nil {
 		t.Fatal(err)

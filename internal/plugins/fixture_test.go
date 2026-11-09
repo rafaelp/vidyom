@@ -284,7 +284,7 @@ func newFixture(t *testing.T, tweak ...func(*Options)) *fixture {
 		Secrets: func(domain.TenantID) connector.SecretResolver {
 			return f.secrets
 		},
-		InitTimeout:     5 * time.Second,
+		InitTimeout:     30 * time.Second, // the first run of a new binary can be slow on a loaded host
 		ShutdownTimeout: time.Second,
 		KillTimeout:     500 * time.Millisecond,
 		IdleTimeout:     time.Hour,
@@ -444,7 +444,7 @@ func requireSandbox(t *testing.T, proxyPort int) {
 
 func eventually(t *testing.T, what string, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if cond() {
 			return

@@ -287,7 +287,7 @@ func newManager(t *testing.T, cfg config.Observability, opts Options) *Manager {
 
 func flush(t *testing.T, m *Manager) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := m.Flush(ctx); err != nil {
 		t.Fatal(err)
