@@ -530,3 +530,12 @@ type AssetAIPolicyWriter interface {
 type OutboxMaintainer interface {
 	DeleteDispatchedBefore(ctx context.Context, t time.Time) (int64, error)
 }
+
+// EmbeddingLister is implemented by a SearchRepo that can read stored vectors
+// back. The public.db export uses it to carry vectors without recomputing them
+// (D18, I232); without it the export embeds the released text again, or goes
+// lexical-only. It returns the chunks of one asset version for one model, ordered
+// by start time, and an empty list when there are none.
+type EmbeddingLister interface {
+	ListEmbeddings(ctx context.Context, asset id.Ref, version, model string) ([]domain.EmbeddedChunk, error)
+}

@@ -2,6 +2,7 @@ package connector
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -103,4 +104,36 @@ type PublishingFactory func(ctx context.Context, p PublishingParams) (Publishing
 // PublishingResolver returns a tenant's destination by logical name.
 type PublishingResolver interface {
 	Publishing(ctx context.Context, tenant domain.TenantID, destination string) (Publishing, error)
+}
+
+// OutcomeUnknown marks a destination call whose effect is uncertain: a request
+// that could have created or changed a video and whose answer was lost. Connectors
+// cannot import package node, so this is how they say "this may have happened".
+// A plain coded error means the effect did not happen (D11).
+func OutcomeUnknown(err error) error { return outcomeUnknown{err} }
+
+// IsOutcomeUnknown reports whether err was marked by OutcomeUnknown.
+func IsOutcomeUnknown(err error) bool {
+	var u outcomeUnknown
+	return errors.As(err, &u)
+}
+
+type outcomeUnknown struct{ error }
+
+func (u outcomeUnknown) Unwrap() error { return u.error }
+
+// PublicLinks is what a public page needs beyond a video's URL (D18). A field the
+// platform does not offer stays empty.
+type PublicLinks struct {
+	EmbedURL           string
+	ThumbnailURL       string
+	SupportsTimestamps bool
+}
+
+// PublicLinker is an optional capability of a Publishing connector, discovered by
+// type assertion. It derives links from a confirmed RemoteVideo and makes no
+// network call, so exporting public.db stays local. A connector without it gets
+// no embed and no timestamp links in the public library.
+type PublicLinker interface {
+	PublicLinks(remote RemoteVideo) PublicLinks
 }

@@ -2258,7 +2258,27 @@
             "$ref": "#/$defs/uri"
           },
           "captions": {
-            "type": "object"
+            "type": "object",
+            "description": "Rendered by this node from the stored transcript with sensitive segments removed, only for an approved public video (D30, I228). No file is accepted.",
+            "properties": {
+              "language": {
+                "type": "string"
+              },
+              "format": {
+                "enum": [
+                  "vtt",
+                  "srt"
+                ]
+              }
+            }
+          },
+          "approvalId": {
+            "type": "string",
+            "description": "The approval that authorizes a visibility other than private, when the record has none or a change needs a new one (D7, D37)."
+          },
+          "scheduledAt": {
+            "type": "string",
+            "description": "RFC 3339. Publishes at this time on destinations that support scheduling (D52)."
           }
         },
         "required": [
