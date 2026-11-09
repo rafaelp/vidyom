@@ -131,7 +131,9 @@ func (d *database) migrate(ctx context.Context, kind dbKind, tenant domain.Tenan
 				return err
 			}
 		}
-		if tenant != "" {
+		// Only a brand-new database takes an owner, in the transaction that gives it a
+		// schema. An existing one keeps the owner it has, which ForTenant then compares.
+		if tenant != "" && len(applied) == 0 {
 			if _, err := q.ExecContext(ctx, `INSERT INTO meta (key, value) VALUES ('tenant_id', ?)`, string(tenant)); err != nil {
 				return err
 			}

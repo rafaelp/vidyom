@@ -258,12 +258,18 @@ func scanInt64(s scanner) (int64, error) {
 	return v, err
 }
 
+// maxQueryTokens bounds one lexical query's cost.
+const maxQueryTokens = 64
+
 // ftsQuery turns user text into a safe FTS5 expression: each token quoted, joined
 // by OR, so nothing typed can be read as FTS5 syntax (I106).
 func ftsQuery(text string) string {
 	fields := strings.FieldsFunc(text, func(c rune) bool {
 		return !unicode.IsLetter(c) && !unicode.IsDigit(c)
 	})
+	if len(fields) > maxQueryTokens {
+		fields = fields[:maxQueryTokens]
+	}
 	quoted := make([]string, 0, len(fields))
 	for _, f := range fields {
 		quoted = append(quoted, `"`+f+`"`)

@@ -336,6 +336,10 @@ func TestExportRefusals(t *testing.T) {
 	if _, err := noStorage.Export(ctx, "acme"); !errs.IsCode(err, errs.CodeFailedPrecondition) {
 		t.Fatalf("no storage: %v", err)
 	}
+	noStorage.SetStorage(f.storage)
+	if _, err := noStorage.Export(ctx, "acme"); err != nil {
+		t.Fatalf("storage set later: %v", err)
+	}
 	if _, err := f.auditor.Export(ctx, "unknown"); !errs.IsCode(err, errs.CodeNotFound) {
 		t.Fatalf("unknown tenant: %v", err)
 	}

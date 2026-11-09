@@ -84,7 +84,7 @@ func (s *tenantStores) ForTenant(ctx context.Context, tenant domain.TenantID) (r
 		}
 		return nil, fmt.Errorf("stat tenant database: %w", err)
 	}
-	d, err := openDatabase(ctx, path, kindTenant, "", s.opts)
+	d, err := openDatabase(ctx, path, kindTenant, tenant, s.opts)
 	if err != nil {
 		return nil, err
 	}

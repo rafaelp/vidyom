@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sync/atomic"
 	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/api"
@@ -38,7 +39,7 @@ type Options struct {
 type Auditor struct {
 	tenants repo.TenantStores
 	system  repo.SystemStore
-	storage connector.StorageResolver
+	storage atomic.Pointer[connector.StorageResolver]
 	clock   func() time.Time
 }
 
@@ -49,8 +50,17 @@ func New(tenants repo.TenantStores, opts Options) *Auditor {
 	if opts.Clock == nil {
 		opts.Clock = time.Now
 	}
-	return &Auditor{tenants: tenants, system: opts.System, storage: opts.Storage, clock: opts.Clock}
+	a := &Auditor{tenants: tenants, system: opts.System, clock: opts.Clock}
+	if opts.Storage != nil {
+		a.SetStorage(opts.Storage)
+	}
+	return a
 }
+
+// SetStorage sets the archive resolver after construction. It breaks a wiring cycle:
+// the storage resolver needs the vault for credentials, and the vault needs this
+// auditor for secret.used.
+func (a *Auditor) SetStorage(s connector.StorageResolver) { a.storage.Store(&s) }
 
 var secretKey = regexp.MustCompile(`(?i)(secret|token|password|passwd|api[-_]?key|private[-_]?key|credential|authorization)`)
 
@@ -239,7 +249,8 @@ func (a *Auditor) Export(ctx context.Context, tenant domain.TenantID) (string, e
 	if tenant == "" {
 		return "", errs.NotImplemented("exporting the system audit chain")
 	}
-	if a.storage == nil {
+	resolver := a.storage.Load()
+	if resolver == nil {
 		return "", errs.New(errs.CodeFailedPrecondition, "no archive storage is configured for audit export")
 	}
 	r, err := a.chain(ctx, tenant)
@@ -300,7 +311,7 @@ func (a *Auditor) Export(ctx context.Context, tenant domain.TenantID) (string, e
 	if err := domain.ValidateStorageKey(key); err != nil {
 		return "", err
 	}
-	storage, err := a.storage.Storage(ctx, tenant, domain.RoleArchive)
+	storage, err := (*resolver).Storage(ctx, tenant, domain.RoleArchive)
 	if err != nil {
 		return "", err
 	}

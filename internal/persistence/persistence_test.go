@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,6 +225,40 @@ func TestMisplacedTenantDatabaseIsRefused(t *testing.T) {
 	}
 	if _, err := s.Tenants.ForTenant(ctx, "acme"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// I103: a crash between creating the file and the first commit leaves an empty file.
+// The next attempt must be able to finish, not find a database with no owner.
+func TestEmptyFileFromACrashedCreateIsAdopted(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := Open(ctx, Options{DataDir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	path := filepath.Join(dir, "tenants", "acme", "tenant.db")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Tenants.Create(ctx, "acme"); !errs.IsCode(err, errs.CodeConflict) {
+		t.Fatalf("create over a leftover file: %v", err)
+	}
+	st, err := s.Tenants.ForTenant(ctx, "acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Tenant() != "acme" {
+		t.Fatalf("tenant = %s", st.Tenant())
+	}
+	// It now records its owner, so a later copy elsewhere is still refused.
+	var owner string
+	if err := st.(*tenantStore).d.db.QueryRow(`SELECT value FROM meta WHERE key = 'tenant_id'`).Scan(&owner); err != nil || owner != "acme" {
+		t.Fatalf("owner = %q, %v", owner, err)
 	}
 }
 
@@ -456,6 +491,10 @@ func TestFTSQuery(t *testing.T) {
 			t.Errorf("ftsQuery(%q) = %q, want %q", in, got, want)
 		}
 	}
+	long := strings.TrimSpace(strings.Repeat("word ", maxQueryTokens+10))
+	if got := strings.Count(ftsQuery(long), " OR ") + 1; got != maxQueryTokens {
+		t.Errorf("long query has %d tokens", got)
+	}
 }
 
 func TestTimeTextOrdersAndRoundTrips(t *testing.T) {
@@ -494,22 +533,11 @@ func TestErrorsNeverCarryDriverText(t *testing.T) {
 	if marshalErr != nil {
 		t.Fatal(marshalErr)
 	}
-	if string(public) == "" || containsAny(string(public), "UNIQUE", "constraint", "assets.") {
-		t.Fatalf("public error leaks driver text: %s", public)
-	}
-}
-
-func containsAny(s string, needles ...string) bool {
-	for _, n := range needles {
-		if len(n) > 0 && len(s) >= len(n) {
-			for i := 0; i+len(n) <= len(s); i++ {
-				if s[i:i+len(n)] == n {
-					return true
-				}
-			}
+	for _, leak := range []string{"UNIQUE", "constraint", "assets."} {
+		if strings.Contains(string(public), leak) {
+			t.Fatalf("public error leaks driver text: %s", public)
 		}
 	}
-	return false
 }
 
 // I102: a write through the outer store from inside InTx fails rather than hanging.

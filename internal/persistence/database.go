@@ -50,7 +50,7 @@ type database struct {
 
 // openDatabase opens path, creating it private if needed, and migrates it. tenant, when
 // set, is recorded in the same transaction as the first migration, so no file can exist
-// with a schema and without an owner (I103).
+// with a schema and without an owner, even after a crash during creation (I103).
 func openDatabase(ctx context.Context, path string, kind dbKind, tenant domain.TenantID, opts Options) (*database, error) {
 	// SQLite creates the -wal and -shm files with the database's own mode.
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
@@ -62,6 +62,8 @@ func openDatabase(ctx context.Context, path string, kind dbKind, tenant domain.T
 	if err != nil {
 		return nil, err
 	}
+	// Keep the pool open while busy: every new connection runs the durable PRAGMAs.
+	db.SetMaxIdleConns(db.Stats().MaxOpenConnections)
 	db.SetConnMaxIdleTime(5 * time.Minute)
 	d := &database{db: db, path: path, gate: make(chan struct{}, 1), clock: opts.Clock, opts: opts}
 	if err := d.migrate(ctx, kind, tenant); err != nil {

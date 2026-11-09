@@ -2,7 +2,7 @@
 
 Owner of `internal/persistence/**` (including `sqlitedriver`), `internal/tenants/**`, `internal/catalog/**` and `internal/security/**`. Normative inputs: `spec/vidyom-specification-v1.2.md`, `docs/plans/00-master-plan.md` (sections 3, 5–10), `docs/decisions.md`, `internal/contract/**`.
 
-Status vocabulary: everything below is a **target** until its commit lands. Decisions taken while reviewing this plan are in [`docs/decisions/core.md`](../decisions/core.md) as `I100–I119`.
+Status vocabulary: everything below was a **target** when this plan was written; section 4 tracks what has landed. Decisions taken while reviewing this plan are in [`docs/decisions/core.md`](../decisions/core.md) as `I100–I119`.
 
 ## 1. Deliverables
 
@@ -47,7 +47,7 @@ Providers per I10 (`systemd-creds`, `macos-keychain`, `dpapi`, `gcp-kms` not imp
 
 ### Phase 4: audit (D23, I8)
 
-Hash chain computed by a shared `domain.AuditRecord.ComputeHash`. Append-only enforced by triggers, verify recomputes the chain and checks export anchors, export writes JSONL to the `archive` role under `audit/`, prune only removes exported records past retention (minimum 365 days) and leaves an anchor. Secret-like detail keys are refused from the record. A system chain in `system.db` covers actions with no tenant (pairing, tenant creation, boot).
+Hash chain computed by a shared `domain.AuditRecord.ComputeHash` (I107). Append-only enforced by triggers, verify recomputes the chain and checks export anchors, export writes JSONL to the `archive` role under `audit/`, prune only removes exported records past retention (minimum 365 days) and leaves an anchor. Secret-like detail keys are refused from the record. A system chain in `system.db` covers actions with no tenant (pairing, tenant creation, boot).
 
 ### Phase 5: authentication and authorization (D12, D48, R19, I17)
 
@@ -76,12 +76,12 @@ Tenant creation (database, system row, data key, creator membership) with crash-
 
 Master plan §10 `core`, repeated as a checklist:
 
-- [ ] Per-tenant `tenant.db` and `system.db` created and migrated through `sqlitedriver`, WAL, `synchronous=FULL`, autocheckpoint on (I1).
-- [ ] FTS5 and sqlite-vec indexes with `embedding_model` per vector and side-by-side reindexing (D15).
-- [ ] Transactional friendly ID allocation, no collisions under concurrency, never reused (R5, D46).
-- [ ] All `repo` interfaces implemented with a conformance test against the real driver.
-- [ ] Envelope-encrypted vault with per-tenant data key rotation; `security.MasterKeyProvider` implementations per I10, fail closed.
-- [ ] Hash-chained audit with verify and export (D23).
-- [ ] Authentication (hashing, pairing, rotation, revocation, peer credentials), authorization with role bundles and grants (D48), budgets (D19).
-- [ ] Asset service with consent record (D8), sensitive segments (D30), versions (D35).
-- [ ] Tenant isolation test matching §15.6.
+- [x] Per-tenant `tenant.db` and `system.db` created and migrated through `sqlitedriver`, WAL, `synchronous=FULL`, autocheckpoint on (I1).
+- [x] FTS5 and sqlite-vec indexes with `embedding_model` per vector and side-by-side reindexing (D15).
+- [x] Transactional friendly ID allocation, no collisions under concurrency, never reused (R5, D46).
+- [x] All `repo` interfaces implemented with a conformance test against the real driver.
+- [x] Envelope-encrypted vault with per-tenant data key rotation; `security.MasterKeyProvider` implementations per I10, fail closed.
+- [x] Hash-chained audit with verify and export (D23).
+- [x] Authentication (hashing, pairing, rotation, revocation, peer credentials), authorization with role bundles and grants (D48), budgets (D19).
+- [x] Asset service with consent record (D8), sensitive segments (D30), versions (D35).
+- [x] Tenant isolation test matching §15.6.
