@@ -318,6 +318,15 @@ describe('lexical search', () => {
     local.close();
   });
 
+  it('shows one moment per timestamp, the best match', async () => {
+    const response = await run('conscious breathing', { mode: 'lexical' });
+    const result = response.results.find((r) => r.public_id === FULL_CLASS);
+    const starts = result?.moments.map((m) => Math.floor(m.start_seconds)) ?? [];
+    expect(starts.length).toBeGreaterThan(0);
+    expect(new Set(starts).size).toBe(starts.length);
+    expect(result?.moment_count).toBe(starts.length);
+  });
+
   it('gives no destination link when the destination has no timestamps', async () => {
     const response = await run('busy mind', { mode: 'lexical' });
     const result = response.results.find((r) => r.public_id === MEDITATION);

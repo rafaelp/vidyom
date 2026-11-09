@@ -1,4 +1,4 @@
-import { DatasetUnavailableError } from '@/lib/dataset';
+import { isDatasetUnavailable } from '@/lib/dataset';
 import { parseSearchParams } from '@/lib/search/params';
 import { search } from '@/lib/search/service';
 import type { SearchErrorBody } from '@/lib/search/types';
@@ -20,7 +20,7 @@ export async function GET(request: Request): Promise<Response> {
   try {
     return Response.json(await search(parsed.request), { headers: NO_STORE });
   } catch (error) {
-    if (error instanceof DatasetUnavailableError) {
+    if (isDatasetUnavailable(error)) {
       return Response.json(
         errorBody('dataset_unavailable', 'The public catalog is not available right now.', {
           status: error.status,

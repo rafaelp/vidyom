@@ -66,6 +66,14 @@ export class DatasetUnavailableError extends Error {
   }
 }
 
+/**
+ * Use this rather than `instanceof`: Next.js may evaluate this module once per route
+ * bundle, and the shared manager throws the class from whichever bundle created it.
+ */
+export function isDatasetUnavailable(error: unknown): error is DatasetUnavailableError {
+  return error instanceof Error && error.name === 'DatasetUnavailableError';
+}
+
 export interface DatasetLogger {
   info(message: string): void;
   warn(message: string): void;

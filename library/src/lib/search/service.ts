@@ -181,9 +181,14 @@ function overlaps(a: MomentDraft, start: number, end: number): boolean {
 function draftMoments(lexical: readonly LexicalHit[], semantic: readonly SemanticRow[]): MomentDraft[] {
   const drafts: MomentDraft[] = [];
   const sorted = [...lexical].sort((a, b) => b.score - a.score);
+  const startsTaken = new Set<number>();
   for (const hit of sorted) {
     if (hit.source !== 'chapter' && hit.source !== 'transcript') continue;
     if (hit.startSeconds === null) continue;
+    // A chapter and its first segment share a timestamp: one link is enough.
+    const startKey = Math.floor(hit.startSeconds);
+    if (startsTaken.has(startKey)) continue;
+    startsTaken.add(startKey);
     drafts.push({
       source: hit.source,
       start: hit.startSeconds,
