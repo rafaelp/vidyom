@@ -1,0 +1,29 @@
+# vidyom-worker, static and free of database code (make check-static), with FFmpeg for
+# pool media. Target mock-llm is the demo's clearly labeled mock endpoint (I217).
+# Build from the repository root: docker build -f deploy/Dockerfile.worker .
+FROM golang:1.27-bookworm AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=0.0.0-dev
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags "-s -w -X github.com/rafaelp/vidyom/internal/contract/version.Version=${VERSION}" \
+    -o /out/vidyom-worker ./cmd/vidyom-worker && \
+    CGO_ENABLED=0 go build -trimpath -o /out/vidyom-mock-llm ./connectors/ai/openai/mockllm/cmd/vidyom-mock-llm
+
+FROM debian:bookworm-slim AS mock-llm
+COPY --from=build /out/vidyom-mock-llm /usr/local/bin/vidyom-mock-llm
+USER 10001:10001
+ENTRYPOINT ["vidyom-mock-llm"]
+
+FROM debian:bookworm-slim AS worker
+# Bookworm's FFmpeg is 5.1, the minimum the worker accepts (I190).
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates ffmpeg && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --gid 10001 vidyom && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin vidyom && \
+    install -d -o vidyom -g vidyom -m 0750 /run/vidyom /var/lib/vidyom/work /var/lib/vidyom/storage /var/lib/vidyom/ingest \
+        /var/lib/vidyom/worker-token
+COPY --from=build /out/vidyom-worker /usr/local/bin/vidyom-worker
+USER vidyom
+ENTRYPOINT ["vidyom-worker"]

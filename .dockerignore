@@ -1,0 +1,13 @@
+.git
+.github
+**/node_modules
+**/.next
+**/__pycache__
+website
+docs
+spec
+bin
+data
+deploy/secrets
+library/tsconfig.tsbuildinfo
+**/.DS_Store

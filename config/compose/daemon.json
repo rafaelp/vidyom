@@ -1,0 +1,36 @@
+{
+  "dataDir": "/var/lib/vidyom/data",
+  "scratchDir": "/var/lib/vidyom/work/scratch",
+  "cacheDir": "/var/lib/vidyom/work/cache",
+  "spoolDir": "/var/lib/vidyom/work/spool",
+  "listeners": {
+    "unix": { "path": "/run/vidyom/vidyomd.sock" },
+    "https": { "interface": "eth0", "port": 8443, "loopbackPublished": true, "tls": { "mode": "auto" } }
+  },
+  "redis": { "url": "redis://redis:6379/0" },
+  "vault": {
+    "unseal": {
+      "provider": "file",
+      "path": "/run/secrets/vidyom_master_key",
+      "acknowledgeFileSealed": true
+    }
+  },
+  "ingestRoots": ["/var/lib/vidyom/ingest"],
+  "aiWorker": { "endpoint": "unix:///run/vidyom/ai.sock", "engine": "fake" },
+  "plugins": { "installRoots": ["/var/lib/vidyom/plugins"] },
+  "observability": {
+    "logs": {
+      "sinks": [
+        { "id": "local", "driver": "file", "enabled": true, "parameters": { "path": "/var/lib/vidyom/data/logs/vidyomd.jsonl" } },
+        { "id": "stderr", "driver": "file", "enabled": true, "parameters": { "path": "/dev/stderr", "rotation": "none" } },
+        { "id": "loki", "driver": "loki", "enabled": false, "parameters": { "url": "http://loki:3100" } }
+      ]
+    },
+    "metrics": [
+      { "id": "prometheus", "driver": "prometheus", "enabled": true }
+    ],
+    "traces": [
+      { "id": "tempo", "driver": "otlp", "enabled": false, "parameters": { "endpoint": "http://tempo:4318" } }
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+# The Python AI worker (D28, I6, I37). Two targets:
+#   fake: standard library only, the explicit test engine (I27). Canned transcripts and
+#         word-hash embeddings: it proves the path, never the quality.
+#   real: faster-whisper large-v3 and BGE-M3 on CPU. Large. Models download on first use
+#         into the volume mounted at /models, never into the image or the repository.
+# Build from the repository root: docker build -f deploy/Dockerfile.aiworker --target fake .
+FROM python:3.12-slim-bookworm AS base
+RUN groupadd --gid 10001 vidyom && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin vidyom && \
+    install -d -o vidyom -g vidyom -m 0750 /run/vidyom /var/lib/vidyom/work && \
+    install -d -o vidyom -g vidyom -m 0755 /models
+WORKDIR /app
+COPY aiworker/pyproject.toml ./
+COPY aiworker/vidyom ./vidyom
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+
+FROM base AS real
+# CPU wheels of torch first, or sentence-transformers would pull the CUDA build.
+RUN pip install --no-cache-dir --quiet --index-url https://download.pytorch.org/whl/cpu torch && \
+    pip install --no-cache-dir --quiet ".[all]"
+ENV HF_HOME=/models/huggingface
+USER vidyom
+ENTRYPOINT ["python", "-m", "vidyom", "--engine", "real", "--device", "cpu", "--compute-type", "int8"]
+CMD ["--socket", "/run/vidyom/ai.sock"]
+
+FROM base AS fake
+RUN pip install --no-cache-dir --quiet .
+USER vidyom
+ENTRYPOINT ["python", "-m", "vidyom", "--engine", "fake"]
+CMD ["--socket", "/run/vidyom/ai.sock"]

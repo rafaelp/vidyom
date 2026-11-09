@@ -1,0 +1,23 @@
+{
+  "storages": {
+    "archive": {
+      "driver": "local",
+      "root": "/var/lib/vidyom/storage/archive",
+      "usage": "backup_only",
+      "parameters": { "accessLog": "/var/lib/vidyom/storage/access.log" }
+    },
+    "master": {
+      "driver": "local",
+      "root": "/var/lib/vidyom/storage/master",
+      "usage": "operational",
+      "parameters": { "accessLog": "/var/lib/vidyom/storage/access.log" }
+    },
+    "proxy": {
+      "driver": "local",
+      "root": "/var/lib/vidyom/storage/proxy",
+      "usage": "operational",
+      "parameters": { "accessLog": "/var/lib/vidyom/storage/access.log" }
+    }
+  },
+  "archivePolicy": "approved_versions"
+}

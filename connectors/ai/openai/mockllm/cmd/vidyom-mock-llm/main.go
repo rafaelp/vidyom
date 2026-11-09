@@ -17,6 +17,7 @@ import (
 
 func main() {
 	address := flag.String("listen", "127.0.0.1:0", "loopback address to listen on")
+	anyInterface := flag.Bool("any-interface", false, "allow a non-loopback address, for a private Compose network only")
 	flag.Parse()
 
 	host, _, err := net.SplitHostPort(*address)
@@ -24,7 +25,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "vidyom-mock-llm: invalid --listen address")
 		os.Exit(2)
 	}
-	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+	if ip := net.ParseIP(host); !*anyInterface && (ip == nil || !ip.IsLoopback()) {
 		fmt.Fprintln(os.Stderr, "vidyom-mock-llm: --listen must be a loopback IP address")
 		os.Exit(2)
 	}

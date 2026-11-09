@@ -1,0 +1,10 @@
+# Optional sidecar (I31). Replicates to a local volume on this host. A real deployment
+# points these at object storage, and lists every tenant's database. Validate: Litestream
+# with GCS (D5, §17.2) has not been run.
+dbs:
+  - path: /var/lib/vidyom/data/system.db
+    replicas:
+      - path: /var/lib/vidyom/replica/system
+  - path: /var/lib/vidyom/data/tenants/acme/tenant.db
+    replicas:
+      - path: /var/lib/vidyom/replica/tenants/acme

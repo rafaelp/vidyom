@@ -1,0 +1,210 @@
+# Vidyom on one host (D10, D41). Docker Compose is the supported path on Linux, macOS and
+# Windows. Quick start: docs/status.md.
+#
+#   deploy/secrets/master.key   the master key, plaintext on this host: the `file` provider,
+#                               below D13's hardware or KMS target, and reported as such (I10)
+#   config/compose              configuration, read-only inside the containers
+#
+# Profiles:
+#   (none)         redis, daemon, workers, AI worker, library
+#   demo           mock-llm, the labeled mock endpoint of the scenario (I217)
+#   observability  Grafana, Loki, Tempo on loopback (D38)
+#   litestream     continuous replica of the databases to a volume (I31, Validate)
+name: vidyom
+
+x-worker: &worker
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile.worker
+    target: worker
+  image: vidyom/worker:dev
+  restart: unless-stopped
+  depends_on:
+    daemon:
+      condition: service_started
+  environment:
+    VIDYOM_WORKER_TOKEN_FILE: /var/lib/vidyom/worker-token/worker.token
+
+services:
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  daemon:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.vidyomd
+    image: vidyom/daemon:dev
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    # HTTPS on the host's loopback only (D49, I133). The daemon's listener is on eth0
+    # inside the container, because loopback there cannot receive a published port.
+    ports:
+      - "127.0.0.1:${VIDYOM_HTTPS_PORT:-8443}:8443"
+    secrets:
+      - source: vidyom_master_key
+        target: vidyom_master_key
+    volumes:
+      - ${VIDYOM_CONFIG_SOURCE:-../config/compose}:/etc/vidyom:ro
+      - data:/var/lib/vidyom/data
+      - work:/var/lib/vidyom/work
+      - storage:/var/lib/vidyom/storage
+      - ingest:/var/lib/vidyom/ingest
+      - public:/var/lib/vidyom/public
+      - plugins:/var/lib/vidyom/plugins
+      - mock:/var/lib/vidyom/mock
+      - run:/run/vidyom
+      - worker-token:/var/lib/vidyom/worker-token
+
+  ai-engine:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.aiworker
+      target: ${VIDYOM_AI_ENGINE:-fake}
+    image: vidyom/ai-engine:${VIDYOM_AI_ENGINE:-fake}
+    restart: unless-stopped
+    volumes:
+      - work:/var/lib/vidyom/work
+      - run:/run/vidyom
+      - models:/models
+
+  worker-media:
+    <<: *worker
+    command:
+      - --config=/etc/vidyom/daemon.json
+      - --pools=media
+      - --cpu-cores=${VIDYOM_WORKER_CPU_CORES:-8}
+      - --memory-mb=${VIDYOM_WORKER_MEMORY_MB:-8192}
+      - --disk-mb=${VIDYOM_WORKER_DISK_MB:-51200}
+      - --max-concurrency=4
+    volumes:
+      - ${VIDYOM_CONFIG_SOURCE:-../config/compose}:/etc/vidyom:ro
+      - work:/var/lib/vidyom/work
+      - storage:/var/lib/vidyom/storage
+      - ingest:/var/lib/vidyom/ingest
+      - run:/run/vidyom
+      - worker-token:/var/lib/vidyom/worker-token:ro
+
+  worker-ai:
+    <<: *worker
+    command:
+      - --config=/etc/vidyom/daemon.json
+      - --pools=ai
+      - --cpu-cores=${VIDYOM_WORKER_CPU_CORES:-8}
+      - --memory-mb=${VIDYOM_WORKER_MEMORY_MB:-8192}
+      - --disk-mb=${VIDYOM_WORKER_DISK_MB:-51200}
+      - --max-concurrency=2
+    volumes:
+      - ${VIDYOM_CONFIG_SOURCE:-../config/compose}:/etc/vidyom:ro
+      - work:/var/lib/vidyom/work
+      - storage:/var/lib/vidyom/storage
+      - run:/run/vidyom
+      - worker-token:/var/lib/vidyom/worker-token:ro
+
+  library:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.library
+    image: vidyom/library:dev
+    restart: unless-stopped
+    environment:
+      VIDYOM_PUBLIC_DB: /var/lib/vidyom/public/acme/public.db
+      VIDYOM_LIBRARY_TITLE: ${VIDYOM_LIBRARY_TITLE:-Acme video library}
+    ports:
+      - "127.0.0.1:${VIDYOM_LIBRARY_PORT:-3000}:3000"
+    volumes:
+      # The directory, read-only: withdrawal renames a file inside it.
+      - public:/var/lib/vidyom/public:ro
+
+  mock-llm:
+    profiles: [demo]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.worker
+      target: mock-llm
+    image: vidyom/mock-llm:dev
+    restart: unless-stopped
+    command: ["--listen=0.0.0.0:8111", "--any-interface"]
+
+  loki:
+    profiles: [observability]
+    image: grafana/loki:3.5.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "127.0.0.1:${VIDYOM_LOKI_PORT:-3100}:3100"
+    volumes:
+      - loki:/loki
+
+  tempo:
+    profiles: [observability]
+    image: grafana/tempo:2.8.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo.yml"]
+    ports:
+      - "127.0.0.1:${VIDYOM_TEMPO_PORT:-3200}:3200"
+    volumes:
+      - ./observability/tempo.yml:/etc/tempo.yml:ro
+      - tempo:/var/tempo
+
+  grafana:
+    profiles: [observability]
+    image: grafana/grafana:12.0.0
+    restart: unless-stopped
+    depends_on: [loki, tempo]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports:
+      - "127.0.0.1:${VIDYOM_GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana:/var/lib/grafana
+
+  litestream:
+    profiles: [litestream]
+    image: litestream/litestream:0.3.13
+    restart: unless-stopped
+    command: ["replicate", "-config", "/etc/litestream.yml"]
+    depends_on: [daemon]
+    user: "10001:10001"
+    volumes:
+      - ./litestream.yml:/etc/litestream.yml:ro
+      - data:/var/lib/vidyom/data
+      - litestream:/var/lib/vidyom/replica
+
+secrets:
+  vidyom_master_key:
+    # On a Linux host the container's user must be able to read this file:
+    #   sudo chown 10001:10001 deploy/secrets/master.key
+    # Docker Desktop maps ownership itself.
+    file: ${VIDYOM_MASTER_KEY_FILE:-./secrets/master.key}
+
+volumes:
+  redis:
+  data:
+  work:
+  storage:
+  ingest:
+  public:
+  plugins:
+  mock:
+  run:
+  worker-token:
+  models:
+  loki:
+  tempo:
+  grafana:
+  litestream:

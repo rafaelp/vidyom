@@ -1,0 +1,28 @@
+# vidyomd: API, engine, state. Needs cgo for SQLite, FTS5 and sqlite-vec (I1).
+# Build from the repository root: docker build -f deploy/Dockerfile.vidyomd .
+FROM golang:1.27-bookworm AS build
+# sqlite-vec's bindings need the header at build time only (I1).
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends libsqlite3-dev
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+ARG VERSION=0.0.0-dev
+RUN CGO_ENABLED=1 go build -trimpath \
+    -ldflags "-s -w -X github.com/rafaelp/vidyom/internal/contract/version.Version=${VERSION}" \
+    -o /out/vidyomd ./cmd/vidyomd
+
+FROM debian:bookworm-slim
+# sqlite3 is the operator's tool for the data directory; the daemon does not use it.
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates sqlite3 && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --gid 10001 vidyom && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin vidyom && \
+    install -d -o vidyom -g vidyom -m 0700 /var/lib/vidyom/data && \
+    install -d -o vidyom -g vidyom -m 0750 /run/vidyom /var/lib/vidyom/work /var/lib/vidyom/storage /var/lib/vidyom/ingest \
+        /var/lib/vidyom/plugins /var/lib/vidyom/mock /var/lib/vidyom/worker-token && \
+    install -d -o vidyom -g vidyom -m 0755 /var/lib/vidyom/public
+COPY --from=build /out/vidyomd /usr/local/bin/vidyomd
+USER vidyom
+ENV VIDYOMD_CONFIG_DIR=/etc/vidyom
+ENTRYPOINT ["vidyomd"]
+CMD ["start"]

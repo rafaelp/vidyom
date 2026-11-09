@@ -1,0 +1,13 @@
+{
+  "ai": {
+    "defaultProcessing": "local_only",
+    "llmEndpoints": [
+      {
+        "name": "mock-llm",
+        "baseUrl": "http://mock-llm:8111/v1",
+        "model": "mock-llm",
+        "class": "local"
+      }
+    ]
+  }
+}
