@@ -33,7 +33,7 @@ type Resolver struct {
 	configs  config.TenantSource
 	secrets  SecretsFor
 
-	metrics  telemetry.Metrics
+	metrics telemetry.Metrics
 
 	mu   sync.Mutex
 	open map[key]entry

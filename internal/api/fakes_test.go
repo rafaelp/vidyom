@@ -5,10 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"strings"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
