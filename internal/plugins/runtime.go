@@ -714,8 +714,6 @@ func (r *Runtime) RunHookAction(ctx context.Context, inv hook.Invocation) (hook.
 	if timeout <= 0 {
 		timeout = hook.DefaultTimeoutSeconds * time.Second
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 	ctx, span := otel.Tracer(tracerName).Start(ctx, "plugin.hook")
 	span.SetAttributes(
 		attribute.String(telemetry.LabelTenant, string(inv.TenantID)),
@@ -726,7 +724,7 @@ func (r *Runtime) RunHookAction(ctx context.Context, inv hook.Invocation) (hook.
 	defer span.End()
 
 	start := r.now()
-	result, err := r.runHook(ctx, inv)
+	result, err := r.runHook(ctx, inv, timeout)
 	r.measure(inv.TenantID, inv.Hook.Plugin, plugin.MethodHookInvoke, start, err)
 	if err != nil {
 		span.SetStatus(codes.Error, string(errs.CodeOf(err)))
@@ -740,7 +738,11 @@ func (r *Runtime) RunHookAction(ctx context.Context, inv hook.Invocation) (hook.
 	return result, nil
 }
 
-func (r *Runtime) runHook(ctx context.Context, inv hook.Invocation) (hook.Result, error) {
+// runHook gives the process and the action separate budgets. A hook's timeout measures
+// the plugin's work: starting a process has InitTimeout, because the first run of a new
+// binary can take longer than a hook's budget on a loaded host, and that says nothing
+// about the plugin. A dispatcher's deadline on ctx still bounds the whole call.
+func (r *Runtime) runHook(ctx context.Context, inv hook.Invocation, timeout time.Duration) (hook.Result, error) {
 	rec, m, perms, err := r.resolvePlugin(ctx, inv.TenantID, inv.Hook.Plugin)
 	if err != nil {
 		return hook.Result{}, err
@@ -748,10 +750,16 @@ func (r *Runtime) runHook(ctx context.Context, inv hook.Invocation) (hook.Result
 	if !slices.Contains(m.Provides.HookActions, inv.Hook.Action) {
 		return hook.Result{}, errs.Newf(errs.CodeFailedPrecondition, "plugin %s provides no hook action %q", rec.ID, inv.Hook.Action)
 	}
-	p, err := r.acquire(ctx, inv.TenantID, rec, m, perms)
+	startCtx, cancelStart := context.WithTimeout(ctx, r.opts.InitTimeout)
+	p, err := r.acquire(startCtx, inv.TenantID, rec, m, perms)
 	if err != nil {
-		return hook.Result{}, r.mapContext(ctx, err)
+		mapped := r.mapContext(startCtx, err)
+		cancelStart()
+		return hook.Result{}, mapped
 	}
+	cancelStart()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	if inv.IdempotencyKey == "" {
 		inv.IdempotencyKey = hookIdempotencyKey(inv)
 	}
@@ -878,11 +886,6 @@ func (r *Runtime) DeliverEvent(ctx context.Context, pluginID string, e event.Env
 }
 
 func (r *Runtime) deliver(ctx context.Context, pluginID string, e event.Envelope) error {
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, hook.DefaultTimeoutSeconds*time.Second)
-		defer cancel()
-	}
 	rec, m, perms, err := r.resolvePlugin(ctx, e.TenantID, pluginID)
 	if err != nil {
 		return err
@@ -890,9 +893,19 @@ func (r *Runtime) deliver(ctx context.Context, pluginID string, e event.Envelope
 	if !slices.Contains(m.Provides.EventSubscriptions, string(e.Type)) || !slices.Contains(perms.Events, string(e.Type)) {
 		return errs.Newf(errs.CodeForbidden, "plugin %s may not receive event %s", pluginID, e.Type)
 	}
-	p, err := r.acquire(ctx, e.TenantID, rec, m, perms)
+	// Starting the process has its own budget, as for a hook (runHook).
+	startCtx, cancelStart := context.WithTimeout(ctx, r.opts.InitTimeout)
+	p, err := r.acquire(startCtx, e.TenantID, rec, m, perms)
 	if err != nil {
-		return r.mapContext(ctx, err)
+		mapped := r.mapContext(startCtx, err)
+		cancelStart()
+		return mapped
+	}
+	cancelStart()
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, hook.DefaultTimeoutSeconds*time.Second)
+		defer cancel()
 	}
 	if len(e.Payload) > 0 {
 		e.Payload = r.redact.JSON(e.Payload)
