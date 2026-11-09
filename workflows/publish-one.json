@@ -77,7 +77,7 @@
       "type": "flow.if",
       "typeVersion": 1,
       "parameters": {
-        "condition": "!(nodes.await.output.status in ['rejected_by_destination', 'failed'])"
+        "condition": "!(nodes.await.output.status in ['rejected_by_destination', 'failed', 'withdrawn'])"
       }
     },
     {

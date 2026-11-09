@@ -262,5 +262,31 @@ func ChainFor(p hook.Point, global config.Hooks, workflow, nodeSet *wfdef.HookSe
 	}
 }
 
+// CapTimeouts applies a tenant's ceiling to every hook of a chain (§8.1, D40): a
+// notification hook cannot hold a workflow longer than the tenant allows. A ceiling
+// of 0 leaves the chain as it is, under the dispatcher's own limit.
+func CapTimeouts(c hook.Chain, maxSeconds int) hook.Chain {
+	if maxSeconds <= 0 {
+		return c
+	}
+	apply := func(list []wfdef.HookDecl) []wfdef.HookDecl {
+		if len(list) == 0 {
+			return list
+		}
+		out := make([]wfdef.HookDecl, len(list))
+		for i, d := range list {
+			if d.TimeoutSeconds <= 0 {
+				d.TimeoutSeconds = hook.DefaultTimeoutSeconds
+			}
+			if d.TimeoutSeconds > maxSeconds {
+				d.TimeoutSeconds = maxSeconds
+			}
+			out[i] = d
+		}
+		return out
+	}
+	return hook.Chain{Global: apply(c.Global), Workflow: apply(c.Workflow), Node: apply(c.Node)}
+}
+
 // Empty reports a chain with nothing to run.
 func Empty(c hook.Chain) bool { return len(c.Global)+len(c.Workflow)+len(c.Node) == 0 }

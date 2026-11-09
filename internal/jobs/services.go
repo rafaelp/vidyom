@@ -1024,7 +1024,7 @@ func (j jobsService) Resolve(ctx context.Context, s service.Scope, ref id.Ref, r
 	if err != nil {
 		return domain.Job{}, err
 	}
-	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}, prev: job.Status}
+	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}}
 	if err := r.loadNodes(); err != nil {
 		return domain.Job{}, err
 	}

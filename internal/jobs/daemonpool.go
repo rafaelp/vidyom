@@ -130,6 +130,7 @@ func (e *Engine) runDaemonTask(ctx context.Context, d jobqueue.Delivery) {
 	case errors.Is(execErr, errAttention):
 		err = e.attentionTask(ctx, lease, store, execErr)
 	default:
+		e.d.Logger.Warn("node failed", "tenant_id", lease.TenantID, "job_id", lease.JobID, "node_id", lease.NodeID, "attempt", lease.Attempt, "error", execErr)
 		f := failureOf(execErr)
 		if runCtx.Err() != nil && ctx.Err() == nil {
 			f = failure{Code: CodeCancelled, Message: "cancelled while running"}

@@ -40,6 +40,25 @@ func NewRegistry(v *Validator) *Registry {
 	return r
 }
 
+// LoadRegistry is what a daemon does at start: the shipped files, then the configured
+// directories, which add or override by id and version (I22). Anything invalid stops
+// it, because a workflow that cannot run should not wait to be requested.
+func LoadRegistry(v *Validator, shipped fs.FS, dirs []string) (*Registry, error) {
+	r := NewRegistry(v)
+	if err := r.LoadFS(shipped, "workflows"); err != nil {
+		return nil, err
+	}
+	for _, dir := range dirs {
+		if err := r.LoadDir(dir); err != nil {
+			return nil, err
+		}
+	}
+	if err := r.Check(); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // Add stores a file without validating it, because a file may name subworkflows
 // that are loaded later. Call Check when everything is loaded.
 func (r *Registry) Add(raw []byte, source string) error {

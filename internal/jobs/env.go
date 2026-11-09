@@ -429,7 +429,7 @@ func childState(key string, j domain.Job) controlnodes.ChildState {
 func (c controlEnv) Children(context.Context) ([]controlnodes.ChildState, error) {
 	jobs, err := c.run.childJobs(c.nodeID)
 	if err != nil {
-		return nil, err
+		return nil, node.Transient(err)
 	}
 	latest := latestChildren(jobs)
 	out := make([]controlnodes.ChildState, 0, len(latest))
@@ -448,7 +448,7 @@ func (c controlEnv) StartChild(ctx context.Context, req controlnodes.ChildReques
 	r := c.run
 	jobs, err := r.childJobs(c.nodeID)
 	if err != nil {
-		return controlnodes.ChildState{}, err
+		return controlnodes.ChildState{}, node.Transient(err)
 	}
 	generation := 0
 	if cur, found := latestChildren(jobs)[req.Key]; found {
@@ -458,11 +458,11 @@ func (c controlEnv) StartChild(ctx context.Context, req controlnodes.ChildReques
 			return childState(req.Key, cur), nil
 		case cur.Status == domain.JobFailed:
 			if err := r.e.retryJob(ctx, r.store, cur.ULID, "the parent job was retried"); err != nil {
-				return controlnodes.ChildState{}, err
+				return controlnodes.ChildState{}, node.Transient(err)
 			}
 			requeued, err := r.store.Jobs().GetByULID(ctx, cur.ULID)
 			if err != nil {
-				return controlnodes.ChildState{}, err
+				return controlnodes.ChildState{}, node.Transient(err)
 			}
 			return childState(req.Key, requeued), nil
 		default:

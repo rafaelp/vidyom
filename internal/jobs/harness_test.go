@@ -80,7 +80,7 @@ type behavior func(ctx context.Context, env node.Env, in node.Input) (node.Resul
 
 type harness struct {
 	t      *testing.T
-	stores *memstore.Stores
+	stores repo.TenantStores
 	store  repo.TenantStore
 	mr     *miniredis.Miniredis
 	client *redis.Client
@@ -151,11 +151,17 @@ func (r hookRunner) RunHookAction(_ context.Context, inv hook.Invocation) (hook.
 	return hook.Result{Allow: true}, nil
 }
 
+// defaultStores is what a harness runs on, unless a test names others.
+var defaultStores = func(*testing.T) repo.TenantStores { return memstore.New("acme", "globex") }
+
 type harnessOpts struct {
+	stores   repo.TenantStores
 	lease    time.Duration
 	redis    redis.UniversalClient
 	noEngine bool
 	maxDepth int
+	// register adds real nodes before fakes fill the rest of the catalog.
+	register func(node.Registry)
 }
 
 func newHarness(t *testing.T, opts ...harnessOpts) *harness {
@@ -166,9 +172,12 @@ func newHarness(t *testing.T, opts ...harnessOpts) *harness {
 	}
 	h := &harness{
 		t:         t,
-		stores:    memstore.New("acme", "globex"),
+		stores:    o.stores,
 		behaviors: map[string]behavior{},
 		budgets:   &fakeBudgets{},
+	}
+	if h.stores == nil {
+		h.stores = defaultStores(t)
 	}
 	var err error
 	h.store, err = h.stores.ForTenant(context.Background(), "acme")
@@ -186,6 +195,9 @@ func newHarness(t *testing.T, opts ...harnessOpts) *harness {
 	controlnodes.Register(h.reg)
 	approvalnodes.Register(h.reg)
 	catalognodes.Register(h.reg)
+	if o.register != nil {
+		o.register(h.reg)
+	}
 	cat, err := schemas.NodeCatalog()
 	if err != nil {
 		t.Fatal(err)
@@ -393,10 +405,13 @@ func (h *harness) workerTask(ctx context.Context, pool node.Pool, d jobqueue.Del
 	in := node.Input{Parameters: lease.Parameters, Attempt: lease.Attempt, IdempotencyKey: lease.IdempotencyKey, LeaseID: lease.LeaseID}
 	env := &workerEnv{lease: lease}
 	res, err := h.runBehaviorAs(taskCtx, lease.NodeType, lease.NodeID, env, in, true)
+	// A result is reported whatever happened to the worker's reading loop, as the real
+	// worker does.
+	report := context.Background()
 	if err == nil {
-		err2 := coord.Complete(ctx, lease.TaskID, workerproto.CompleteRequest{LeaseID: lease.LeaseID, Output: res.Output, Tools: res.Tools, Usage: res.Usage})
+		err2 := coord.Complete(report, lease.TaskID, workerproto.CompleteRequest{LeaseID: lease.LeaseID, Output: res.Output, Tools: res.Tools, Usage: res.Usage})
 		if err2 == nil || errs.IsCode(err2, errs.CodeGone) {
-			_ = h.q.Ack(ctx, pool, d.StreamID, d.Pointer.TaskID)
+			_ = h.q.Ack(report, pool, d.StreamID, d.Pointer.TaskID)
 		}
 		return
 	}
@@ -405,11 +420,11 @@ func (h *harness) workerTask(ctx context.Context, pool node.Pool, d jobqueue.Del
 	if errors.Is(err, context.Canceled) {
 		code = CodeCancelled
 	}
-	err2 := coord.Fail(ctx, lease.TaskID, workerproto.FailRequest{
+	err2 := coord.Fail(report, lease.TaskID, workerproto.FailRequest{
 		LeaseID: lease.LeaseID, Code: code, Message: coded.Message, Retryable: node.IsTransient(err), OutcomeUnknown: node.IsUnknownOutcome(err),
 	})
 	if err2 == nil || errs.IsCode(err2, errs.CodeGone) {
-		_ = h.q.Ack(ctx, pool, d.StreamID, d.Pointer.TaskID)
+		_ = h.q.Ack(report, pool, d.StreamID, d.Pointer.TaskID)
 	}
 }
 

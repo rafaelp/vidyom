@@ -378,7 +378,7 @@ func (e *Engine) taskRun(ctx context.Context, store repo.TenantStore, jobULID id
 		unlock()
 		return nil, nil, err
 	}
-	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}, prev: job.Status}
+	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}}
 	if err := r.loadNodes(); err != nil {
 		unlock()
 		return nil, nil, err
@@ -504,10 +504,7 @@ func (c coordinator) CacheKey(ctx context.Context, taskID string, req workerprot
 
 // reportProgress is the daemon pool's way of saying what a worker's heartbeat says.
 func (e *Engine) reportProgress(taskID, leaseID string, percent float64, message string) {
-	ctx := e.runCtx
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := e.lifeContext()
 	if _, err := e.Coordinator().TaskHeartbeat(ctx, taskID, workerproto.TaskHeartbeatRequest{LeaseID: leaseID, Percent: percent, Message: message}); err != nil && !errs.IsCode(err, errs.CodeGone) {
 		e.d.Logger.Debug("progress not recorded", "task", taskID, "error", err)
 	}

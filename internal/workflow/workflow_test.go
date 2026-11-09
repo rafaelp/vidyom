@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/rafaelp/vidyom/internal/contract/config"
@@ -650,6 +651,25 @@ func TestDryRunR37AndChecks(t *testing.T) {
 	issues = v.DryRun(res, DryRunEnv{SkipPermissions: true, PluginsKnown: true})
 	if len(issues) != 1 || issues[0].Code != IssuePlugin {
 		t.Fatalf("plugin: %+v", issues)
+	}
+}
+
+func TestLoadRegistry(t *testing.T) {
+	shipped := fstest.MapFS{"a.json": {Data: []byte(`{"id":"a","version":"1.0.0","nodes":[{"id":"n","type":"flow.if","typeVersion":1,"parameters":{"condition":"true"}}]}`)}}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.json"), []byte(`{"id":"a","version":"1.1.0","nodes":[{"id":"n","type":"flow.if","typeVersion":1,"parameters":{"condition":"false"}}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := LoadRegistry(NewValidator(nil), shipped, []string{dir, filepath.Join(dir, "absent")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, ok := r.Get("a", ""); !ok || e.Definition.Version != "1.1.0" {
+		t.Fatalf("latest %+v", e)
+	}
+	bad := fstest.MapFS{"b.json": {Data: []byte(`{"id":"b","version":"1.0.0","nodes":[{"id":"n","type":"nope.nope","typeVersion":1}]}`)}}
+	if _, err := LoadRegistry(NewValidator(nil), bad, nil); err == nil {
+		t.Fatal("an invalid shipped file must stop the daemon")
 	}
 }
 

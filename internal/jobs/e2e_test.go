@@ -94,9 +94,13 @@ type studio struct {
 	file    string
 }
 
-func newStudio(t *testing.T) *studio {
+func newStudio(t *testing.T, register ...func(node.Registry)) *studio {
 	t.Helper()
-	h := newHarness(t, harnessOpts{noEngine: true})
+	opts := harnessOpts{noEngine: true}
+	if len(register) > 0 {
+		opts.register = register[0]
+	}
+	h := newHarness(t, opts)
 	h.stopWorker()
 	s := &studio{harness: h, storage: newResolver()}
 	h.deps.Storage = s.storage
@@ -237,10 +241,12 @@ func (s *studio) fakes() {
 			if err := tx.Transcripts().Save(ctx, saved); err != nil {
 				return err
 			}
-			if err := tx.Search().IndexLexical(ctx, id.Ref(a.ID), p.Version, []domain.SearchChunk{{Level: domain.ChunkWindow, Text: "x"}}); err != nil {
+			chunk := domain.SearchChunk{Level: domain.ChunkWindow, StartSeconds: 10, EndSeconds: 20, Text: "conscious breathing"}
+			if err := tx.Search().IndexLexical(ctx, id.Ref(a.ID), p.Version, []domain.SearchChunk{chunk}); err != nil {
 				return err
 			}
-			if err := tx.Search().IndexVectors(ctx, repo.EmbeddingBatch{AssetID: id.Ref(a.ID), Version: p.Version, Model: "fake-hash-embed@1"}); err != nil {
+			if err := tx.Search().IndexVectors(ctx, repo.EmbeddingBatch{AssetID: id.Ref(a.ID), Version: p.Version, Model: "fake-hash-embed@1", Chunking: "window",
+				Chunks: []domain.EmbeddedChunk{{SearchChunk: chunk, Vector: []float32{1, 0, 0, 0}}}}); err != nil {
 				return err
 			}
 			if err := d.Emit(ctx, tx, event.Draft{Type: event.AssetIndexed, AssetID: string(a.ID)}); err != nil {

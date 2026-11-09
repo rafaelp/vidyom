@@ -149,6 +149,26 @@ Reviewed against the spec, the master plan and the other components' plans. What
 - `core` derives asset files and transcript info on read, ignores them on write and rejects invalid transitions, so `catalog.*` writes through `VersionRepo` and `memstore` mimics this.
 - `media` refuses `archive` as a source of `storage.put` and refuses non-master sources for `audio.extract`, so `ingest-original` passes `${nodes.store_master.output.uri}` to `audio.extract`.
 
+## 7.2 Wiring for `integration`
+
+```go
+nodes := node.NewRegistry()
+controlnodes.Register(nodes); approvalnodes.Register(nodes); catalognodes.Register(nodes)
+// plus ainodes and publishingnodes, whose daemon-pool nodes the validator requires
+validator := workflow.NewValidator(nodes)
+registry, err := workflow.LoadRegistry(validator, workflows.FS, cfg.Workflows.Dirs)
+sched := scheduler.New(scheduler.Options{Tenants: tenants, Triggers: registry, Workers: system.Workers()})
+bus := events.New(events.Options{Tenants: tenants, Triggers: registry, Plugins: pluginRuntime})
+engine := jobs.New(jobs.Deps{
+	Tenants: tenants, Queue: queue.NewRedis(redisClient), Nodes: nodes, Workflows: registry, Validator: validator,
+	Bus: bus, Scheduler: sched, Hooks: hooks.New(pluginRuntime, hooks.Options{}), Config: tenantSource, Daemon: cfg,
+	Storage: storageResolver, Publishing: publishingResolver, Connectors: connectors, SecretsFor: secretsFor,
+	Keys: derivedKeys, Budgets: budgets, Plugins: system.Plugins(), Metrics: metrics, Logger: logger,
+})
+go engine.Run(ctx) // reconciliation, daemon pool, timers, Event Bus, schedules
+// API: engine.Workflows(), Jobs(), Approvals(), Introspection(), Coordinator(), and engine.Bus() as service.Events.
+```
+
 ## 8. Tests
 
 - `internal/workflow`: every validation rule, positive and negative; resolver; CEL cost limit.
@@ -156,6 +176,7 @@ Reviewed against the spec, the master plan and the other components' plans. What
 - `internal/jobs` over `memstore` and a fake worker through the coordinator: branching and merge; checkpoints; retry per class; `reconcilable` before retry; `unsafe` to `needs_attention`, every resolve action and permission; pause and resume; cooperative cancel; approval levels (D7), adjust, timeout policies; subworkflow isolation and immutable snapshots; foreach limits; hook order and policies; event trigger, filter, depth limit, duplicates; budget pause (I33); restart at every stage; `FLUSHALL`; tenant isolation.
 - End to end over fake nodes: `ingest-original` to `ready_for_clipping`, `create-clip` through both gates.
 - `go vet`, `-race` on all own packages.
+- `internal/jobs` tests take their store from one variable, so they can also run on `core`'s real SQLite store. `integration` should do that: it is what proves the fake's fidelity.
 
 ## 9. Out of scope
 

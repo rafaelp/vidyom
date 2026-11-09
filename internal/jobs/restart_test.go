@@ -215,7 +215,9 @@ func realHarness(t *testing.T) (*harness, *redistest.Server) {
 	server := redistest.Start(t)
 	client := server.Client()
 	t.Cleanup(func() { _ = client.Close() })
-	h := newHarness(t, harnessOpts{redis: client})
+	// A long lease: these tests are about the queue, and a worker that stopped reading
+	// also stops its heartbeats while its task keeps running.
+	h := newHarness(t, harnessOpts{redis: client, lease: time.Minute})
 	return h, server
 }
 

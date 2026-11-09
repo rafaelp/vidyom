@@ -106,7 +106,7 @@ type Deps struct {
 	ReconcileInterval time.Duration
 	DaemonConcurrency int
 	DefaultBackoff    time.Duration
-	// StartConsumers is false only in tests that drive the daemon pool themselves.
+	// DisableDaemonPool is for tests that drive pool daemon themselves.
 	DisableDaemonPool bool
 }
 
@@ -117,8 +117,7 @@ type Engine struct {
 	tenants sync.Map // id.ULID -> domain.TenantID
 	checks  sync.Map // id.ULID -> time.Time of the next look
 
-	runCtx context.Context
-	cancel context.CancelFunc
+	runCtx atomic.Pointer[context.Context]
 	wg     sync.WaitGroup
 
 	kickMu  sync.Mutex
@@ -213,7 +212,7 @@ func (e *Engine) now() time.Time { return e.d.Clock() }
 func (e *Engine) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	e.runCtx, e.cancel = ctx, cancel
+	e.runCtx.Store(&ctx)
 
 	if err := e.d.Scheduler.Matcher.Load(ctx); err != nil {
 		e.d.Logger.Warn("cannot load worker registrations", "error", err)
@@ -402,8 +401,8 @@ func (e *Engine) reconcileJob(ctx context.Context, store repo.TenantStore, j dom
 	for _, n := range nodes {
 		switch n.Status {
 		case domain.NodeQueued:
-			if j.Status == domain.JobPaused || strings.HasPrefix(j.StatusReason, reasonCancelRequested) {
-				continue
+			if j.Status == domain.JobPaused || j.Status == domain.JobNeedsAttention || strings.HasPrefix(j.StatusReason, reasonCancelRequested) {
+				continue // a pointer would only be answered 410; it goes back when the job continues
 			}
 			known, err := e.d.Queue.Inflight(ctx, n.TaskID)
 			if err != nil {
@@ -553,11 +552,16 @@ func finishKey(job id.ULID) string              { return string(job) + "//finish
 // spawn runs fn in the background during the engine's life. Without a running engine,
 // as in direct calls from tests, it runs on context.Background.
 func (e *Engine) spawn(fn func(ctx context.Context)) {
-	ctx := e.runCtx
-	if ctx == nil {
-		ctx = context.Background()
-	}
+	ctx := e.lifeContext()
 	e.background(func() { fn(ctx) })
+}
+
+// lifeContext ends when Run does. Before Run it is context.Background.
+func (e *Engine) lifeContext() context.Context {
+	if ctx := e.runCtx.Load(); ctx != nil {
+		return *ctx
+	}
+	return context.Background()
 }
 
 // runCtxReady reports that Run got past its startup, for tests.

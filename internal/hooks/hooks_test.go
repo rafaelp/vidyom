@@ -248,3 +248,22 @@ func TestChainFor(t *testing.T) {
 		t.Fatalf("cancel %+v", got)
 	}
 }
+
+func TestCapTimeouts(t *testing.T) {
+	short := decl("short", "")
+	short.TimeoutSeconds = 5
+	long := decl("long", "")
+	long.TimeoutSeconds = 500
+	unset := decl("unset", "")
+	c := CapTimeouts(hook.Chain{Global: []wfdef.HookDecl{short}, Workflow: []wfdef.HookDecl{long}, Node: []wfdef.HookDecl{unset}}, 20)
+	if c.Global[0].TimeoutSeconds != 5 || c.Workflow[0].TimeoutSeconds != 20 || c.Node[0].TimeoutSeconds != 20 {
+		t.Fatalf("chain %+v", c)
+	}
+	if long.TimeoutSeconds != 500 {
+		t.Fatal("the declaration must not change")
+	}
+	same := CapTimeouts(hook.Chain{Workflow: []wfdef.HookDecl{long}}, 0)
+	if same.Workflow[0].TimeoutSeconds != 500 {
+		t.Fatalf("no ceiling %+v", same)
+	}
+}

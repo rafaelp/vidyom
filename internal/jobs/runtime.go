@@ -96,7 +96,6 @@ type jobRun struct {
 	event    map[string]any
 	loaded   bool
 	progress bool
-	prev     domain.JobStatus
 }
 
 // advance is the only function that moves a job.
@@ -119,7 +118,7 @@ func (e *Engine) advance(ctx context.Context, tenant domain.TenantID, ulid id.UL
 	if err != nil {
 		return err
 	}
-	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}, prev: job.Status}
+	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}}
 	if err := r.loadNodes(); err != nil {
 		return err
 	}
@@ -213,7 +212,7 @@ func (e *Engine) afterStartHooks(ctx context.Context, tenant domain.TenantID, ul
 	if err != nil {
 		return err
 	}
-	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}, prev: job.Status}
+	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}}
 	if err := r.loadNodes(); err != nil {
 		return err
 	}
@@ -248,7 +247,6 @@ func (r *jobRun) moveToRunning() error {
 	}); err != nil {
 		return err
 	}
-	r.prev = r.job.Status
 	r.e.notifyJob(r.job.ULID)
 	return r.step()
 }
@@ -668,7 +666,7 @@ func (e *Engine) afterNodeBefore(ctx context.Context, tenant domain.TenantID, ul
 	if err != nil {
 		return err
 	}
-	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}, prev: job.Status}
+	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}}
 	if err := r.loadNodes(); err != nil {
 		return err
 	}
@@ -774,6 +772,8 @@ func safeResume(ctx context.Context, impl node.Resumer, env node.Env, in node.In
 // applyResult records what a node returned: a suspension, an output or a failure.
 func (r *jobRun) applyResult(nodeID string, res node.Result, err error) error {
 	if err != nil {
+		// The cause stays in the daemon's log; what reaches the job is the public part.
+		r.e.d.Logger.Warn("node failed", "tenant_id", r.store.Tenant(), "job_id", r.job.ID, "node_id", nodeID, "attempt", r.nodes[nodeID].Attempt, "error", err)
 		return r.onFailure(nodeID, failureOf(err))
 	}
 	if res.Suspend != nil {
@@ -901,7 +901,7 @@ func (e *Engine) afterNodeHooks(ctx context.Context, tenant domain.TenantID, uli
 	if err != nil {
 		return err
 	}
-	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}, prev: job.Status}
+	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}}
 	if err := r.loadNodes(); err != nil {
 		return err
 	}
@@ -1600,7 +1600,7 @@ func (e *Engine) finishJob(ctx context.Context, tenant domain.TenantID, ulid id.
 	if err != nil {
 		return err
 	}
-	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}, prev: job.Status}
+	r := &jobRun{e: e, ctx: ctx, store: store, job: job, rt: rt, decoded: map[string]any{}}
 	if err := r.loadNodes(); err != nil {
 		return err
 	}
@@ -1771,7 +1771,7 @@ func (r *jobRun) chain(p hook.Point, spec *wfdef.NodeSpec) hook.Chain {
 	if spec != nil {
 		nodeSet = spec.Hooks
 	}
-	return hooks.ChainFor(p, global, r.rt.def.Hooks, nodeSet)
+	return hooks.CapTimeouts(hooks.ChainFor(p, global, r.rt.def.Hooks, nodeSet), global.MaxTimeoutSeconds)
 }
 
 func (r *jobRun) invocation(n *domain.NodeExecution) hook.Invocation {

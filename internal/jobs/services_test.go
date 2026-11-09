@@ -156,7 +156,7 @@ func TestDryRunHasNoEffect(t *testing.T) {
 		}},
 		Publishing: config.Publishing{Destinations: map[string]config.Destination{"yt": {Driver: "youtube", CredentialsRef: "youtube-oauth"}}},
 	}
-	if err := h.store.Secrets().Put(ctx, repo.SecretRecord{Meta: domain.SecretMeta{Name: "youtube-oauth", Location: domain.SecretClient}}); err != nil {
+	if err := h.store.Secrets().Put(ctx, repo.SecretRecord{Meta: domain.SecretMeta{Name: "youtube-oauth", Location: domain.SecretClient}, Ciphertext: []byte("sealed"), KeyVersion: 1}); err != nil {
 		t.Fatal(err)
 	}
 	wf := h.engine.Workflows()
