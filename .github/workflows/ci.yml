@@ -18,7 +18,7 @@ jobs:
       # The sqlite-vec bindings need the header at build time (I1). FFmpeg, Python and
       # sqlite3 are used by real-process tests that otherwise skip themselves.
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq libsqlite3-dev ffmpeg sqlite3
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: make fmt-check
@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: make test-python
@@ -69,7 +69,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - uses: actions/setup-node@v4
