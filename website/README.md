@@ -33,6 +33,8 @@ The official site is deployed on Vercel at https://www.vidyom.org, which is the 
 
 `package.json` pins `d3` 7.9.0, `d3-selection` 3.0.0 and `d3-transition` 3.0.1 through `overrides`. The releases of 2026-11-03 (`d3` 7.9.1+, `d3-selection` 3.0.1, `d3-transition` 3.0.2) ship bundled entry points that let webpack drop `d3-transition`'s side effects, so hovering a Mermaid diagram node throws `transition is not a function`. Remove the overrides only after checking that hovering diagram nodes no longer logs errors.
 
+`overrides` also raises four transitive dependencies past security advisories, because Docusaurus 3.10.2 and Mermaid 11 still require the vulnerable ranges: `tinypool` 2 (from `@docusaurus/core`), `serialize-javascript` 7 (from `copy-webpack-plugin` and `css-minimizer-webpack-plugin`), `katex` 0.18 (from `mermaid`) and `uuid` 11 under `sockjs` only, so Mermaid keeps its own `uuid`. Docusaurus loads `tinypool` only when `future.faster.ssgWorkerThreads` is on, which this site does not set. Drop each override once `npm ls <package>` shows the parent requiring a patched version.
+
 ## Content conventions
 
 - All documentation, UI copy, sample code, and code comments must be in English.
