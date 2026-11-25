@@ -27,6 +27,9 @@ import (
 
 const (
 	jobTimeout = 4 * time.Minute
+	// The 1080p ingest in step 13 encodes a master and a proxy; on a GitHub runner
+	// that alone took over four minutes.
+	heavyJobTimeout = 12 * time.Minute
 
 	fixtureSeconds = 120
 	tenant         = "acme"
@@ -1210,7 +1213,9 @@ func (sc *scenario) step13(t *testing.T) {
 }
 
 func (sc *scenario) killDuringTranscode(t *testing.T) {
-	heavy := sc.generateFixture(t, "heavy.mp4", 240, "1920x1080", 30)
+	// Long enough that the master encode (preset slow) outlives the restart on a fast
+	// machine; a four-core CI runner takes minutes over it, hence heavyJobTimeout.
+	heavy := sc.generateFixture(t, "heavy.mp4", 120, "1920x1080", 30)
 	var started struct {
 		Job *api.RunWorkflowResponse `json:"job"`
 	}
@@ -1240,7 +1245,7 @@ func (sc *scenario) killDuringTranscode(t *testing.T) {
 	sc.stack.StartDaemon(t)
 	sc.waitHealthy(t)
 
-	after := sc.waitJob(t, sc.editor, jobID, domain.JobCompleted)
+	after := sc.waitJobWithin(t, sc.editor, jobID, domain.JobCompleted, heavyJobTimeout)
 	for _, n := range after.Nodes {
 		if n.Status != domain.NodeCompleted && n.Status != domain.NodeSkipped {
 			t.Errorf("node %s ended %s", n.NodeID, n.Status)
@@ -1618,8 +1623,13 @@ func hasEvent(events []eventRow, kind string) bool {
 
 func (sc *scenario) waitJob(t *testing.T, c *client, id string, want domain.JobStatus) api.JobDetail {
 	t.Helper()
+	return sc.waitJobWithin(t, c, id, want, jobTimeout)
+}
+
+func (sc *scenario) waitJobWithin(t *testing.T, c *client, id string, want domain.JobStatus, timeout time.Duration) api.JobDetail {
+	t.Helper()
 	var job api.JobDetail
-	waitFor(t, jobTimeout, id+" to be "+string(want), func() (bool, string) {
+	waitFor(t, timeout, id+" to be "+string(want), func() (bool, string) {
 		c.jsonOut(t, &job, "job", "status", id)
 		if job.Status == want {
 			return true, ""

@@ -59,6 +59,10 @@ func TestFinishRunsOnErrorAndCancel(t *testing.T) {
 	})
 	h.add(hookedDoc)
 	h.waitStatus(h.run("hooked", nil), domain.JobFailed)
+	// Node reporting hooks run in the background (I149), so the job can fail first.
+	h.waitFor("the node's finish hook", func() bool {
+		return strings.Contains(strings.Join(h.hooksCalled(), " "), "node.finish:n-finish")
+	})
 	got := strings.Join(h.hooksCalled(), " ")
 	for _, want := range []string{"node.error:n-error", "node.finish:n-finish", "workflow.error:w-error", "workflow.finish:w-finish"} {
 		if !strings.Contains(got, want) {
